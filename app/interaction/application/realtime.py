@@ -1,10 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass
 import logging
 import re
 import time
-from typing import AsyncIterator
+from typing import AsyncIterator, Callable
 from uuid import uuid4
 
 from app.core.events import EventBus
@@ -452,7 +453,56 @@ class RealtimeChatService:
         session_id: str | None = None,
     ) -> AsyncIterator[dict[str, object]]:
         session_id = session_id or str(uuid4())
-        turn_result = self.build_turn(session_id, input_data)
+        turn_id = str(uuid4())
+
+        stage_palette: dict[str, tuple[str, str, int]] = {
+            "received": ("Solicitud recibida", "violet", 5),
+            "history_loaded": ("Historial cargado", "sky", 15),
+            "context_routed": ("Contexto enroutado", "blue", 30),
+            "user_message_recorded": ("Mensaje registrado", "teal", 45),
+            "reply_generating": ("Generando respuesta", "amber", 65),
+            "reply_ready": ("Respuesta lista", "emerald", 80),
+            "assistant_message_recorded": ("Persistiendo respuesta", "emerald", 90),
+            "turn_persisted": ("Turno persistido", "green", 100),
+        }
+
+        progress_queue: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+        loop = asyncio.get_running_loop()
+
+        def report_progress(stage: str, detail: str = "") -> None:
+            label, tone, percent = stage_palette.get(stage, (stage, "sky", 0))
+            packet = _packet(
+                "turn_progress",
+                session_id=session_id,
+                turn_id=turn_id,
+                stage=stage,
+                label=label,
+                detail=detail,
+                tone=tone,
+                percent=percent,
+            )
+            loop.call_soon_threadsafe(progress_queue.put_nowait, packet)
+
+        report_progress("received")
+
+        turn_task = asyncio.create_task(
+            asyncio.to_thread(
+                self.build_turn,
+                session_id,
+                input_data,
+                turn_id=turn_id,
+                progress_callback=report_progress,
+            )
+        )
+
+        while not turn_task.done() or not progress_queue.empty():
+            try:
+                progress_packet = await asyncio.wait_for(progress_queue.get(), timeout=0.08)
+            except TimeoutError:
+                continue
+            yield progress_packet
+
+        turn_result = await turn_task
 
         yield _packet(
             "turn_started",
@@ -484,8 +534,24 @@ class RealtimeChatService:
             history_count=len(turn_result.history_messages),
         )
 
-    def build_turn(self, session_id: str, input_data: InteractionRealtimeInput) -> RealtimeTurnResult:
-        turn_id = str(uuid4())
+    def build_turn(
+        self,
+        session_id: str,
+        input_data: InteractionRealtimeInput,
+        *,
+        turn_id: str | None = None,
+        progress_callback: Callable[[str, str], None] | None = None,
+    ) -> RealtimeTurnResult:
+        turn_id = turn_id or str(uuid4())
+
+        def report_progress(stage: str, detail: str = "") -> None:
+            if progress_callback is None:
+                return
+            try:
+                progress_callback(stage, detail)
+            except Exception:
+                return
+
         rollout = self._rollout_flags()
         debug_trace_enabled = bool(rollout.get("debug_trace_enabled"))
         self._debug_turn(
@@ -495,6 +561,7 @@ class RealtimeChatService:
             turn_id=turn_id,
             payload={"author": input_data.author, "channel": input_data.channel, "content_chars": len(input_data.content or "")},
         )
+        report_progress("history_loaded")
         history_messages = self.interaction_service.list_session_messages(
             InteractionSessionRequest(session_id=session_id, limit=input_data.history_limit)
         )
@@ -514,6 +581,7 @@ class RealtimeChatService:
             ),
             source_module="interaction.application.realtime",
         )
+        report_progress("context_routed")
         self._debug_turn(
             debug_trace_enabled,
             "turn.context_preview",
@@ -535,6 +603,7 @@ class RealtimeChatService:
                 session_id=session_id,
             )
         )
+        report_progress("user_message_recorded")
         self.event_bus.publish(
             PUBLISH_INTERACTION_REALTIME_MESSAGE_RECEIVED,
             {
@@ -547,6 +616,7 @@ class RealtimeChatService:
             metadata={"session_id": session_id, "turn_id": turn_id, "author": user_message.get("author")},
         )
 
+        report_progress("reply_generating")
         assistant_reply, quality_flags = self._compose_reply(
             input_data,
             context_preview,
@@ -554,6 +624,7 @@ class RealtimeChatService:
             history_messages=history_messages,
             session_id=session_id,
         )
+        report_progress("reply_ready")
         self._debug_turn(
             debug_trace_enabled,
             "turn.reply_ready",
@@ -579,6 +650,7 @@ class RealtimeChatService:
                 session_id=session_id,
             )
         )
+        report_progress("assistant_message_recorded")
         telemetry_enabled = bool(quality_flags.get("telemetry_enabled", True))
 
         self.event_bus.publish(
@@ -631,6 +703,7 @@ class RealtimeChatService:
             context_preview=context_preview,
             quality_flags=quality_flags,
         )
+        report_progress("turn_persisted")
 
         return RealtimeTurnResult(
             session_id=session_id,

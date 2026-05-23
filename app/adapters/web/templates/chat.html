@@ -351,6 +351,16 @@
     font-weight: 500;
   }
 
+  #status-bar.status-tone-neutral { color: var(--chat-text-dim); }
+  #status-bar.status-tone-sky { color: #7dd3fc; }
+  #status-bar.status-tone-blue { color: #60a5fa; }
+  #status-bar.status-tone-teal { color: #2dd4bf; }
+  #status-bar.status-tone-amber { color: #fbbf24; }
+  #status-bar.status-tone-emerald { color: #34d399; }
+  #status-bar.status-tone-green { color: #22c55e; }
+  #status-bar.status-tone-violet { color: #a78bfa; }
+  #status-bar.status-tone-danger { color: #fb7185; }
+
   #attached-file {
     display: none;
     margin: 0 5px 8px;
@@ -1491,6 +1501,10 @@
   let activeIdentityId = '';
   let lobbySelectedSessionId = '';
   let lobbyDraggingRuleIndex = -1;
+  let processingStage = '';
+  let processingStartedAt = 0;
+  let processingTimer = null;
+  let processingTone = 'sky';
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
@@ -1583,7 +1597,7 @@
           refreshModelState({ announce: true });
           return;
         case 'welcome':
-          appendMessage(packet.content || 'Bienvenido.', false, currentEngramAvatar, true, null, 'system', 'system');
+          setStatus(packet.content || 'Bienvenido.', false);
           return;
         case 'meta_update':
           updateIdentityUI(packet);
@@ -1595,11 +1609,24 @@
           return;
         }
         case 'turn_started':
-          startProcessingFeedback();
+          startProcessingFeedback('preparando contexto', 'violet');
           currentAiBubble = appendMessage(renderThinkingBubble(), false, currentEngramAvatar, true, null, 'assistant', 'assistant');
           updateSendButtonState();
           return;
+        case 'turn_progress': {
+          const label = String(packet.label || packet.stage || 'procesando');
+          const detail = String(packet.detail || '').trim();
+          const tone = String(packet.tone || 'sky');
+          const suffix = detail ? ` · ${detail}` : '';
+          if (!isProcessing) {
+            startProcessingFeedback(label + suffix, tone);
+          } else {
+            updateProcessingStage(label + suffix, tone);
+          }
+          return;
+        }
         case 'assistant_token':
+          updateProcessingStage('generando respuesta', 'amber');
           if (!currentAiBubble) {
             currentAiBubble = appendMessage('', false, currentEngramAvatar, true, null, 'assistant', 'assistant');
           }
@@ -1607,6 +1634,7 @@
           scrollToBottom(false);
           return;
         case 'assistant_message': {
+          updateProcessingStage('guardando turno', 'emerald');
           const message = packet.message || {};
           if (currentAiBubble) {
             const row = currentAiBubble.closest('.message-row');
@@ -1629,7 +1657,7 @@
         case 'error':
           stopProcessingFeedback();
           updateSendButtonState();
-          setStatus(packet.detail || 'Error en realtime.', false);
+          setStatus(packet.detail || 'Error en realtime.', { blinking: false, tone: 'danger' });
           return;
         default:
           return;
@@ -1698,10 +1726,39 @@
     handleSlashCommand('/help');
   }
 
-  function setStatus(text, blinking = false) {
+  function setStatus(text, options = false) {
+    let blinking = false;
+    let tone = 'neutral';
+    if (typeof options === 'boolean') {
+      blinking = options;
+    } else if (options && typeof options === 'object') {
+      blinking = Boolean(options.blinking);
+      tone = String(options.tone || 'neutral');
+    }
     statusBar.innerText = text;
     statusBar.style.opacity = '1';
-    statusBar.className = blinking ? 'blinking' : '';
+    statusBar.className = `${blinking ? 'blinking ' : ''}status-tone-${tone}`.trim();
+  }
+
+  function renderProcessingStatus() {
+    if (!isProcessing) {
+      return;
+    }
+    const elapsedMs = Math.max(0, Date.now() - processingStartedAt);
+    const elapsedSec = (elapsedMs / 1000).toFixed(elapsedMs >= 10000 ? 0 : 1);
+    const stageLabel = processingStage || 'procesando';
+    setStatus(`Procesando: ${stageLabel} (${elapsedSec}s)`, { blinking: true, tone: processingTone });
+  }
+
+  function updateProcessingStage(stage, tone = null) {
+    if (!isProcessing) {
+      return;
+    }
+    processingStage = String(stage || '').trim() || processingStage || 'procesando';
+    if (tone) {
+      processingTone = String(tone);
+    }
+    renderProcessingStatus();
   }
 
   function renderLimitsChip() {
@@ -2193,9 +2250,19 @@
     setupMessageInteractions(row);
   }
 
-  function startProcessingFeedback() {
+  function startProcessingFeedback(initialStage = 'procesando', tone = 'sky') {
     isProcessing = true;
-    setStatus('Procesando...', true);
+    processingStartedAt = Date.now();
+    processingStage = String(initialStage || '').trim() || 'procesando';
+    processingTone = String(tone || 'sky');
+    if (processingTimer) {
+      window.clearInterval(processingTimer);
+      processingTimer = null;
+    }
+    renderProcessingStatus();
+    processingTimer = window.setInterval(() => {
+      renderProcessingStatus();
+    }, 350);
   }
 
   function stopProcessingFeedback() {
@@ -2203,7 +2270,14 @@
       return;
     }
     isProcessing = false;
-    setStatus('Online', false);
+    if (processingTimer) {
+      window.clearInterval(processingTimer);
+      processingTimer = null;
+    }
+    processingStage = '';
+    processingStartedAt = 0;
+    processingTone = 'sky';
+    setStatus('Online', { blinking: false, tone: 'neutral' });
   }
 
   function updateIdentityUI(identity) {
@@ -2954,7 +3028,7 @@
     }
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      appendMessage('El websocket no esta listo. Reconectando...', false, currentEngramAvatar, true, null, 'system', 'system');
+      setStatus('WebSocket no listo. Reconectando...', false);
       reconnectSocket({ clearTimeline: false });
       return;
     }
