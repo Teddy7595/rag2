@@ -98,6 +98,27 @@ class ContextBuildRequest:
     history: str = ""
 
 
+@dataclass(frozen=True)
+class DocumentIngestRequest:
+    title: str
+    raw_text: str | None = None
+    pdf_path: str | None = None
+    source_uri: str = ""
+    tags: tuple[str, ...] = ()
+    chunk_size: int = 180
+    chunk_overlap: int = 40
+
+
+@dataclass(frozen=True)
+class DocumentListRequest:
+    limit: int = 20
+
+
+@dataclass(frozen=True)
+class DocumentOverviewRequest:
+    limit: int = 5
+
+
 REQUEST_KNOWLEDGE_OVERVIEW = EventSpec[KnowledgeOverviewRequest, dict](
     name="knowledge.overview.request",
     kind=EventKind.REQUEST,
@@ -202,6 +223,30 @@ REQUEST_KNOWLEDGE_CONTEXT_PROMPT = EventSpec[ContextBuildRequest, dict](
     output_type=dict,
 )
 
+REQUEST_KNOWLEDGE_DOCUMENT_INGEST = EventSpec[DocumentIngestRequest, dict](
+    name="knowledge.document.ingest.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=DocumentIngestRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_DOCUMENTS = EventSpec[DocumentListRequest, list](
+    name="knowledge.documents.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=DocumentListRequest,
+    output_type=list,
+)
+
+REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW = EventSpec[DocumentOverviewRequest, dict](
+    name="knowledge.documents.overview.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=DocumentOverviewRequest,
+    output_type=dict,
+)
+
 PUBLISH_KNOWLEDGE_ITEM_CREATED = EventSpec[dict, dict](
     name="knowledge.item.created",
     kind=EventKind.PUBLISH,
@@ -250,6 +295,14 @@ PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT = EventSpec[dict, dict](
     output_type=dict,
 )
 
+PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED = EventSpec[dict, dict](
+    name="knowledge.document.ingested",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
 
 __all__ = [
     "KnowledgeItemCreateRequest",
@@ -258,6 +311,9 @@ __all__ = [
     "CurrentIdentityRequest",
     "ContextBuildRequest",
     "ContextRouteRequest",
+    "DocumentIngestRequest",
+    "DocumentListRequest",
+    "DocumentOverviewRequest",
     "EngramCreateRequest",
     "EngramDeleteRequest",
     "EngramHintsRequest",
@@ -270,10 +326,14 @@ __all__ = [
     "PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT",
     "PUBLISH_KNOWLEDGE_CONTEXT_ROUTED",
     "PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED",
+    "PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED",
     "REQUEST_KNOWLEDGE_CURRENT_IDENTITY",
     "REQUEST_KNOWLEDGE_CONTEXT_PACK",
     "REQUEST_KNOWLEDGE_CONTEXT_PROMPT",
     "REQUEST_KNOWLEDGE_CONTEXT_ROUTE",
+    "REQUEST_KNOWLEDGE_DOCUMENT_INGEST",
+    "REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW",
+    "REQUEST_KNOWLEDGE_DOCUMENTS",
     "REQUEST_KNOWLEDGE_ENGRAM_CREATE",
     "REQUEST_KNOWLEDGE_ENGRAM_DELETE",
     "REQUEST_KNOWLEDGE_ENGRAM_UPDATE",

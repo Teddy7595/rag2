@@ -20,6 +20,15 @@ class KnowledgeEntryRecord(DatabaseBase):
     title: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
     content: Mapped[str] = mapped_column(Text, nullable=False)
     tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    source_type: Mapped[str] = mapped_column(String(64), nullable=False, default="manual", index=True)
+    source_uri: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
+    document_id: Mapped[str] = mapped_column(String(64), nullable=False, default="", index=True)
+    document_title: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    page_number: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunk_index: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    source_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False, default=list)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -30,6 +39,15 @@ class KnowledgeEntryRecord(DatabaseBase):
             title=entry.title,
             content=entry.content,
             tags=list(entry.tags),
+            source_type=entry.source_type,
+            source_uri=entry.source_uri,
+            document_id=entry.document_id,
+            document_title=entry.document_title,
+            page_number=entry.page_number,
+            chunk_index=entry.chunk_index,
+            chunk_count=entry.chunk_count,
+            source_chars=entry.source_chars,
+            embedding=list(entry.embedding),
             created_at=entry.created_at,
             updated_at=entry.updated_at,
         )
@@ -40,6 +58,15 @@ class KnowledgeEntryRecord(DatabaseBase):
             title=self.title,
             content=self.content,
             tags=list(self.tags or []),
+            source_type=self.source_type,
+            source_uri=self.source_uri,
+            document_id=self.document_id,
+            document_title=self.document_title,
+            page_number=self.page_number,
+            chunk_index=self.chunk_index,
+            chunk_count=self.chunk_count,
+            source_chars=self.source_chars,
+            embedding=list(self.embedding or []),
             created_at=self.created_at,
             updated_at=self.updated_at,
         )

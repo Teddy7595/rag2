@@ -7,6 +7,36 @@ from fastapi.testclient import TestClient
 from app.bootstrap import create_app
 
 
+def build_simple_pdf_bytes(text: str) -> bytes:
+    def escape_pdf_text(value: str) -> str:
+        return value.replace("\\", "\\\\").replace("(", r"\(").replace(")", r"\)")
+
+    content_stream = f"BT /F1 18 Tf 72 720 Td ({escape_pdf_text(text)}) Tj ET\n".encode("utf-8")
+    objects = [
+        b"1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+        b"2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+        b"3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 4 0 R >> >> /Contents 5 0 R >>\nendobj\n",
+        b"4 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+        b"5 0 obj\n<< /Length %d >>\nstream\n%s\nendstream\nendobj\n" % (len(content_stream), content_stream),
+    ]
+
+    output = [b"%PDF-1.4\n"]
+    offsets = [0]
+    current_offset = len(output[0])
+    for obj in objects:
+        offsets.append(current_offset)
+        output.append(obj)
+        current_offset += len(obj)
+
+    xref_offset = current_offset
+    xref_lines = [b"xref\n0 6\n0000000000 65535 f \n"]
+    for offset in offsets[1:]:
+        xref_lines.append(f"{offset:010d} 00000 n \n".encode("ascii"))
+
+    trailer = b"trailer\n<< /Size 6 /Root 1 0 R >>\nstartxref\n" + str(xref_offset).encode("ascii") + b"\n%%EOF\n"
+    return b"".join(output) + b"".join(xref_lines) + trailer
+
+
 def build_test_app(tmp_path: Path, monkeypatch) -> object:
     vault_dir = tmp_path / "vault"
     ai_model_dir = tmp_path / "ai_model"
@@ -36,6 +66,9 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/knowledge/context/pack",
         "/api/knowledge/context/prompt",
         "/api/knowledge/context/route",
+        "/api/knowledge/documents",
+        "/api/knowledge/documents/overview",
+        "/api/knowledge/documents/ingest",
         "/api/knowledge/engrams",
         "/api/knowledge/engrams/{engram_id}",
         "/api/knowledge/overview",
@@ -148,6 +181,72 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert "Primer conocimiento" in prompt_payload["prompt"]
         assert "Atlas" in prompt_payload["prompt"]
 
+        pdf_path = tmp_path / "documento_base.pdf"
+        pdf_text = (
+            "Atlas documento base para la fase cuatro. "
+            "Este texto define el indice de memoria y el chunking del sistema. "
+            "Cada chunk debe conservar el contexto, la pagina y la fuente."
+        )
+        pdf_path.write_bytes(build_simple_pdf_bytes(pdf_text))
+
+        document_ingest_response = client.post(
+            "/api/knowledge/documents/ingest",
+            json={
+                "title": "Documento base",
+                "pdf_path": str(pdf_path),
+                "source_uri": "vault://documento_base.pdf",
+                "tags": ["phase4", "pdf"],
+                "chunk_size": 8,
+                "chunk_overlap": 2,
+            },
+        )
+        assert document_ingest_response.status_code == 200
+        document_payload = document_ingest_response.json()
+        assert document_payload["page_count"] == 1
+        assert document_payload["chunk_count"] >= 2
+        assert document_payload["document"]["source_type"] == "document"
+
+        documents_overview_response = client.get("/api/knowledge/documents/overview", params={"limit": 5})
+        assert documents_overview_response.status_code == 200
+        documents_overview = documents_overview_response.json()
+        assert documents_overview["document_count"] == 1
+        assert documents_overview["chunk_count"] >= 2
+
+        documents_list_response = client.get("/api/knowledge/documents", params={"limit": 5})
+        assert documents_list_response.status_code == 200
+        assert any(item["title"] == "Documento base" for item in documents_list_response.json())
+
+        document_context_response = client.post(
+            "/api/knowledge/context/pack",
+            json={
+                "raw_text": "@Atlas resume el documento base y el indice de memoria",
+                "limit": 10,
+                "identity_id": None,
+                "history": "user: analiza el pdf",
+            },
+        )
+        assert document_context_response.status_code == 200
+        document_context_payload = document_context_response.json()
+        assert "Documento base" in document_context_payload["context_text"]
+        assert "chunking del sistema" in document_context_payload["context_text"]
+        assert any(
+            match["source_type"] in {"document", "document_chunk"}
+            for match in document_context_payload["knowledge_matches"]
+        )
+
+        document_prompt_response = client.post(
+            "/api/knowledge/context/prompt",
+            json={
+                "raw_text": "@Atlas resume el documento base y el indice de memoria",
+                "limit": 10,
+                "identity_id": None,
+                "history": "user: analiza el pdf",
+            },
+        )
+        assert document_prompt_response.status_code == 200
+        document_prompt_payload = document_prompt_response.json()
+        assert "Documento base" in document_prompt_payload["prompt"]
+
         current_identity_response = client.get("/api/knowledge/identity/current")
         assert current_identity_response.status_code == 200
         assert current_identity_response.json()["name"] == "Atlas"
@@ -159,7 +258,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         status_response = client.get("/api/operations/status", params={"limit": 10})
         assert status_response.status_code == 200
         status_payload = status_response.json()
-        assert status_payload["captured_events"] >= 8
+        assert status_payload["captured_events"] >= 10
         assert status_payload["event_counts"]["knowledge.item.created"] >= 1
         assert status_payload["event_counts"]["interaction.message.recorded"] >= 1
         assert status_payload["event_counts"]["knowledge.engram.changed"] >= 2
@@ -167,6 +266,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert status_payload["event_counts"]["knowledge.context.routed"] >= 1
         assert status_payload["event_counts"]["knowledge.context.packed"] >= 1
         assert status_payload["event_counts"]["knowledge.context.prompt.built"] >= 1
+        assert status_payload["event_counts"]["knowledge.document.ingested"] >= 1
 
     app_again = build_test_app(tmp_path, monkeypatch)
 
@@ -174,6 +274,14 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         knowledge_items_response = client_again.get("/api/knowledge/items", params={"limit": 10})
         assert knowledge_items_response.status_code == 200
         assert any(item["title"] == "Primer conocimiento" for item in knowledge_items_response.json())
+
+        documents_again = client_again.get("/api/knowledge/documents", params={"limit": 10})
+        assert documents_again.status_code == 200
+        assert any(item["title"] == "Documento base" for item in documents_again.json())
+
+        documents_overview_again = client_again.get("/api/knowledge/documents/overview", params={"limit": 10})
+        assert documents_overview_again.status_code == 200
+        assert documents_overview_again.json()["document_count"] == 1
 
         engrams_response = client_again.get("/api/knowledge/engrams", params={"limit": 10})
         assert engrams_response.status_code == 200
@@ -188,14 +296,16 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         prompt_again = client_again.post(
             "/api/knowledge/context/prompt",
             json={
-                "raw_text": "@Atlas resume el conocimiento base",
-                "limit": 5,
+                "raw_text": "@Atlas resume el documento base y el indice de memoria",
+                "limit": 10,
                 "identity_id": None,
-                "history": "user: revisa el contexto",
+                "history": "user: revisa el pdf",
             },
         )
         assert prompt_again.status_code == 200
-        assert "Primer conocimiento" in prompt_again.json()["prompt"]
+        prompt_again_payload = prompt_again.json()
+        assert "Documento base" in prompt_again_payload["prompt"]
+        assert "chunking del sistema" in prompt_again_payload["prompt"]
 
         current_identity_again = client_again.get("/api/knowledge/identity/current")
         assert current_identity_again.status_code == 200
@@ -213,6 +323,8 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert interaction_summary_response.status_code == 200
         assert interaction_summary_response.json()["message_count"] == 1
 
-        audit_log_response = client_again.get("/api/operations/audit-log", params={"limit": 10})
+        audit_log_response = client_again.get("/api/operations/audit-log", params={"limit": 100})
         assert audit_log_response.status_code == 200
-        assert any(entry["event_name"] == "knowledge.item.created" for entry in audit_log_response.json())
+        audit_log_payload = audit_log_response.json()
+        assert any(entry["event_name"] == "knowledge.item.created" for entry in audit_log_payload)
+        assert any(entry["event_name"] == "knowledge.document.ingested" for entry in audit_log_payload)

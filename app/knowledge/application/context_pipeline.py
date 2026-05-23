@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from hashlib import sha1
+from math import sqrt
 import re
 
 from app.knowledge.application.engram_directory import EngramDirectory
@@ -21,6 +23,31 @@ def _tokenize(raw_text: str) -> tuple[str, ...]:
         seen.add(token)
         tokens.append(token)
     return tuple(tokens)
+
+
+def _embedding_from_tokens(tokens: tuple[str, ...], dimensions: int = 64) -> list[float]:
+    vector = [0.0] * dimensions
+    for token in tokens:
+        digest = sha1(token.encode("utf-8")).digest()
+        index = int.from_bytes(digest[:4], "big") % dimensions
+        vector[index] += 1.0
+
+    norm = sqrt(sum(value * value for value in vector))
+    if norm == 0:
+        return vector
+    return [round(value / norm, 6) for value in vector]
+
+
+def _cosine_similarity(left: list[float], right: list[float]) -> float:
+    if not left or not right or len(left) != len(right):
+        return 0.0
+
+    dot = sum(a * b for a, b in zip(left, right))
+    left_norm = sqrt(sum(value * value for value in left))
+    right_norm = sqrt(sum(value * value for value in right))
+    if left_norm == 0 or right_norm == 0:
+        return 0.0
+    return dot / (left_norm * right_norm)
 
 
 def _excerpt(text: str, keywords: tuple[str, ...], *, limit: int = 180) -> str:
@@ -204,6 +231,7 @@ class ContextQueryRouter:
         r"\bmemoria\b",
         r"\brecuerd",
         r"\bcontexto\b",
+        r"\bpdf\b",
         r"\bdocument",
         r"\barchivo\b",
         r"\bmanual\b",
@@ -260,22 +288,28 @@ class ContextRetrieverRuntime:
 
     def retrieve(self, raw_text: str, route: QueryRoutingPlan) -> RetrievalOutcome:
         query_tokens = _tokenize(raw_text)
+        query_embedding = _embedding_from_tokens(query_tokens)
         source_types = route.include_source_types or ("knowledge_entries", "engrams")
 
         knowledge_matches: tuple[ContextMatch, ...] = ()
         engram_matches: tuple[ContextMatch, ...] = ()
 
         if "knowledge_entries" in source_types:
-            knowledge_matches = self._retrieve_knowledge(query_tokens, route)
+            knowledge_matches = self._retrieve_knowledge(query_tokens, query_embedding, route)
 
         if "engrams" in source_types and self.engram_repository:
             engram_matches = self._retrieve_engrams(query_tokens, route)
 
         return RetrievalOutcome(route=route, knowledge_matches=knowledge_matches, engram_matches=engram_matches)
 
-    def _retrieve_knowledge(self, query_tokens: tuple[str, ...], route: QueryRoutingPlan) -> tuple[ContextMatch, ...]:
+    def _retrieve_knowledge(
+        self,
+        query_tokens: tuple[str, ...],
+        query_embedding: list[float],
+        route: QueryRoutingPlan,
+    ) -> tuple[ContextMatch, ...]:
         entries = self.knowledge_repository.list_all()
-        matches = [self._score_knowledge_entry(entry, query_tokens) for entry in entries]
+        matches = [self._score_knowledge_entry(entry, query_tokens, query_embedding) for entry in entries]
         ranked = sorted(matches, key=lambda match: (match.score, match.metadata.get("created_at", ""), match.label), reverse=True)
 
         if not any(match.score > 0 for match in ranked):
@@ -327,7 +361,12 @@ class ContextRetrieverRuntime:
 
         return tuple(ranked[: route.limit])
 
-    def _score_knowledge_entry(self, entry: KnowledgeEntry, query_tokens: tuple[str, ...]) -> ContextMatch:
+    def _score_knowledge_entry(
+        self,
+        entry: KnowledgeEntry,
+        query_tokens: tuple[str, ...],
+        query_embedding: list[float],
+    ) -> ContextMatch:
         title_tokens = set(_tokenize(entry.title))
         content_tokens = set(_tokenize(entry.content))
         tag_tokens = set(_tokenize(" ".join(entry.tags)))
@@ -341,15 +380,39 @@ class ContextRetrieverRuntime:
             if token in content_tokens:
                 score += 1.0
 
+        embedding_score = _cosine_similarity(query_embedding, list(entry.embedding)) if entry.embedding else 0.0
+        score += embedding_score * 4.0
+
+        if entry.source_type == "document":
+            score += 0.5
+        elif entry.source_type == "document_chunk":
+            score += 1.5
+
+        label = entry.document_title or entry.title
+        if entry.source_type == "document_chunk":
+            page_label = f"p{entry.page_number}" if entry.page_number is not None else "p?"
+            chunk_label = f"#{(entry.chunk_index or 0) + 1}"
+            label = f"{label} [{page_label} {chunk_label}]"
+        elif entry.source_type == "document":
+            label = f"{label} [document]"
+
         excerpt = _excerpt(f"{entry.title}. {entry.content}", query_tokens)
         return ContextMatch(
-            source_type="knowledge_entries",
+            source_type=entry.source_type if entry.source_type != "manual" else "knowledge_entries",
             source_id=str(entry.id),
-            label=entry.title,
+            label=label,
             score=score,
             excerpt=excerpt,
             metadata={
                 "tags": list(entry.tags),
+                "source_type": entry.source_type,
+                "source_uri": entry.source_uri,
+                "document_id": entry.document_id,
+                "document_title": entry.document_title,
+                "page_number": entry.page_number,
+                "chunk_index": entry.chunk_index,
+                "chunk_count": entry.chunk_count,
+                "source_chars": entry.source_chars,
                 "created_at": entry.created_at.isoformat() if entry.created_at else None,
             },
         )

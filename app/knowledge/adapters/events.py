@@ -7,6 +7,9 @@ from app.knowledge.events import (
     ContextBuildRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
+    DocumentIngestRequest,
+    DocumentListRequest,
+    DocumentOverviewRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
     EngramHintsRequest,
@@ -20,6 +23,9 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_CONTEXT_PACK,
     REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
     REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
+    REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
+    REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW,
+    REQUEST_KNOWLEDGE_DOCUMENTS,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
@@ -77,6 +83,15 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     def handle_context_prompt(envelope: EventEnvelope[ContextBuildRequest]) -> dict[str, object]:
         return service.build_prompt(envelope.payload)
 
+    def handle_document_ingest(envelope: EventEnvelope[DocumentIngestRequest]) -> dict[str, object]:
+        return service.ingest_document(envelope.payload)
+
+    def handle_document_list(envelope: EventEnvelope[DocumentListRequest]) -> list[dict[str, object]]:
+        return service.list_documents(envelope.payload)
+
+    def handle_document_overview(envelope: EventEnvelope[DocumentOverviewRequest]) -> dict[str, object]:
+        return service.document_overview(envelope.payload)
+
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_OVERVIEW, handle_overview)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ITEMS, handle_items)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ITEM_CREATE, handle_create)
@@ -90,3 +105,6 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_ROUTE, handle_context_route)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_PACK, handle_context_pack)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_PROMPT, handle_context_prompt)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_INGEST, handle_document_ingest)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENTS, handle_document_list)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW, handle_document_overview)

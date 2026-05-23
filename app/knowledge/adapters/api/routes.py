@@ -7,6 +7,9 @@ from app.knowledge.events import (
     ContextBuildRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
+    DocumentIngestRequest,
+    DocumentListRequest,
+    DocumentOverviewRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
     EngramHintsRequest,
@@ -20,6 +23,9 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_CONTEXT_PACK,
     REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
     REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
+    REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
+    REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW,
+    REQUEST_KNOWLEDGE_DOCUMENTS,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
@@ -80,6 +86,16 @@ class KnowledgeContextInput(BaseModel):
     limit: int = 5
     identity_id: str | None = None
     history: str = ""
+
+
+class KnowledgeDocumentInput(BaseModel):
+    title: str
+    raw_text: str | None = None
+    pdf_path: str | None = None
+    source_uri: str = ""
+    tags: list[str] = Field(default_factory=list)
+    chunk_size: int = 180
+    chunk_overlap: int = 40
 
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -194,6 +210,44 @@ async def build_prompt(request: Request, payload: KnowledgeContextInput) -> dict
             limit=payload.limit,
             identity_id=payload.identity_id,
             history=payload.history,
+        ),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.get("/documents")
+async def list_documents(request: Request, limit: int = 20) -> list[dict[str, object]]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_DOCUMENTS,
+        DocumentListRequest(limit=limit),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.get("/documents/overview")
+async def document_overview(request: Request, limit: int = 5) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW,
+        DocumentOverviewRequest(limit=limit),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.post("/documents/ingest")
+async def ingest_document(request: Request, payload: KnowledgeDocumentInput) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
+        DocumentIngestRequest(
+            title=payload.title,
+            raw_text=payload.raw_text,
+            pdf_path=payload.pdf_path,
+            source_uri=payload.source_uri,
+            tags=tuple(payload.tags),
+            chunk_size=payload.chunk_size,
+            chunk_overlap=payload.chunk_overlap,
         ),
         source_module="knowledge.adapters.api.routes",
     )

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.core.events import EventBus
 from app.knowledge.application.context_pipeline import KnowledgeContextPipeline
+from app.knowledge.application.document_ingestion import DocumentIngestionService
 from app.knowledge.application.engram_directory import EngramDirectory
 from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
 from app.knowledge.domain import Identity, KnowledgeEntry
@@ -9,6 +10,9 @@ from app.knowledge.events import (
     ContextBuildRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
+    DocumentIngestRequest,
+    DocumentListRequest,
+    DocumentOverviewRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
     EngramHintsRequest,
@@ -22,6 +26,7 @@ from app.knowledge.events import (
     PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT,
     PUBLISH_KNOWLEDGE_CONTEXT_ROUTED,
     PUBLISH_KNOWLEDGE_ENGRAM_CHANGED,
+    PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED,
     PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED,
     PUBLISH_KNOWLEDGE_ITEM_CREATED,
 )
@@ -39,6 +44,7 @@ class KnowledgeService:
         self.event_bus = event_bus
         self.engram_repository = engram_repository
         self.directory = directory or EngramDirectory()
+        self.document_ingestion = DocumentIngestionService(repository=self.repository)
         self.context_pipeline = KnowledgeContextPipeline(
             knowledge_repository=self.repository,
             engram_repository=self.engram_repository,
@@ -49,10 +55,12 @@ class KnowledgeService:
     def overview(self, request: KnowledgeOverviewRequest) -> dict[str, object]:
         items = self.list_items(KnowledgeItemsRequest(limit=request.limit))
         titles = [item["title"] for item in items] if request.include_titles else []
+        documents = self.document_overview(DocumentOverviewRequest(limit=request.limit))
         return {
             "item_count": self.repository.count(),
             "recent_items": items,
             "titles": titles,
+            "document_overview": documents,
         }
 
     def list_items(self, request: KnowledgeItemsRequest) -> list[dict[str, object]]:
@@ -72,6 +80,26 @@ class KnowledgeService:
             metadata={"tags": payload["tags"]},
         )
         return payload
+
+    def ingest_document(self, request: DocumentIngestRequest) -> dict[str, object]:
+        payload = self.document_ingestion.ingest(request)
+        self.event_bus.publish(
+            PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED,
+            payload,
+            source_module="knowledge.application.service",
+            metadata={
+                "document_id": payload["document"]["document_id"],
+                "chunk_count": payload["chunk_count"],
+                "page_count": payload["page_count"],
+            },
+        )
+        return payload
+
+    def list_documents(self, request: DocumentListRequest) -> list[dict[str, object]]:
+        return self.document_ingestion.list_documents(request)
+
+    def document_overview(self, request: DocumentOverviewRequest) -> dict[str, object]:
+        return self.document_ingestion.overview(request)
 
     def load_engrams(self) -> None:
         self.directory.reset()
