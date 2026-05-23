@@ -1,0 +1,1 @@
+from app.storage.storage_module import register_storage_module

@@ -48,6 +48,16 @@ The interaction module also exposes message routes at:
 /api/interaction/summary
 ```
 
+The storage slice adds a landing page, a local admin panel, and storage endpoints at:
+
+```text
+/
+/admin
+/api/storage/overview
+/public
+/uploads
+```
+
 The knowledge and operations modules expose their own module routes under:
 
 ```text
@@ -65,4 +75,6 @@ Core database wiring lives in `app/core/database/` and stays database-agnostic.
 ## Local Directories
 
 - `.vault/` stores private runtime artifacts and should stay local.
+- `.vault/public/` is mounted at `/public` for public static assets.
+- `.vault/uploads/` is mounted at `/uploads` for local runtime uploads.
 - `ai_model/` stores local model assets and caches.

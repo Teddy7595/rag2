@@ -38,6 +38,7 @@ class AppSettings:
     host: str
     port: int
     debug: bool
+    admin_local_only: bool
     ai_model_dir: Path
     vault_dir: Path
     database_url: str | None
@@ -64,6 +65,7 @@ def load_settings(project_root: Path) -> AppSettings:
         host=os.getenv("APP_HOST", "0.0.0.0").strip() or "0.0.0.0",
         port=max(1, _read_int_env("APP_PORT", 8000)),
         debug=_read_bool_env("APP_DEBUG", default=False),
+        admin_local_only=_read_bool_env("APP_ADMIN_LOCAL_ONLY", default=True),
         ai_model_dir=ai_model_dir,
         vault_dir=vault_dir,
         database_url=os.getenv("DATABASE_URL") or None,
@@ -73,3 +75,5 @@ def load_settings(project_root: Path) -> AppSettings:
 def ensure_runtime_directories(settings: AppSettings) -> None:
     settings.ai_model_dir.mkdir(parents=True, exist_ok=True)
     settings.vault_dir.mkdir(parents=True, exist_ok=True)
+    (settings.vault_dir / "public").mkdir(parents=True, exist_ok=True)
+    (settings.vault_dir / "uploads").mkdir(parents=True, exist_ok=True)

@@ -13,7 +13,9 @@ from app.core.settings import ensure_runtime_directories, load_settings
 from app.knowledge.knowledge_module import register_knowledge_module
 from app.interaction.interaction_module import register_interaction_module
 from app.operations.operations_module import register_operations_module
+from app.core.middleware import RequestContextMiddleware
 from app.platform.platform_module import register_platform_module
+from app.storage.storage_module import register_storage_module
 
 
 def create_app() -> FastAPI:
@@ -42,7 +44,10 @@ def create_app() -> FastAPI:
     app.state.module_groups = context.module_groups
     app.state.module_routers = context.module_routers
 
+    app.add_middleware(RequestContextMiddleware)
+
     register_platform_module(app)
+    register_storage_module(app)
     register_knowledge_module(app)
     register_interaction_module(app)
     register_operations_module(app)

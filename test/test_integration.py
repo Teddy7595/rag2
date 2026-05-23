@@ -59,10 +59,15 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
 
     route_paths = {route.path for route in app.routes if hasattr(route, "path")}
     expected_paths = {
+        "/",
+        "/admin",
         "/api/platform/health",
         "/api/interaction/messages",
         "/api/interaction/summary",
         "/api/interaction/stream",
+        "/api/storage/overview",
+        "/api/storage/public",
+        "/api/storage/uploads",
         "/api/knowledge/items",
         "/api/knowledge/context/pack",
         "/api/knowledge/context/prompt",
@@ -78,6 +83,8 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/knowledge/identity/resolve",
         "/api/operations/audit-log",
         "/api/operations/status",
+        "/public",
+        "/uploads",
         "/ws/chat",
     }
     assert expected_paths <= route_paths
@@ -87,6 +94,40 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
     app = build_test_app(tmp_path, monkeypatch)
 
     with TestClient(app) as client:
+        landing_response = client.get("/")
+        assert landing_response.status_code == 200
+        assert "Centro de control" in landing_response.text
+
+        admin_response = client.get("/admin")
+        assert admin_response.status_code == 200
+        assert "Panel de administración" in admin_response.text
+
+        storage_overview_response = client.get("/api/storage/overview")
+        assert storage_overview_response.status_code == 200
+        storage_overview = storage_overview_response.json()
+        assert storage_overview["public_file_count"] == 0
+        assert storage_overview["upload_file_count"] == 0
+
+        storage_service = app.state.context.services["storage"]
+        public_file = storage_service.public_dir / "hola-publico.txt"
+        upload_file = storage_service.uploads_dir / "hola-upload.txt"
+        public_file.write_text("publico", encoding="utf-8")
+        upload_file.write_text("privado", encoding="utf-8")
+
+        public_asset_response = client.get("/public/hola-publico.txt")
+        assert public_asset_response.status_code == 200
+        assert public_asset_response.text == "publico"
+
+        upload_asset_response = client.get("/uploads/hola-upload.txt")
+        assert upload_asset_response.status_code == 200
+        assert upload_asset_response.text == "privado"
+
+        refreshed_storage_response = client.get("/api/storage/overview")
+        assert refreshed_storage_response.status_code == 200
+        refreshed_storage = refreshed_storage_response.json()
+        assert refreshed_storage["public_file_count"] == 1
+        assert refreshed_storage["upload_file_count"] == 1
+
         health_response = client.get("/api/platform/health")
         assert health_response.status_code == 200
         assert health_response.json()["status"] == "ok"
