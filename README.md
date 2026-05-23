@@ -101,6 +101,7 @@ The storage slice keeps the storage endpoints at:
 The admin area also includes a route visualizer with a NestJS-style module tree for the registered HTTP, websocket, and static mount routes.
 
 The local AI model catalog scans `ai_models/` recursively, groups GGUF files into bundles, and exposes a selector for local text/vision bundles plus Ollama and LM Studio configuration.
+You can point `APP_CONVERSATION_INTENT_BUNDLE_ID` to a smaller local GGUF bundle to classify user intent on CPU with a short prompt, while keeping the main chat model unchanged.
 
 Security policy is configured with local-only admin access, a simple in-memory rate limit, and an optional ban list via `APP_ADMIN_LOCAL_ONLY`, `APP_RATE_LIMIT_WINDOW_SECONDS`, `APP_RATE_LIMIT_MAX_REQUESTS`, and `APP_BAN_LIST`.
 

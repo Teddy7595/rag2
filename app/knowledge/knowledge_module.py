@@ -15,6 +15,7 @@ def register_knowledge_module(app: FastAPI) -> None:
         repository=repository,
         event_bus=context.event_bus,
         engram_repository=engram_repository,
+        embedding_model_dir=context.settings.embedding_model_dir,
     )
     register_service(app, "knowledge", service)
     register_module_group(app, "knowledge", ("knowledge",), routers=(knowledge_router,))

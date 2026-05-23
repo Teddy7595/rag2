@@ -3,6 +3,39 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
+from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
+_INTENT_PROTOTYPES: dict[str, tuple[str, ...]] = {
+    "greeting": (
+        "hola",
+        "buenas",
+        "saludo breve",
+        "solo quería saludar",
+    ),
+    "identity": (
+        "quien eres",
+        "como te llamas",
+        "cual es tu nombre",
+        "habla de tu identidad",
+    ),
+    "conversational": (
+        "como sigues",
+        "que opinas",
+        "hablemos",
+        "charlar contigo",
+    ),
+    "technical": (
+        "tengo un error en la api",
+        "hay un bug en el websocket",
+        "necesito ayuda tecnica",
+        "diagnostica el fallo",
+    ),
+    "mixed": (
+        "quiero contexto y opinion",
+        "mezcla de charla y soporte tecnico",
+        "consulta general con contexto",
+    ),
+}
+
 
 @dataclass(frozen=True)
 class ConversationTurnPolicy:
@@ -18,8 +51,12 @@ def build_turn_policy(
     user_text: str,
     *,
     has_custom_engram: bool,
+    intent_hint: str | None = None,
+    embedding_runtime: SemanticEmbeddingRuntime | None = None,
 ) -> ConversationTurnPolicy:
-    intent = classify_intent(user_text)
+    intent = (intent_hint or classify_intent(user_text, embedding_runtime=embedding_runtime)).strip().lower()
+    if intent not in {"greeting", "identity", "conversational", "technical", "mixed"}:
+        intent = classify_intent(user_text, embedding_runtime=embedding_runtime)
 
     # Keep conservative budgets on default identity and allow larger budgets on custom engrams.
     if intent == "greeting":
@@ -68,7 +105,12 @@ def build_turn_policy(
     )
 
 
-def classify_intent(text: str) -> str:
+def classify_intent(text: str, *, embedding_runtime: SemanticEmbeddingRuntime | None = None) -> str:
+    if embedding_runtime is not None:
+        semantic_intent = embedding_runtime.classify_by_prototypes(text, _INTENT_PROTOTYPES)
+        if semantic_intent in {"greeting", "identity", "conversational", "technical", "mixed"}:
+            return semantic_intent
+
     if is_simple_greeting(text):
         return "greeting"
     if is_identity_question(text):
@@ -103,17 +145,43 @@ def is_conversational_query(text: str) -> bool:
     markers = (
         "que piensas",
         "que opinas",
+        "como sigues",
+        "como estas",
+        "como va",
+        "como asi",
+        "que pasa",
+        "que onda",
         "opinion",
         "opinión",
         "sobre ti",
         "cuentame sobre ti",
         "cuéntame sobre ti",
+        "eres hostil",
+        "eres agresivo",
+        "eres amable",
+        "eres serio",
+        "eres robot",
+        "eres un robot",
+        "eres tonto",
+        "eres retrasado",
+        "eres mental",
         "contenido para adultos",
         "adultos",
         "como te sientes",
         "cómo te sientes",
         "charlar",
         "conversar",
+        "hablas",
+        "hablame",
+        "háblame",
+        "respondes",
+        "tono",
+        "normal",
+        "hostil",
+        "agresivo",
+        "amable",
+        "serio",
+        "robot",
     )
     return any(marker in lowered for marker in markers)
 

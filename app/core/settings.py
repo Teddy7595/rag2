@@ -22,6 +22,13 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
+def _read_env(name: str, default: str = "") -> str:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip()
+
+
 def _read_list_env(name: str) -> tuple[str, ...]:
     raw_value = os.getenv(name)
     if not raw_value:
@@ -111,6 +118,9 @@ class AppSettings:
     conversation_timeout_enabled: bool
     conversation_telemetry_enabled: bool
     conversation_deadline_scale_percent: int
+    conversation_intent_bundle_id: str | None
+    conversation_intent_max_tokens: int
+    embedding_model_dir: Path
     ai_model_dir: Path
     web_frontend_dir: Path
     web_frontend_mount_path: str
@@ -129,6 +139,10 @@ def load_settings(project_root: Path) -> AppSettings:
     ai_model_dir = _resolve_models_dir(project_root)
     web_frontend_dir = _resolve_path(os.getenv("WEB_FRONTEND_DIR"), project_root / "frontend" / "dist")
     vault_dir = _resolve_path(os.getenv("VAULT_DIR"), project_root / ".vault")
+    embedding_model_dir = _resolve_path(
+        os.getenv("APP_EMBEDDING_MODEL_DIR"),
+        project_root / "ai_models" / "embeddings" / "BAAI__bge-m3",
+    )
 
     return AppSettings(
         project_root=project_root,
@@ -151,6 +165,9 @@ def load_settings(project_root: Path) -> AppSettings:
         conversation_timeout_enabled=_read_bool_env("APP_CONVERSATION_TIMEOUT_ENABLED", default=True),
         conversation_telemetry_enabled=_read_bool_env("APP_CONVERSATION_TELEMETRY_ENABLED", default=True),
         conversation_deadline_scale_percent=max(10, min(500, _read_int_env("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", 100))),
+        conversation_intent_bundle_id=(_read_env("APP_CONVERSATION_INTENT_BUNDLE_ID", "") or None),
+        conversation_intent_max_tokens=max(4, min(16, _read_int_env("APP_CONVERSATION_INTENT_MAX_TOKENS", 8))),
+        embedding_model_dir=embedding_model_dir,
         ai_model_dir=ai_model_dir,
         web_frontend_dir=web_frontend_dir,
         web_frontend_mount_path=_resolve_mount_path(os.getenv("WEB_FRONTEND_MOUNT_PATH"), "/ui-assets"),

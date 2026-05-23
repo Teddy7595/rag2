@@ -147,6 +147,12 @@ class ModelCatalogService:
     def current_selection(self) -> dict[str, object]:
         return self.load_selection(self.discover_bundles())
 
+    def resolve_bundle(self, bundle_id: str | None) -> ModelBundle | None:
+        normalized = _coerce_text(bundle_id)
+        if not normalized:
+            return None
+        return next((bundle for bundle in self.discover_bundles() if bundle.bundle_id == normalized), None)
+
     def update_selection(self, patch: dict[str, object]) -> dict[str, object]:
         bundles = self.discover_bundles()
         selection = self.load_selection(bundles)

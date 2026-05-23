@@ -3,27 +3,16 @@ from __future__ import annotations
 from dataclasses import dataclass
 import base64
 from hashlib import sha1
-from math import sqrt
 from pathlib import Path
 import re
 
 from pypdf import PdfReader
 
 from app.core.base_entity import BaseEntity
+from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
 from app.knowledge.application.ports import KnowledgeRepositoryPort
 from app.knowledge.domain import KnowledgeEntry
 from app.knowledge.events import DocumentIngestRequest, DocumentListRequest, DocumentOverviewRequest
-
-
-def _tokenize(text: str) -> tuple[str, ...]:
-    seen: set[str] = set()
-    tokens: list[str] = []
-    for token in re.findall(r"[a-z0-9áéíóúñ]+", text.lower()):
-        if token in seen:
-            continue
-        seen.add(token)
-        tokens.append(token)
-    return tuple(tokens)
 
 
 def _clean_ingested_text(raw_text: str) -> str:
@@ -35,19 +24,6 @@ def _clean_ingested_text(raw_text: str) -> str:
     text = re.sub(r"(^|\s)[*_~#>{2,}|]+", " ", text)
     text = re.sub(r"\s+", " ", text)
     return text.strip()
-
-
-def _embedding_from_tokens(tokens: tuple[str, ...], dimensions: int = 64) -> list[float]:
-    vector = [0.0] * dimensions
-    for token in tokens:
-        digest = sha1(token.encode("utf-8")).digest()
-        index = int.from_bytes(digest[:4], "big") % dimensions
-        vector[index] += 1.0
-
-    norm = sqrt(sum(value * value for value in vector))
-    if norm == 0:
-        return vector
-    return [round(value / norm, 6) for value in vector]
 
 
 def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
@@ -116,6 +92,7 @@ def _stable_document_id(title: str, source_uri: str, content: str) -> str:
 @dataclass(frozen=True)
 class DocumentIngestionService:
     repository: KnowledgeRepositoryPort
+    embedding_runtime: SemanticEmbeddingRuntime
 
     def ingest(self, request: DocumentIngestRequest) -> dict[str, object]:
         source_uri = request.source_uri or request.pdf_path or "memory://document"
@@ -144,7 +121,7 @@ class DocumentIngestionService:
             chunk_index=None,
             chunk_count=None,
             source_chars=len(full_text),
-            embedding=_embedding_from_tokens(_tokenize(full_text)),
+            embedding=self.embedding_runtime.embed_text(full_text),
         )
         saved_document = self.repository.save(header_entry)
 
@@ -152,7 +129,6 @@ class DocumentIngestionService:
         chunk_counter = 0
         for page_number, page_text in enumerate(pages, start=1):
             for chunk_text in _chunk_words(page_text, chunk_size=request.chunk_size, overlap=request.chunk_overlap):
-                tokens = _tokenize(chunk_text)
                 chunk_entry = KnowledgeEntry(
                     id=BaseEntity.build_stable_id("document_chunk", f"{document_id}:{chunk_counter}"),
                     title=f"{request.title} :: p{page_number} #{chunk_counter + 1}",
@@ -166,7 +142,7 @@ class DocumentIngestionService:
                     chunk_index=chunk_counter,
                     chunk_count=None,
                     source_chars=len(chunk_text),
-                    embedding=_embedding_from_tokens(tokens),
+                    embedding=self.embedding_runtime.embed_text(chunk_text),
                 )
                 saved_chunk = self.repository.save(chunk_entry)
                 chunk_records.append(saved_chunk)
@@ -195,7 +171,7 @@ class DocumentIngestionService:
                 chunk_index=image_index,
                 chunk_count=None,
                 source_chars=len(content),
-                embedding=_embedding_from_tokens(_tokenize(content)),
+                embedding=self.embedding_runtime.embed_text(content),
             )
             image_records.append(self.repository.save(image_entry))
 

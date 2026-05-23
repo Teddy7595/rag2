@@ -76,6 +76,8 @@ def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) 
     monkeypatch.setenv("APP_CONVERSATION_TIMEOUT_ENABLED", "false")
     monkeypatch.setenv("APP_CONVERSATION_TELEMETRY_ENABLED", "false")
     monkeypatch.setenv("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", "175")
+    monkeypatch.setenv("APP_CONVERSATION_INTENT_BUNDLE_ID", "intent-small")
+    monkeypatch.setenv("APP_CONVERSATION_INTENT_MAX_TOKENS", "6")
 
     settings = load_settings(tmp_path)
     assert settings.conversation_guard_enabled is False
@@ -83,6 +85,8 @@ def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) 
     assert settings.conversation_timeout_enabled is False
     assert settings.conversation_telemetry_enabled is False
     assert settings.conversation_deadline_scale_percent == 175
+    assert settings.conversation_intent_bundle_id == "intent-small"
+    assert settings.conversation_intent_max_tokens == 6
 
 
 def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatch, capsys) -> None:
@@ -934,8 +938,9 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
             assert "turn_started" in turn_types
             assert "assistant_message" in turn_types
             lowered_assistant = assistant_message_text.lower()
-            assert "contexto recuperado" in lowered_assistant
-            assert "Base de conocimiento realtime" in assistant_message_text
+            assert "contexto recuperado" not in lowered_assistant
+            assert "smoke-doc" not in lowered_assistant
+            assert "Base de conocimiento realtime" in assistant_message_text or "punto principal" in assistant_message_text
 
         assert realtime_session_id
 

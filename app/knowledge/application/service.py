@@ -5,13 +5,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 from app.core.events import EventBus
+from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
 from app.knowledge.application.context_pipeline import KnowledgeContextPipeline
 from app.knowledge.application.document_ingestion import (
     DocumentIngestionService,
     _clean_ingested_text,
-    _embedding_from_tokens,
     _read_pdf_image_metadata,
-    _tokenize,
 )
 from app.knowledge.application.engram_directory import EngramDirectory
 from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
@@ -52,16 +51,19 @@ class KnowledgeService:
         event_bus: EventBus,
         engram_repository: EngramRepositoryPort | None = None,
         directory: EngramDirectory | None = None,
+        embedding_model_dir: Path | None = None,
     ) -> None:
         self.repository = repository
         self.event_bus = event_bus
         self.engram_repository = engram_repository
         self.directory = directory or EngramDirectory()
-        self.document_ingestion = DocumentIngestionService(repository=self.repository)
+        self.embedding_runtime = SemanticEmbeddingRuntime(embedding_model_dir)
+        self.document_ingestion = DocumentIngestionService(repository=self.repository, embedding_runtime=self.embedding_runtime)
         self.context_pipeline = KnowledgeContextPipeline(
             knowledge_repository=self.repository,
             engram_repository=self.engram_repository,
             directory=self.directory,
+            embedding_runtime=self.embedding_runtime,
         )
         self._engrams_loaded = False
 

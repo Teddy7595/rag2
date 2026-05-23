@@ -6,6 +6,7 @@ from math import sqrt
 import re
 
 from app.knowledge.application.engram_directory import EngramDirectory
+from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
 from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
 from app.knowledge.domain import Identity, KnowledgeEntry
 
@@ -27,19 +28,6 @@ def _tokenize(raw_text: str) -> tuple[str, ...]:
         seen.add(token)
         tokens.append(token)
     return tuple(tokens)
-
-
-def _embedding_from_tokens(tokens: tuple[str, ...], dimensions: int = 64) -> list[float]:
-    vector = [0.0] * dimensions
-    for token in tokens:
-        digest = sha1(token.encode("utf-8")).digest()
-        index = int.from_bytes(digest[:4], "big") % dimensions
-        vector[index] += 1.0
-
-    norm = sqrt(sum(value * value for value in vector))
-    if norm == 0:
-        return vector
-    return [round(value / norm, 6) for value in vector]
 
 
 def _cosine_similarity(left: list[float], right: list[float]) -> float:
@@ -220,6 +208,40 @@ class ContextPreview:
 
 
 class ContextQueryRouter:
+    _semantic_prototypes: dict[str, tuple[str, ...]] = {
+        "identity": (
+            "quien eres",
+            "como te llamas",
+            "perfil del asistente",
+            "habla de tu identidad",
+        ),
+        "knowledge": (
+            "busca contexto en documentos",
+            "resume el documento",
+            "recupera memoria",
+            "necesito fuentes",
+        ),
+        "conversational": (
+            "como sigues",
+            "que opinas",
+            "hablemos",
+            "charla breve",
+        ),
+        "greeting": (
+            "hola",
+            "buenas",
+            "saludo breve",
+        ),
+        "mixed": (
+            "consulta general con contexto",
+            "mezcla de charla y soporte",
+            "quiero contexto y opinion",
+        ),
+    }
+
+    def __init__(self, embedding_runtime: SemanticEmbeddingRuntime | None = None) -> None:
+        self.embedding_runtime = embedding_runtime or SemanticEmbeddingRuntime()
+
     _identity_patterns = (
         r"\bengram\b",
         r"\bidentity\b",
@@ -247,6 +269,12 @@ class ContextQueryRouter:
     )
 
     def resolve_intent(self, raw_text: str) -> str:
+        semantic_intent = self.embedding_runtime.classify_by_prototypes(raw_text, self._semantic_prototypes)
+        if semantic_intent in {"identity", "knowledge"}:
+            return semantic_intent
+        if semantic_intent in {"greeting", "conversational"}:
+            return "mixed"
+
         normalized = _normalize_text(raw_text)
         identity_hits = any(re.search(pattern, normalized) for pattern in self._identity_patterns)
         knowledge_hits = any(re.search(pattern, normalized) for pattern in self._knowledge_patterns)
@@ -286,20 +314,23 @@ class ContextRetrieverRuntime:
         self,
         knowledge_repository: KnowledgeRepositoryPort,
         engram_repository: EngramRepositoryPort | None = None,
+        embedding_runtime: SemanticEmbeddingRuntime | None = None,
     ) -> None:
         self.knowledge_repository = knowledge_repository
         self.engram_repository = engram_repository
+        self.embedding_runtime = embedding_runtime or SemanticEmbeddingRuntime()
 
     def retrieve(self, raw_text: str, route: QueryRoutingPlan) -> RetrievalOutcome:
         query_tokens = _tokenize(raw_text)
-        query_embedding = _embedding_from_tokens(query_tokens)
+        query_embedding = self.embedding_runtime.embed_text(raw_text)
+        legacy_query_embedding = self.embedding_runtime.legacy_embed_text(raw_text)
         source_types = route.include_source_types or ("knowledge_entries", "engrams")
 
         knowledge_matches: tuple[ContextMatch, ...] = ()
         engram_matches: tuple[ContextMatch, ...] = ()
 
         if "knowledge_entries" in source_types:
-            knowledge_matches = self._retrieve_knowledge(query_tokens, query_embedding, route)
+            knowledge_matches = self._retrieve_knowledge(query_tokens, query_embedding, legacy_query_embedding, route)
 
         if "engrams" in source_types and self.engram_repository:
             engram_matches = self._retrieve_engrams(query_tokens, route)
@@ -310,10 +341,11 @@ class ContextRetrieverRuntime:
         self,
         query_tokens: tuple[str, ...],
         query_embedding: list[float],
+        legacy_query_embedding: list[float],
         route: QueryRoutingPlan,
     ) -> tuple[ContextMatch, ...]:
         entries = self.knowledge_repository.list_all()
-        matches = [self._score_knowledge_entry(entry, query_tokens, query_embedding) for entry in entries]
+        matches = [self._score_knowledge_entry(entry, query_tokens, query_embedding, legacy_query_embedding) for entry in entries]
         ranked = sorted(matches, key=lambda match: (match.score, match.metadata.get("created_at", ""), match.label), reverse=True)
         ranked = list(self._rerank_knowledge_diversity(ranked, route.limit))
 
@@ -392,6 +424,7 @@ class ContextRetrieverRuntime:
         entry: KnowledgeEntry,
         query_tokens: tuple[str, ...],
         query_embedding: list[float],
+        legacy_query_embedding: list[float],
     ) -> ContextMatch:
         title_tokens = set(_tokenize(entry.title))
         content_tokens = set(_tokenize(entry.content))
@@ -411,7 +444,7 @@ class ContextRetrieverRuntime:
             coverage = len([token for token in query_tokens if token in token_union]) / len(query_tokens)
             score += coverage * 3.0
 
-        embedding_score = _cosine_similarity(query_embedding, list(entry.embedding)) if entry.embedding else 0.0
+        embedding_score = self._embedding_score(entry.embedding, query_embedding, legacy_query_embedding)
         score += embedding_score * 4.0
 
         if entry.source_type == "document":
@@ -449,6 +482,16 @@ class ContextRetrieverRuntime:
                 "created_at": entry.created_at.isoformat() if entry.created_at else None,
             },
         )
+
+    @staticmethod
+    def _embedding_score(entry_embedding: list[float], query_embedding: list[float], legacy_query_embedding: list[float]) -> float:
+        if not entry_embedding:
+            return 0.0
+        if len(entry_embedding) == len(query_embedding):
+            return _cosine_similarity(query_embedding, list(entry_embedding))
+        if len(entry_embedding) == len(legacy_query_embedding):
+            return _cosine_similarity(legacy_query_embedding, list(entry_embedding))
+        return 0.0
 
     def _score_identity(
         self,
@@ -606,9 +649,10 @@ class KnowledgeContextPipeline:
         knowledge_repository: KnowledgeRepositoryPort,
         engram_repository: EngramRepositoryPort | None,
         directory: EngramDirectory,
+        embedding_runtime: SemanticEmbeddingRuntime | None = None,
     ) -> None:
-        self.router = ContextQueryRouter()
-        self.retriever = ContextRetrieverRuntime(knowledge_repository, engram_repository)
+        self.router = ContextQueryRouter(embedding_runtime=embedding_runtime)
+        self.retriever = ContextRetrieverRuntime(knowledge_repository, engram_repository, embedding_runtime=embedding_runtime)
         self.assembler = ContextAssembler()
         self.composer = PromptComposer()
         self.directory = directory

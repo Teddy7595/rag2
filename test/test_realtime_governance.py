@@ -32,6 +32,33 @@ class FakeEventBus:
         raise AssertionError(f"Unexpected request spec: {getattr(spec, 'name', spec)}")
 
 
+class FakeIntentRuntime:
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.calls: list[dict[str, object]] = []
+
+    def classify_intent(self, prompt: str, *, bundle_id: str | None = None, max_tokens: int = 8) -> dict[str, object]:
+        self.calls.append({"prompt": prompt, "bundle_id": bundle_id, "max_tokens": max_tokens})
+        return {"ok": True, "label": self.label, "content": self.label}
+
+
+class FakeSemanticEmbeddingRuntime:
+    def __init__(self, label: str) -> None:
+        self.label = label
+        self.calls: list[str] = []
+
+    def classify_by_prototypes(
+        self,
+        text: str,
+        prototypes: dict[str, tuple[str, ...] | list[str]],
+        *,
+        threshold: float = 0.24,
+        margin: float = 0.03,
+    ) -> str | None:
+        self.calls.append(text)
+        return self.label
+
+
 @dataclass
 class FakeSettings:
     conversation_guard_enabled: bool = True
@@ -39,6 +66,8 @@ class FakeSettings:
     conversation_timeout_enabled: bool = True
     conversation_telemetry_enabled: bool = True
     conversation_deadline_scale_percent: int = 100
+    conversation_intent_bundle_id: str | None = None
+    conversation_intent_max_tokens: int = 8
 
 
 def _base_context_preview() -> dict[str, object]:
@@ -84,6 +113,78 @@ def test_compose_reply_conversational_bypasses_rag_heavy_prompt() -> None:
     assert quality["fallback_used"] is False
     assert "Contexto recuperado:" not in event_bus.last_prompt
     assert "Coincidencias relevantes:" not in event_bus.last_prompt
+    assert "smoke-doc" not in event_bus.last_prompt
+
+
+def test_compose_reply_uses_model_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
+    event_bus = FakeEventBus({"ok": True, "content": "Respuesta breve"})
+    intent_runtime = FakeIntentRuntime("conversational")
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=10, conversation_intent_bundle_id="intent-small.gguf"),
+        model_runtime=intent_runtime,
+    )
+
+    ticks = iter([40.0, 40.01])
+    monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
+
+    _, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Seguimos?"),
+        _base_context_preview(),
+        session_id="session-intent-model",
+    )
+
+    assert intent_runtime.calls
+    assert quality["fallback_used"] is False
+    assert "Tono conversacional" in event_bus.last_prompt
+
+
+def test_compose_reply_uses_embedding_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
+    event_bus = FakeEventBus({"ok": True, "content": "Respuesta breve"})
+    embedding_runtime = FakeSemanticEmbeddingRuntime("conversational")
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=10),
+        embedding_runtime=embedding_runtime,
+    )
+
+    ticks = iter([41.0, 41.01])
+    monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
+
+    _, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Seguimos?"),
+        _base_context_preview(),
+        session_id="session-intent-embeddings",
+    )
+
+    assert embedding_runtime.calls
+    assert quality["fallback_used"] is False
+    assert "Tono conversacional" in event_bus.last_prompt
+
+
+def test_compose_reply_chatty_query_uses_conversational_fallback_without_internal_labels(monkeypatch) -> None:
+    event_bus = FakeEventBus({"ok": True, "content": ""})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=10),
+    )
+
+    ticks = iter([30.0, 30.02])
+    monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Como sigues?"),
+        _base_context_preview(),
+        session_id="session-chatty",
+    )
+
+    assert quality["fallback_used"] is True
+    assert "smoke-doc" not in reply
+    assert "contexto" not in reply.lower()
+    assert "Te sigo" in reply or "Vale, te leo" in reply or "Vamos por una respuesta" in reply
 
 
 def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch) -> None:
@@ -145,4 +246,5 @@ def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypat
     assert quality["timeout_hit"] is True
     assert quality["fallback_used"] is True
     assert reply != repeated_fallback
-    assert "Buena pregunta" in reply
+    assert "smoke-doc" not in reply
+    assert "contexto" not in reply.lower()

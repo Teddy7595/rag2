@@ -29,6 +29,8 @@ from app.interaction.events import (
     PUBLISH_INTERACTION_REALTIME_TURN_COMPLETED,
 )
 from app.knowledge.events import ContextBuildRequest, CurrentIdentityRequest, REQUEST_KNOWLEDGE_CONTEXT_PROMPT, REQUEST_KNOWLEDGE_CURRENT_IDENTITY
+from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
+from app.models.runtime_service import LocalInferenceService
 from app.models.events import ModelTextGenerationRequest, REQUEST_MODEL_TEXT_GENERATION
 
 
@@ -79,6 +81,23 @@ def _recent_assistant_replies(messages: list[dict[str, object]], *, limit: int =
             if len(replies) >= limit:
                 break
     return replies
+
+
+def _choose_conversational_fallback(user_text: str, identity_name: str, *, repeat_variant: bool = False) -> str:
+    normalized = re.sub(r"\s+", " ", user_text.lower()).strip()
+    tone_index = sum(ord(char) for char in normalized) % 3 if normalized else 0
+    variants = [
+        f"Te sigo. Voy directo: {identity_name} responde sin rodeos. Si quieres, te contesto más natural y sobre lo que te preocupa de verdad.",
+        f"Vale, te leo. Soy {identity_name}. Te respondo en corto y más humano: dime qué parte te interesa y la aterrizo.",
+        f"Vamos por una respuesta más clara. {identity_name} te sigue el hilo: si quieres, cambio el tono y vamos punto por punto.",
+    ]
+    repeat_variants = [
+        f"Te sigo. Cambio el enfoque: {identity_name} va más directo ahora. Si quieres, lo hablamos sin formalidad y sin meter contexto interno.",
+        f"Entendido. {identity_name} responde de forma más natural: dime qué te molesta o qué quieres resolver y voy al grano.",
+        f"Sí, te leo. {identity_name} se pone más claro: pregunta concreta, respuesta concreta.",
+    ]
+    pool = repeat_variants if repeat_variant else variants
+    return pool[tone_index % len(pool)]
 
 
 def _incremental_summary(previous: str, user_text: str, assistant_text: str, *, max_chars: int = 1400) -> str:
@@ -214,10 +233,20 @@ class RealtimeSessionSnapshot:
 
 
 class RealtimeChatService:
-    def __init__(self, event_bus: EventBus, interaction_service: InteractionService, *, settings: object | None = None) -> None:
+    def __init__(
+        self,
+        event_bus: EventBus,
+        interaction_service: InteractionService,
+        *,
+        settings: object | None = None,
+        model_runtime: LocalInferenceService | None = None,
+        embedding_runtime: SemanticEmbeddingRuntime | None = None,
+    ) -> None:
         self.event_bus = event_bus
         self.interaction_service = interaction_service
         self.settings = settings
+        self.model_runtime = model_runtime
+        self.embedding_runtime = embedding_runtime
 
     def _rollout_flags(self) -> dict[str, object]:
         settings = self.settings
@@ -227,7 +256,48 @@ class RealtimeChatService:
             "timeout_enabled": bool(getattr(settings, "conversation_timeout_enabled", True)),
             "telemetry_enabled": bool(getattr(settings, "conversation_telemetry_enabled", True)),
             "deadline_scale_percent": int(getattr(settings, "conversation_deadline_scale_percent", 100) or 100),
+            "intent_bundle_id": str(getattr(settings, "conversation_intent_bundle_id", "") or "").strip(),
+            "intent_max_tokens": int(getattr(settings, "conversation_intent_max_tokens", 8) or 8),
         }
+
+    def _intent_hint(self, user_text: str) -> str | None:
+        runtime = self.embedding_runtime
+        if runtime is not None:
+            semantic_intent = runtime.classify_by_prototypes(
+                user_text,
+                {
+                    "greeting": ("hola", "buenas", "saludo breve"),
+                    "identity": ("quien eres", "como te llamas", "cual es tu nombre"),
+                    "conversational": ("como sigues", "que opinas", "hablemos", "charlar contigo"),
+                    "technical": ("tengo un error", "hay un bug", "necesito ayuda tecnica"),
+                    "mixed": ("quiero contexto y opinion", "consulta general con contexto"),
+                },
+            )
+            if semantic_intent in {"greeting", "identity", "conversational", "technical", "mixed"}:
+                return semantic_intent
+
+        runtime = self.model_runtime
+        if runtime is None:
+            return None
+
+        rollout = self._rollout_flags()
+        bundle_id = str(rollout.get("intent_bundle_id") or "").strip()
+        if not bundle_id:
+            return None
+
+        try:
+            result = runtime.classify_intent(
+                user_text,
+                bundle_id=bundle_id,
+                max_tokens=int(rollout.get("intent_max_tokens") or 8),
+            )
+        except Exception:
+            return None
+
+        label = str((result or {}).get("label") or "").strip().lower()
+        if label in {"greeting", "identity", "conversational", "technical", "mixed"}:
+            return label
+        return None
 
     def _compute_adaptive_deadline_ms(self, session_id: str, base_deadline_ms: int) -> int:
         try:
@@ -607,7 +677,13 @@ class RealtimeChatService:
         timeout_enabled = bool(rollout["timeout_enabled"])
         telemetry_enabled = bool(rollout["telemetry_enabled"])
         deadline_scale = max(10, min(500, int(rollout["deadline_scale_percent"])))
-        policy = build_turn_policy(input_data.content, has_custom_engram=has_custom_engram)
+        intent_hint = self._intent_hint(input_data.content)
+        policy = build_turn_policy(
+            input_data.content,
+            has_custom_engram=has_custom_engram,
+            intent_hint=intent_hint,
+            embedding_runtime=self.embedding_runtime,
+        )
         conversational_mode = policy.intent == "conversational"
 
         if conversational_mode:
@@ -644,14 +720,11 @@ class RealtimeChatService:
         if knowledge_matches:
             primary_label = str(knowledge_matches[0].get("label") or main_idea).strip() if isinstance(knowledge_matches[0], dict) else main_idea
             fallback_reply = (
-                f"Entendido. Soy {identity_name}. Segun el contexto recuperado, el punto principal es '{primary_label}'. "
-                "Si quieres, te lo explico en breve o lo aplicamos a un caso concreto."
+                f"Entendido. Soy {identity_name}. El punto principal es '{primary_label}'. "
+                "Si quieres, te lo explico en breve o lo aterrizo a un caso concreto."
             )
         else:
-            fallback_reply = (
-                f"Soy {identity_name}. Te leo: '{input_data.content.strip()}'. "
-                "Dime que necesitas y te respondo directo y en corto."
-            )
+            fallback_reply = _choose_conversational_fallback(input_data.content, identity_name)
 
         prompt_sections = [
             f"Identidad activa: {identity_name}.",
@@ -678,14 +751,17 @@ class RealtimeChatService:
                     for match in knowledge_matches[:4]
                 )
             )
-        prompt_sections.append(
-            "Responde al usuario de forma directa, breve y util en espanol."
-        )
-        prompt_sections.append(
-            "No muestres analisis interno, listas de planificacion, ni encabezados tecnicos como "
-            "[CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS]."
-        )
-        prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
+        if conversational_mode:
+            prompt_sections.append("Tono conversacional: responde natural, cercano y sin sonar mecanico.")
+            prompt_sections.append("Si el usuario habla de ti, de tu tono o de cómo sigues, responde en primera persona de forma breve y humana.")
+            prompt_sections.append("No menciones contexto recuperado, etiquetas internas, ni nombres de documentos o rutas.")
+        else:
+            prompt_sections.append("Responde al usuario de forma directa, breve y util en espanol.")
+            prompt_sections.append(
+                "No muestres analisis interno, listas de planificacion, ni encabezados tecnicos como "
+                "[CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS]."
+            )
+            prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
 
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
