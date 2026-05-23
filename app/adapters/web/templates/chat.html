@@ -904,6 +904,320 @@
     }
   }
 
+  #chat-lobby {
+    position: fixed;
+    inset: 0;
+    z-index: 220;
+    background:
+      radial-gradient(900px 400px at 10% 0%, rgba(0, 255, 65, 0.08), transparent 58%),
+      radial-gradient(900px 420px at 90% 100%, rgba(20, 184, 166, 0.08), transparent 58%),
+      rgba(5, 5, 5, 0.98);
+    display: flex;
+    align-items: stretch;
+    justify-content: center;
+    overflow-y: auto;
+    padding: 14px;
+  }
+
+  #chat-lobby.hidden {
+    display: none;
+  }
+
+  .lobby-shell {
+    width: min(900px, 100%);
+    display: grid;
+    gap: 12px;
+    grid-template-columns: 1fr;
+    align-content: start;
+    padding-bottom: 22px;
+  }
+
+  .lobby-card {
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 14px;
+    background: #0f0f0f;
+    padding: 12px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .lobby-header {
+    display: grid;
+    gap: 4px;
+  }
+
+  .lobby-title {
+    margin: 0;
+    font-family: var(--chat-font-mono);
+    font-size: 0.95rem;
+    color: #f3f4f6;
+    letter-spacing: 0.03em;
+    text-transform: uppercase;
+  }
+
+  .lobby-subtitle {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.78rem;
+    line-height: 1.35;
+  }
+
+  .lobby-grid {
+    display: grid;
+    gap: 9px;
+    grid-template-columns: 1fr;
+  }
+
+  .lobby-field {
+    display: grid;
+    gap: 6px;
+  }
+
+  .lobby-label {
+    color: #cbd5e1;
+    font-size: 0.72rem;
+    font-family: var(--chat-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .lobby-input,
+  .lobby-select,
+  .lobby-textarea {
+    width: 100%;
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 10px;
+    background: #121212;
+    color: #f8fafc;
+    padding: 9px 10px;
+    font-size: 0.87rem;
+    font-family: var(--chat-font-main);
+  }
+
+  .lobby-textarea {
+    min-height: 84px;
+    resize: vertical;
+  }
+
+  .lobby-input:focus,
+  .lobby-select:focus,
+  .lobby-textarea:focus {
+    outline: none;
+    border-color: var(--chat-accent-color);
+    box-shadow: 0 0 0 2px var(--chat-accent-soft);
+  }
+
+  .lobby-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .lobby-btn {
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 999px;
+    background: #121212;
+    color: #d1d5db;
+    padding: 8px 11px;
+    font-size: 0.76rem;
+    font-family: var(--chat-font-mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    cursor: pointer;
+  }
+
+  .lobby-btn:hover {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
+
+  .lobby-btn.primary {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+    background: rgba(0, 255, 65, 0.08);
+  }
+
+  #lobby-sessions-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .lobby-session-row {
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 10px;
+    background: #101010;
+    padding: 9px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .lobby-session-row.selected {
+    border-color: var(--chat-accent-color);
+    box-shadow: inset 0 0 0 1px rgba(0, 255, 65, 0.18);
+  }
+
+  .lobby-session-id {
+    margin: 0;
+    color: #f3f4f6;
+    font-family: var(--chat-font-mono);
+    font-size: 0.75rem;
+    word-break: break-word;
+  }
+
+  .lobby-session-meta {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.72rem;
+    font-family: var(--chat-font-mono);
+  }
+
+  .lobby-note {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .lobby-rule-composer {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .lobby-rule-add {
+    border: 1px solid var(--chat-accent-color);
+    background: rgba(0, 255, 65, 0.06);
+    color: var(--chat-accent-color);
+    border-radius: 8px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.74rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 11px;
+    cursor: pointer;
+    min-height: 40px;
+  }
+
+  .lobby-rule-add:hover {
+    background: rgba(0, 255, 65, 0.14);
+  }
+
+  .lobby-rule-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+
+  .lobby-rule-item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    gap: 8px;
+    align-items: center;
+    border: 1px solid #2a2a2a;
+    background: #0d0d0d;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .lobby-rule-item.dragging {
+    opacity: 0.55;
+    border-style: dashed;
+  }
+
+  .lobby-rule-item.drop-target {
+    border-color: var(--chat-accent-color);
+    box-shadow: inset 0 0 0 1px rgba(0, 255, 65, 0.18);
+  }
+
+  .lobby-rule-handle {
+    border: 1px solid #3f3f46;
+    background: #111;
+    color: #94a3b8;
+    border-radius: 6px;
+    width: 28px;
+    height: 28px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: var(--chat-font-mono);
+    font-size: 0.78rem;
+    cursor: grab;
+  }
+
+  .lobby-rule-handle:hover {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
+
+  .lobby-rule-handle:active {
+    cursor: grabbing;
+  }
+
+  .lobby-rule-text {
+    margin: 0;
+    color: #d1d5db;
+    line-height: 1.35;
+    font-size: 0.84rem;
+  }
+
+  .lobby-rule-remove {
+    border: 1px solid #3f3f46;
+    background: #111;
+    color: #94a3b8;
+    border-radius: 6px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.67rem;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .lobby-rule-remove:hover {
+    color: var(--chat-danger);
+    border-color: var(--chat-danger);
+  }
+
+  .lobby-rule-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .lobby-rule-shift {
+    border: 1px solid #3f3f46;
+    background: #111;
+    color: #94a3b8;
+    border-radius: 6px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 4px 6px;
+  }
+
+  .lobby-rule-shift:hover {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
+
+  .lobby-rule-empty {
+    border: 1px dashed #303030;
+    border-radius: 8px;
+    padding: 10px;
+    color: #6b7280;
+    font-size: 0.78rem;
+    font-family: var(--chat-font-mono);
+  }
+
+  @media (min-width: 860px) {
+    .lobby-shell {
+      grid-template-columns: 1.1fr 1fr;
+      gap: 14px;
+    }
+  }
+
   @keyframes typingDot {
     0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
     40% { opacity: 1; transform: translateY(-2px); }
@@ -912,6 +1226,71 @@
 {% endblock %}
 
 {% block content %}
+<section id="chat-lobby" aria-label="Lobby de chat">
+  <div class="lobby-shell">
+    <article class="lobby-card">
+      <header class="lobby-header">
+        <h2 class="lobby-title">Salas disponibles</h2>
+        <p class="lobby-subtitle">Selecciona un chat existente o crea una nueva sala antes de entrar.</p>
+      </header>
+      <div class="lobby-actions">
+        <button type="button" class="lobby-btn" id="lobby-refresh-sessions">Recargar</button>
+        <button type="button" class="lobby-btn" id="lobby-enter-last">Ultima sesion</button>
+      </div>
+      <div id="lobby-sessions-list"></div>
+    </article>
+
+    <article class="lobby-card">
+      <header class="lobby-header">
+        <h2 class="lobby-title">Configurar y entrar</h2>
+        <p class="lobby-subtitle">Define reglas de sala, engrama y modelo antes de abrir el chat realtime.</p>
+      </header>
+      <div class="lobby-grid">
+        <label class="lobby-field">
+          <span class="lobby-label">Session ID</span>
+          <input id="lobby-session-id" class="lobby-input" type="text" placeholder="autogenerado al crear" />
+        </label>
+        <label class="lobby-field">
+          <span class="lobby-label">Engrama</span>
+          <select id="lobby-engram-select" class="lobby-select"></select>
+        </label>
+        <label class="lobby-field">
+          <span class="lobby-label">Modelo texto</span>
+          <select id="lobby-model-text" class="lobby-select"></select>
+        </label>
+        <label class="lobby-field">
+          <span class="lobby-label">Modelo vision</span>
+          <select id="lobby-model-vision" class="lobby-select"></select>
+        </label>
+        <div class="lobby-grid" style="grid-template-columns: 1fr 1fr;">
+          <label class="lobby-field">
+            <span class="lobby-label">Context limit</span>
+            <input id="lobby-context-limit" class="lobby-input" type="number" min="1" max="50" value="5" />
+          </label>
+          <label class="lobby-field">
+            <span class="lobby-label">History limit</span>
+            <input id="lobby-history-limit" class="lobby-input" type="number" min="1" max="100" value="20" />
+          </label>
+        </div>
+        <label class="lobby-field">
+          <span class="lobby-label">Reglas de sala</span>
+          <div class="lobby-rule-composer">
+            <input id="lobby-rule-input" class="lobby-input" type="text" placeholder="Escribe una regla y pulsa Agregar" />
+            <button type="button" class="lobby-rule-add" id="lobby-rule-add">Agregar</button>
+          </div>
+          <ul id="lobby-rule-list" class="lobby-rule-list"></ul>
+        </label>
+      </div>
+      <p class="lobby-note">La selección de modelo se aplica al runtime local activo; el engrama y reglas se aplican al chat que abras.</p>
+      <div class="lobby-actions">
+        <button type="button" class="lobby-btn" id="lobby-generate-session">Generar ID</button>
+        <button type="button" class="lobby-btn" id="lobby-open-selected">Abrir seleccionada</button>
+        <button type="button" class="lobby-btn primary" id="lobby-create-enter">Crear y entrar</button>
+      </div>
+    </article>
+  </div>
+</section>
+
 <div id="header-bar">
   <div class="identity-badge">
     <div id="status-dot"></div>
@@ -1058,11 +1437,28 @@
   const hudRulesClear = document.getElementById('hud-rules-clear');
   const hudSessionsList = document.getElementById('hud-sessions-list');
   const hudNewChat = document.getElementById('hud-new-chat');
+  const chatLobby = document.getElementById('chat-lobby');
+  const lobbySessionsList = document.getElementById('lobby-sessions-list');
+  const lobbyRefreshSessions = document.getElementById('lobby-refresh-sessions');
+  const lobbyEnterLast = document.getElementById('lobby-enter-last');
+  const lobbySessionIdInput = document.getElementById('lobby-session-id');
+  const lobbyEngramSelect = document.getElementById('lobby-engram-select');
+  const lobbyModelTextSelect = document.getElementById('lobby-model-text');
+  const lobbyModelVisionSelect = document.getElementById('lobby-model-vision');
+  const lobbyContextLimitInput = document.getElementById('lobby-context-limit');
+  const lobbyHistoryLimitInput = document.getElementById('lobby-history-limit');
+  const lobbyRuleInput = document.getElementById('lobby-rule-input');
+  const lobbyRuleAdd = document.getElementById('lobby-rule-add');
+  const lobbyRuleList = document.getElementById('lobby-rule-list');
+  const lobbyGenerateSession = document.getElementById('lobby-generate-session');
+  const lobbyOpenSelected = document.getElementById('lobby-open-selected');
+  const lobbyCreateEnter = document.getElementById('lobby-create-enter');
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const wsBaseUrl = `${protocol}://${window.location.host}/ws/chat`;
   const SESSION_STORAGE_KEY = 'rag2.activeRealtimeSessionId';
   const WORLD_RULES_PREFIX = 'rag2.worldRules.';
+  const ENGRAM_PREFIX = 'rag2.sessionEngram.';
   const LIMITS_PREFIX = 'rag2.sessionLimits.';
   const DEFAULT_LIMITS_KEY = 'rag2.defaultSessionLimits';
 
@@ -1092,6 +1488,9 @@
   let reconnectAttempts = 0;
   let manualSocketClose = false;
   let preferredSessionId = '';
+  let activeIdentityId = '';
+  let lobbySelectedSessionId = '';
+  let lobbyDraggingRuleIndex = -1;
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
@@ -1344,6 +1743,21 @@
     return normalized.map((item) => `- ${item}`).join('\n');
   }
 
+  function moveWorldRule(fromIndex, toIndex) {
+    if (!Number.isInteger(fromIndex) || !Number.isInteger(toIndex)) {
+      return false;
+    }
+    if (fromIndex < 0 || toIndex < 0 || fromIndex >= worldRuleItems.length || toIndex >= worldRuleItems.length) {
+      return false;
+    }
+    if (fromIndex === toIndex) {
+      return false;
+    }
+    const [item] = worldRuleItems.splice(fromIndex, 1);
+    worldRuleItems.splice(toIndex, 0, item);
+    return true;
+  }
+
   function renderHudSummary() {
     if (!hudSessionLine || !hudModelLine || !hudLimitsLine) {
       return;
@@ -1383,6 +1797,35 @@
     }
   }
 
+  function renderLobbyRules() {
+    if (!lobbyRuleList) {
+      return;
+    }
+    lobbyRuleList.innerHTML = '';
+    if (!worldRuleItems.length) {
+      lobbyRuleList.innerHTML = '<li class="lobby-rule-empty">Sin reglas de sala.</li>';
+      return;
+    }
+
+    for (let index = 0; index < worldRuleItems.length; index += 1) {
+      const item = worldRuleItems[index];
+      const row = document.createElement('li');
+      row.className = 'lobby-rule-item';
+      row.draggable = true;
+      row.dataset.lobbyRuleIndex = String(index);
+      row.innerHTML = `
+        <button type="button" class="lobby-rule-handle" title="Arrastrar para reordenar" aria-label="Arrastrar regla">↕</button>
+        <p class="lobby-rule-text">${String(item).replace(/</g, '&lt;')}</p>
+        <div class="lobby-rule-actions">
+          <button type="button" class="lobby-rule-shift" data-lobby-rule-up="${index}" title="Subir">↑</button>
+          <button type="button" class="lobby-rule-shift" data-lobby-rule-down="${index}" title="Bajar">↓</button>
+          <button type="button" class="lobby-rule-remove" data-lobby-rule-remove="${index}">Quitar</button>
+        </div>
+      `;
+      lobbyRuleList.appendChild(row);
+    }
+  }
+
   async function loadSessionList() {
     try {
       const response = await fetch('/api/interaction/sessions?limit=40');
@@ -1390,9 +1833,17 @@
         throw new Error(await response.text());
       }
       const payload = await response.json();
-      renderSessionList(Array.isArray(payload) ? payload : []);
+      const sessions = Array.isArray(payload) ? payload : [];
+      renderSessionList(sessions);
+      renderLobbySessionList(sessions);
+      if (!lobbySelectedSessionId && activeSessionId) {
+        applySessionConfigToLobby(activeSessionId);
+      }
     } catch (error) {
       hudSessionsList.innerHTML = `<li class="hud-list-empty">No se pudo cargar chats: ${String(error)}</li>`;
+      if (lobbySessionsList) {
+        lobbySessionsList.innerHTML = `<p class="lobby-note">No se pudo cargar chats: ${String(error)}</p>`;
+      }
     }
   }
 
@@ -1781,6 +2232,8 @@
     if (sessionIntelLink) {
       sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
     }
+    activeIdentityId = loadSessionEngram(sessionId) || activeIdentityId;
+    applySessionConfigToLobby(sessionId);
     loadLimitsForSession(sessionId);
     persistLimits(sessionId);
     renderHudSummary();
@@ -1801,10 +2254,229 @@
   }
 
   function startNewChat() {
-    const nextSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+    const nextSessionId = generateSessionId();
+    activateSession(nextSessionId, { clearTimeline: true });
+  }
+
+  function generateSessionId() {
+    return (window.crypto && typeof window.crypto.randomUUID === 'function')
       ? window.crypto.randomUUID()
       : `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
-    activateSession(nextSessionId, { clearTimeline: true });
+  }
+
+  function persistSessionEngram(sessionId, identityId) {
+    if (!sessionId) {
+      return;
+    }
+    const value = String(identityId || '').trim();
+    if (!value) {
+      window.localStorage.removeItem(`${ENGRAM_PREFIX}${sessionId}`);
+      return;
+    }
+    window.localStorage.setItem(`${ENGRAM_PREFIX}${sessionId}`, value);
+  }
+
+  function loadSessionEngram(sessionId) {
+    if (!sessionId) {
+      return '';
+    }
+    return String(window.localStorage.getItem(`${ENGRAM_PREFIX}${sessionId}`) || '');
+  }
+
+  function hideLobby() {
+    if (chatLobby) {
+      chatLobby.classList.add('hidden');
+    }
+  }
+
+  function openLobby() {
+    if (chatLobby) {
+      chatLobby.classList.remove('hidden');
+    }
+  }
+
+  function parseEngramItems(payload) {
+    const source = Array.isArray(payload)
+      ? payload
+      : (Array.isArray(payload && payload.items) ? payload.items : []);
+    return source
+      .map((item) => ({
+        id: String((item && (item.id || item.engram_id || item.identity_id)) || '').trim(),
+        name: String((item && (item.name || item.alias || item.title)) || '').trim(),
+      }))
+      .filter((item) => item.id && item.name);
+  }
+
+  async function loadLobbyEngrams() {
+    if (!lobbyEngramSelect) {
+      return;
+    }
+    lobbyEngramSelect.innerHTML = '<option value="">Engrama por defecto</option>';
+    try {
+      const response = await fetch('/api/knowledge/engrams?limit=120');
+      if (!response.ok) {
+        return;
+      }
+      const payload = await response.json();
+      const items = parseEngramItems(payload);
+      for (const item of items) {
+        const option = document.createElement('option');
+        option.value = item.id;
+        option.textContent = `${item.name} (${item.id.slice(0, 8)})`;
+        lobbyEngramSelect.appendChild(option);
+      }
+    } catch (_) {
+      // no-op: keep default option
+    }
+  }
+
+  function parseModelBundles(catalog) {
+    const bundles = Array.isArray(catalog && catalog.bundles) ? catalog.bundles : [];
+    return bundles.filter((bundle) => bundle && !bundle.is_embedding_cache);
+  }
+
+  async function loadLobbyModels() {
+    if (!lobbyModelTextSelect || !lobbyModelVisionSelect) {
+      return;
+    }
+    lobbyModelTextSelect.innerHTML = '<option value="">Mantener selección actual</option>';
+    lobbyModelVisionSelect.innerHTML = '<option value="">Mantener selección actual</option><option value="off">Desactivar vision</option>';
+    try {
+      const response = await fetch('/api/models/catalog');
+      if (!response.ok) {
+        return;
+      }
+      const catalog = await response.json();
+      const bundles = parseModelBundles(catalog);
+      for (const bundle of bundles) {
+        const bundleId = String(bundle.bundle_id || '').trim();
+        if (!bundleId) {
+          continue;
+        }
+        const textOption = document.createElement('option');
+        textOption.value = bundleId;
+        textOption.textContent = bundleId;
+        lobbyModelTextSelect.appendChild(textOption);
+
+        if (bundle.supports_vision) {
+          const visionOption = document.createElement('option');
+          visionOption.value = bundleId;
+          visionOption.textContent = bundleId;
+          lobbyModelVisionSelect.appendChild(visionOption);
+        }
+      }
+    } catch (_) {
+      // no-op: keep defaults
+    }
+  }
+
+  function renderLobbySessionList(sessions) {
+    if (!lobbySessionsList) {
+      return;
+    }
+    const items = Array.isArray(sessions) ? sessions : [];
+    lobbySessionsList.innerHTML = '';
+    if (!items.length) {
+      lobbySessionsList.innerHTML = '<p class="lobby-note">No hay chats guardados todavía.</p>';
+      return;
+    }
+    for (const row of items) {
+      const sessionId = String(row.session_id || '');
+      if (!sessionId) {
+        continue;
+      }
+      const card = document.createElement('article');
+      card.className = 'lobby-session-row';
+      if (sessionId === lobbySelectedSessionId) {
+        card.classList.add('selected');
+      }
+      card.innerHTML = `
+        <p class="lobby-session-id">${sessionId}</p>
+        <p class="lobby-session-meta">mensajes=${Number(row.message_count || 0)} · autor=${String(row.last_author || '-')}</p>
+        <p class="lobby-session-meta">${String(row.last_excerpt || '').replace(/</g, '&lt;')}</p>
+        <div class="lobby-actions">
+          <button type="button" class="lobby-btn" data-lobby-select="${sessionId}">Seleccionar</button>
+          <button type="button" class="lobby-btn" data-lobby-enter="${sessionId}">Entrar</button>
+        </div>
+      `;
+      lobbySessionsList.appendChild(card);
+    }
+  }
+
+  function applySessionConfigToLobby(sessionId) {
+    const key = String(sessionId || '').trim();
+    if (!key) {
+      return;
+    }
+    lobbySelectedSessionId = key;
+    if (lobbySessionIdInput) {
+      lobbySessionIdInput.value = key;
+    }
+    worldRules = String(window.localStorage.getItem(`${WORLD_RULES_PREFIX}${key}`) || '');
+    worldRuleItems = parseWorldRuleItems(worldRules);
+    renderWorldRulesHud();
+    renderLobbyRules();
+    if (lobbyEngramSelect) {
+      lobbyEngramSelect.value = loadSessionEngram(key);
+    }
+    const scopedLimits = readStoredLimits(key);
+    if (scopedLimits) {
+      if (lobbyContextLimitInput) {
+        lobbyContextLimitInput.value = String(scopedLimits.context_limit);
+      }
+      if (lobbyHistoryLimitInput) {
+        lobbyHistoryLimitInput.value = String(scopedLimits.history_limit);
+      }
+    }
+  }
+
+  async function applyLobbyModelSelection() {
+    const textBundle = String(lobbyModelTextSelect && lobbyModelTextSelect.value || '').trim();
+    const visionBundle = String(lobbyModelVisionSelect && lobbyModelVisionSelect.value || '').trim();
+
+    if (textBundle) {
+      await updateModelSelection({ text_provider: 'local', text_bundle_id: textBundle, text_model_name: null });
+    }
+
+    if (visionBundle) {
+      if (visionBundle.toLowerCase() === 'off') {
+        visionForcedOff = true;
+        visionEnabled = false;
+        renderModelChip();
+      } else {
+        visionForcedOff = false;
+        await updateModelSelection({ vision_provider: 'local', vision_bundle_id: visionBundle, vision_model_name: null });
+      }
+    }
+  }
+
+  async function enterChatSession(sessionId, { clearTimeline = true } = {}) {
+    const key = String(sessionId || '').trim();
+    if (!key) {
+      setStatus('Define un session_id para entrar.', false);
+      return;
+    }
+
+    const parsedContext = Math.floor(Number(lobbyContextLimitInput && lobbyContextLimitInput.value || contextLimit));
+    const parsedHistory = Math.floor(Number(lobbyHistoryLimitInput && lobbyHistoryLimitInput.value || historyLimit));
+    contextLimit = Math.max(1, Math.min(50, Number.isFinite(parsedContext) ? parsedContext : contextLimit));
+    historyLimit = Math.max(1, Math.min(100, Number.isFinite(parsedHistory) ? parsedHistory : historyLimit));
+
+    worldRules = serializeWorldRuleItems(worldRuleItems);
+    activeIdentityId = String(lobbyEngramSelect && lobbyEngramSelect.value || '').trim();
+
+    persistSessionEngram(key, activeIdentityId);
+    persistLimits(key);
+    window.localStorage.setItem(`${WORLD_RULES_PREFIX}${key}`, worldRules);
+
+    await applyLobbyModelSelection();
+    renderWorldRulesHud();
+    renderLobbyRules();
+
+    await activateSession(key, { clearTimeline });
+    await saveWorldRules();
+    hideLobby();
+    inputField.focus();
   }
 
   async function loadWorldRules(sessionId) {
@@ -1816,6 +2488,7 @@
       worldRules = localRules;
       worldRuleItems = parseWorldRuleItems(worldRules);
       renderWorldRulesHud();
+      renderLobbyRules();
       return;
     }
     try {
@@ -1825,10 +2498,12 @@
       window.localStorage.setItem(`${WORLD_RULES_PREFIX}${sessionId}`, worldRules);
       worldRuleItems = parseWorldRuleItems(worldRules);
       renderWorldRulesHud();
+      renderLobbyRules();
     } catch (_) {
       worldRules = '';
       worldRuleItems = [];
       renderWorldRulesHud();
+      renderLobbyRules();
     }
   }
 
@@ -2128,6 +2803,7 @@
       worldRules = args;
       worldRuleItems = parseWorldRuleItems(worldRules);
       renderWorldRulesHud();
+      renderLobbyRules();
       await saveWorldRules();
       appendMessage('World rules actualizadas para esta sesion.', false, currentEngramAvatar, true, null, 'system', 'system');
       return true;
@@ -2314,6 +2990,7 @@
       history_limit: historyLimit,
       channel: 'chat',
       world_rules: worldRules,
+      identity_id: activeIdentityId || null,
     }));
   }
 
@@ -2372,6 +3049,7 @@
     if (!worldRuleItems.includes(value)) {
       worldRuleItems.push(value);
       renderWorldRulesHud();
+      renderLobbyRules();
     }
     hudRuleInput.value = '';
     hudRuleInput.focus();
@@ -2395,6 +3073,7 @@
     }
     worldRuleItems.splice(index, 1);
     renderWorldRulesHud();
+    renderLobbyRules();
   });
 
   hudRulesSave.addEventListener('click', async () => {
@@ -2410,12 +3089,133 @@
   hudRulesClear.addEventListener('click', async () => {
     worldRuleItems = [];
     renderWorldRulesHud();
+    renderLobbyRules();
     worldRules = '';
     if (activeSessionId) {
       await saveWorldRules();
     }
     setStatus('Reglas de sesion limpiadas.', false);
   });
+
+  if (lobbyRuleAdd) {
+    lobbyRuleAdd.addEventListener('click', () => {
+      const value = String(lobbyRuleInput && lobbyRuleInput.value || '').trim();
+      if (!value) {
+        return;
+      }
+      if (!worldRuleItems.includes(value)) {
+        worldRuleItems.push(value);
+        renderWorldRulesHud();
+        renderLobbyRules();
+      }
+      if (lobbyRuleInput) {
+        lobbyRuleInput.value = '';
+        lobbyRuleInput.focus();
+      }
+    });
+  }
+
+  if (lobbyRuleInput) {
+    lobbyRuleInput.addEventListener('keydown', (event) => {
+      if (event.key === 'Enter') {
+        event.preventDefault();
+        if (lobbyRuleAdd) {
+          lobbyRuleAdd.click();
+        }
+      }
+    });
+  }
+
+  if (lobbyRuleList) {
+    lobbyRuleList.addEventListener('click', (event) => {
+      const upButton = event.target.closest('button[data-lobby-rule-up]');
+      if (upButton) {
+        const index = Number.parseInt(upButton.dataset.lobbyRuleUp || '-1', 10);
+        if (moveWorldRule(index, index - 1)) {
+          renderWorldRulesHud();
+          renderLobbyRules();
+        }
+        return;
+      }
+
+      const downButton = event.target.closest('button[data-lobby-rule-down]');
+      if (downButton) {
+        const index = Number.parseInt(downButton.dataset.lobbyRuleDown || '-1', 10);
+        if (moveWorldRule(index, index + 1)) {
+          renderWorldRulesHud();
+          renderLobbyRules();
+        }
+        return;
+      }
+
+      const button = event.target.closest('button[data-lobby-rule-remove]');
+      if (!button) {
+        return;
+      }
+      const index = Number.parseInt(button.dataset.lobbyRuleRemove || '-1', 10);
+      if (!Number.isInteger(index) || index < 0 || index >= worldRuleItems.length) {
+        return;
+      }
+      worldRuleItems.splice(index, 1);
+      renderWorldRulesHud();
+      renderLobbyRules();
+    });
+
+    lobbyRuleList.addEventListener('dragstart', (event) => {
+      const row = event.target.closest('.lobby-rule-item[data-lobby-rule-index]');
+      if (!row) {
+        return;
+      }
+      lobbyDraggingRuleIndex = Number.parseInt(row.dataset.lobbyRuleIndex || '-1', 10);
+      row.classList.add('dragging');
+      if (event.dataTransfer) {
+        event.dataTransfer.effectAllowed = 'move';
+        event.dataTransfer.setData('text/plain', String(lobbyDraggingRuleIndex));
+      }
+    });
+
+    lobbyRuleList.addEventListener('dragover', (event) => {
+      const row = event.target.closest('.lobby-rule-item[data-lobby-rule-index]');
+      if (!row) {
+        return;
+      }
+      event.preventDefault();
+      row.classList.add('drop-target');
+      if (event.dataTransfer) {
+        event.dataTransfer.dropEffect = 'move';
+      }
+    });
+
+    lobbyRuleList.addEventListener('dragleave', (event) => {
+      const row = event.target.closest('.lobby-rule-item[data-lobby-rule-index]');
+      if (!row) {
+        return;
+      }
+      row.classList.remove('drop-target');
+    });
+
+    lobbyRuleList.addEventListener('drop', (event) => {
+      const row = event.target.closest('.lobby-rule-item[data-lobby-rule-index]');
+      if (!row) {
+        return;
+      }
+      event.preventDefault();
+      row.classList.remove('drop-target');
+      const targetIndex = Number.parseInt(row.dataset.lobbyRuleIndex || '-1', 10);
+      if (moveWorldRule(lobbyDraggingRuleIndex, targetIndex)) {
+        renderWorldRulesHud();
+        renderLobbyRules();
+      }
+    });
+
+    lobbyRuleList.addEventListener('dragend', () => {
+      lobbyDraggingRuleIndex = -1;
+      lobbyRuleList.querySelectorAll('.lobby-rule-item').forEach((node) => {
+        node.classList.remove('dragging');
+        node.classList.remove('drop-target');
+      });
+    });
+  }
 
   hudSessionsList.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-open-session]');
@@ -2430,23 +3230,103 @@
   });
 
   hudNewChat.addEventListener('click', () => {
-    startNewChat();
+    if (lobbySessionIdInput) {
+      lobbySessionIdInput.value = generateSessionId();
+    }
+    openLobby();
   });
+
+  if (lobbySessionsList) {
+    lobbySessionsList.addEventListener('click', (event) => {
+      const selectButton = event.target.closest('button[data-lobby-select]');
+      if (selectButton) {
+        applySessionConfigToLobby(String(selectButton.dataset.lobbySelect || ''));
+        loadSessionList();
+        return;
+      }
+      const enterButton = event.target.closest('button[data-lobby-enter]');
+      if (enterButton) {
+        enterChatSession(String(enterButton.dataset.lobbyEnter || ''));
+      }
+    });
+  }
+
+  if (lobbyGenerateSession) {
+    lobbyGenerateSession.addEventListener('click', () => {
+      if (lobbySessionIdInput) {
+        lobbySessionIdInput.value = generateSessionId();
+      }
+    });
+  }
+
+  if (lobbyOpenSelected) {
+    lobbyOpenSelected.addEventListener('click', () => {
+      const candidate = String(lobbySelectedSessionId || (lobbySessionIdInput && lobbySessionIdInput.value) || '').trim();
+      if (!candidate) {
+        setStatus('Selecciona una sesion o escribe un session_id.', false);
+        return;
+      }
+      enterChatSession(candidate);
+    });
+  }
+
+  if (lobbyCreateEnter) {
+    lobbyCreateEnter.addEventListener('click', () => {
+      const candidate = String((lobbySessionIdInput && lobbySessionIdInput.value) || '').trim() || generateSessionId();
+      if (lobbySessionIdInput) {
+        lobbySessionIdInput.value = candidate;
+      }
+      enterChatSession(candidate);
+    });
+  }
+
+  if (lobbyRefreshSessions) {
+    lobbyRefreshSessions.addEventListener('click', () => {
+      loadSessionList();
+    });
+  }
+
+  if (lobbyEnterLast) {
+    lobbyEnterLast.addEventListener('click', () => {
+      const remembered = String(window.localStorage.getItem(SESSION_STORAGE_KEY) || '').trim();
+      if (!remembered) {
+        setStatus('No hay una sesión previa guardada.', false);
+        return;
+      }
+      applySessionConfigToLobby(remembered);
+      enterChatSession(remembered, { clearTimeline: false });
+    });
+  }
 
   preloadSession();
   loadLimitsForSession(activeSessionId || null);
   renderLimitsChip();
   renderHudSummary();
   renderWorldRulesHud();
+  renderLobbyRules();
   loadSessionList();
-  openSocketConnection();
-  refreshModelState({ announce: true });
+  loadLobbyEngrams();
+  loadLobbyModels();
+  refreshModelState({ announce: false });
+
+  if (lobbyContextLimitInput) {
+    lobbyContextLimitInput.value = String(contextLimit);
+  }
+  if (lobbyHistoryLimitInput) {
+    lobbyHistoryLimitInput.value = String(historyLimit);
+  }
+  const autoOpen = new URLSearchParams(window.location.search).get('autostart') === '1';
+  if (autoOpen && preferredSessionId) {
+    enterChatSession(preferredSessionId, { clearTimeline: false });
+  } else {
+    openLobby();
+    setStatus('Configura la sala y entra al chat.', false);
+  }
   setupInputListeners();
   loadHints();
   document.querySelectorAll('.message-row').forEach((row) => setupMessageInteractions(row));
   updateSendButtonState();
   scrollToBottom(false);
-  inputField.focus();
 })();
 </script>
 {% endblock %}
