@@ -34,6 +34,10 @@ class OperationsSagaUpdateInput(BaseModel):
     world_building: str | None = None
 
 
+class OperationsSagaRetconInput(BaseModel):
+    apply: bool = False
+
+
 router = APIRouter(prefix="/api/operations", tags=["operations"])
 
 
@@ -149,6 +153,36 @@ async def debate_saga(
             identity_name=payload.identity_name,
             persist_memory=payload.persist_memory,
         ),
+        source_module="operations.adapters.api.routes",
+    )
+
+
+@router.get("/sagas/{saga_id}/consistency")
+async def saga_consistency(request: Request, saga_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    from app.operations.events import OperationsSagaConsistencyRequest
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_CONSISTENCY
+
+    return context.event_bus.request(
+        REQUEST_OPERATIONS_SAGA_CONSISTENCY,
+        OperationsSagaConsistencyRequest(saga_id=saga_id),
+        source_module="operations.adapters.api.routes",
+    )
+
+
+@router.post("/sagas/{saga_id}/retcon")
+async def saga_retcon(
+    request: Request,
+    saga_id: str,
+    payload: OperationsSagaRetconInput,
+) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    from app.operations.events import OperationsSagaRetconRequest
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_RETCON
+
+    return context.event_bus.request(
+        REQUEST_OPERATIONS_SAGA_RETCON,
+        OperationsSagaRetconRequest(saga_id=saga_id, apply=payload.apply),
         source_module="operations.adapters.api.routes",
     )
 

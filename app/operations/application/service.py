@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import Any
 import re
 
@@ -241,6 +242,216 @@ class OperationsService:
             },
         )
         return {"debated": True, "saga": saga_payload, "memory": memory_payload}
+
+    def analyze_saga_consistency(self, request: OperationsSagaConsistencyRequest) -> dict[str, object]:
+        workflow = self._require_saga_repository().get_by_id(request.saga_id)
+        if not workflow:
+            return {"found": False, "saga_id": request.saga_id}
+
+        commands = [str(command).strip() for command in workflow.command_history if str(command).strip()]
+        semantic_contradictions = self._detect_contradictions(commands)
+        timeline_contradictions = self._detect_entity_timeline_contradictions(workflow)
+        contradictions = semantic_contradictions + timeline_contradictions
+        score = round(max(0.0, 1.0 - (0.18 * len(semantic_contradictions)) - (0.28 * len(timeline_contradictions))), 3)
+        suggestion = self._build_retcon_suggestion(workflow.title, contradictions)
+        return {
+            "found": True,
+            "saga_id": workflow.id,
+            "title": workflow.title,
+            "status": workflow.status,
+            "coherence_score": score,
+            "contradictions": contradictions,
+            "semantic_conflict_count": len(semantic_contradictions),
+            "timeline_conflict_count": len(timeline_contradictions),
+            "retcon_suggestion": suggestion,
+            "command_count": len(workflow.command_history),
+        }
+
+    def apply_saga_retcon(self, request: OperationsSagaRetconRequest) -> dict[str, object]:
+        from app.operations.events import OperationsSagaCommandAppendRequest
+        from app.operations.events import OperationsSagaConsistencyRequest
+
+        analysis = self.analyze_saga_consistency(OperationsSagaConsistencyRequest(saga_id=request.saga_id))
+        if not analysis.get("found"):
+            return {"applied": False, "saga_id": request.saga_id, "analysis": analysis}
+
+        suggestion = str(analysis.get("retcon_suggestion") or "").strip()
+        if not suggestion:
+            return {"applied": False, "saga_id": request.saga_id, "analysis": analysis}
+
+        if request.apply:
+            appended = self.append_saga_command(
+                OperationsSagaCommandAppendRequest(
+                    saga_id=request.saga_id,
+                    command=suggestion,
+                    note="retcon:auto",
+                )
+            )
+            return {
+                "applied": bool(appended.get("appended")),
+                "saga_id": request.saga_id,
+                "retcon": suggestion,
+                "analysis": analysis,
+                "result": appended,
+            }
+
+        return {
+            "applied": False,
+            "saga_id": request.saga_id,
+            "retcon": suggestion,
+            "analysis": analysis,
+        }
+
+    def _detect_contradictions(self, commands: list[str]) -> list[dict[str, str]]:
+        pairs = [
+            ("vive", "muere"),
+            ("aliado", "enemigo"),
+            ("gana", "pierde"),
+            ("paz", "guerra"),
+            ("humano", "inmortal"),
+        ]
+        normalized = [item.lower() for item in commands]
+        findings: list[dict[str, str]] = []
+        for positive, negative in pairs:
+            pos_hits = [(idx, text) for idx, text in enumerate(normalized) if positive in text]
+            neg_hits = [(idx, text) for idx, text in enumerate(normalized) if negative in text]
+            for pos_index, _ in pos_hits:
+                for neg_index, _ in neg_hits:
+                    if pos_index == neg_index:
+                        continue
+                    findings.append(
+                        {
+                            "type": "semantic_conflict",
+                            "positive": positive,
+                            "negative": negative,
+                            "first_command": commands[min(pos_index, neg_index)],
+                            "second_command": commands[max(pos_index, neg_index)],
+                        }
+                    )
+                    break
+                if findings and findings[-1].get("positive") == positive:
+                    break
+        return findings
+
+    def _detect_entity_timeline_contradictions(self, workflow: SagaWorkflow) -> list[dict[str, str]]:
+        entity_states: dict[str, dict[str, str]] = {}
+        findings: list[dict[str, str]] = []
+
+        for index, act in enumerate(workflow.act_history):
+            if not isinstance(act, dict):
+                continue
+            if str(act.get("kind") or "") != "command":
+                continue
+
+            command = str(act.get("command") or "").strip()
+            if not command:
+                continue
+            recorded_at = str(act.get("recorded_at") or "")
+            timestamp = self._normalize_timestamp(recorded_at)
+            lowered = command.lower()
+            entities = self._extract_entities(command)
+            if not entities:
+                entities = ["global"]
+
+            for entity in entities:
+                previous = entity_states.get(entity, {})
+
+                life_state = self._resolve_binary_state(lowered, "alive", ("vive", "nace", "resucita"), ("muere", "fallece"))
+                if life_state and previous.get("alive") and previous.get("alive") != life_state:
+                    findings.append(
+                        {
+                            "type": "entity_lifecycle",
+                            "entity": entity,
+                            "axis": "alive",
+                            "previous_state": previous.get("alive", ""),
+                            "new_state": life_state,
+                            "first_command": previous.get("command", ""),
+                            "second_command": command,
+                            "first_at": previous.get("recorded_at", ""),
+                            "second_at": timestamp,
+                        }
+                    )
+                if life_state:
+                    previous["alive"] = life_state
+
+                allegiance_state = self._resolve_binary_state(lowered, "allegiance", ("aliado", "leal", "amigo"), ("enemigo", "traidor", "rival"))
+                if allegiance_state and previous.get("allegiance") and previous.get("allegiance") != allegiance_state:
+                    findings.append(
+                        {
+                            "type": "entity_alignment",
+                            "entity": entity,
+                            "axis": "allegiance",
+                            "previous_state": previous.get("allegiance", ""),
+                            "new_state": allegiance_state,
+                            "first_command": previous.get("command", ""),
+                            "second_command": command,
+                            "first_at": previous.get("recorded_at", ""),
+                            "second_at": timestamp,
+                        }
+                    )
+                if allegiance_state:
+                    previous["allegiance"] = allegiance_state
+
+                previous["command"] = command
+                previous["recorded_at"] = timestamp
+                entity_states[entity] = previous
+
+            if index >= 120:
+                break
+
+        return findings
+
+    def _normalize_timestamp(self, value: str) -> str:
+        text = (value or "").strip()
+        if not text:
+            return ""
+        try:
+            return datetime.fromisoformat(text.replace("Z", "+00:00")).isoformat()
+        except ValueError:
+            return text
+
+    def _extract_entities(self, text: str) -> list[str]:
+        entities: list[str] = []
+        for match in re.findall(r"\b[A-ZÁÉÍÓÚÑ][a-záéíóúñ]+\b", text):
+            if match.lower() in {"el", "la", "los", "las", "un", "una"}:
+                continue
+            if match not in entities:
+                entities.append(match)
+        return entities[:5]
+
+    def _resolve_binary_state(
+        self,
+        lowered_text: str,
+        axis: str,
+        positive_markers: tuple[str, ...],
+        negative_markers: tuple[str, ...],
+    ) -> str | None:
+        if any(marker in lowered_text for marker in positive_markers):
+            return f"{axis}:positive"
+        if any(marker in lowered_text for marker in negative_markers):
+            return f"{axis}:negative"
+        return None
+
+    def _build_retcon_suggestion(self, title: str, contradictions: list[dict[str, str]]) -> str:
+        if not contradictions:
+            return ""
+        first = contradictions[0]
+        contradiction_type = str(first.get("type") or "")
+        if contradiction_type == "entity_lifecycle":
+            return (
+                f"Retcon sugerido para '{title}': aclarar que {first.get('entity') or 'el personaje'} "
+                "atraviesa una muerte aparente seguida de recuperacion verificable en un acto intermedio."
+            )
+        if contradiction_type == "entity_alignment":
+            return (
+                f"Retcon sugerido para '{title}': justificar el cambio de lealtad de "
+                f"{first.get('entity') or 'la entidad'} mediante motivacion, presion externa y evidencia en escena."
+            )
+        return (
+            f"Retcon sugerido para '{title}': reconciliar la tension entre "
+            f"'{first.get('positive')}' y '{first.get('negative')}' con una causa diegetica explicita "
+            "(evento intermedio, identidad encubierta o cambio de perspectiva)."
+        )
 
     def _require_saga_repository(self) -> SagaWorkflowRepositoryPort:
         if not self.saga_repository:

@@ -287,6 +287,24 @@ async def context_graph_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/admin/session-intel")
+async def session_intel_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    runtime_context = _runtime_context(request)
+    return _render(
+        request,
+        "session_intel.html",
+        title=f"{context.settings.app_name} | Session Intelligence",
+        eyebrow="Session Intelligence",
+        headline="Monitor de continuidad por sesion",
+        description=(
+            "Inspecciona memoria incremental, grafo de temas y metricas de coherencia por turno "
+            "desde una sola vista de observabilidad operativa."
+        ),
+        **runtime_context,
+    )
+
+
 @router.get("/ui")
 async def frontend_shell_page(request: Request) -> HTMLResponse:
     context = get_app_context_from_request(request)

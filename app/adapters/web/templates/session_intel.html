@@ -1,0 +1,234 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Runtime texto</span>
+    <strong class="stat-value">{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin modelo local activo' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Runtime vision</span>
+    <strong class="stat-value">{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Binding llama.cpp</span>
+    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.binding_version or 'sin version detectada' }}</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <h2 class="panel-title">Consulta de sesion</h2>
+    <div class="panel-body">
+      <form id="session-intel-form" style="display: grid; gap: 10px;">
+        <label class="control-label" for="session-id">Session ID</label>
+        <input id="session-id" class="control-input" type="text" placeholder="ID de sesion realtime" autocomplete="off">
+
+        <label class="control-label" for="metrics-limit">Limite de metricas</label>
+        <input id="metrics-limit" class="control-input" type="number" min="1" max="200" value="20">
+
+        <label class="control-label" for="auto-refresh">Refresco automatico</label>
+        <select id="auto-refresh" class="control-select">
+          <option value="0">Manual</option>
+          <option value="3000">Cada 3s</option>
+          <option value="5000" selected>Cada 5s</option>
+          <option value="10000">Cada 10s</option>
+        </select>
+
+        <div class="card-actions">
+          <button type="submit" class="save-button">Actualizar ahora</button>
+          <a class="link-button" href="/chat">Abrir chat realtime</a>
+        </div>
+      </form>
+      <p class="small-note" id="session-status">Sin session_id cargado.</p>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Memoria incremental</h2>
+    <div class="panel-body" style="display: grid; gap: 8px;">
+      <p><strong>Ultimo turno:</strong> <span id="memory-turn">-</span></p>
+      <p><strong>Window:</strong> <span id="memory-window">-</span> · <strong>Coherencia:</strong> <span id="memory-coherence">-</span></p>
+      <pre id="memory-summary" style="white-space: pre-wrap; overflow-wrap: anywhere;">Esperando datos...</pre>
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top: 16px;">
+  <h2 class="panel-title">Topic graph por sesion</h2>
+  <div class="panel-body" style="display: grid; gap: 10px;">
+    <div>
+      <strong>Principal:</strong> <span id="topic-primary">-</span><br>
+      <strong>Secundarios:</strong> <span id="topic-secondary">-</span>
+    </div>
+    <div class="route-search" style="margin: 0;">
+      <strong style="display: block; margin-bottom: 10px;">Estados</strong>
+      <div id="topic-states" class="route-rows"></div>
+    </div>
+    <div class="route-search" style="margin: 0;">
+      <strong style="display: block; margin-bottom: 10px;">Relaciones</strong>
+      <div id="topic-edges" class="route-rows"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" style="margin-top: 16px;">
+  <h2 class="panel-title">Metricas por turno</h2>
+  <div class="panel-body route-search" style="margin: 0;">
+    <div id="metrics-list" class="route-rows"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById('session-intel-form');
+  const sessionIdInput = document.getElementById('session-id');
+  const metricsLimitInput = document.getElementById('metrics-limit');
+  const autoRefreshSelect = document.getElementById('auto-refresh');
+  const statusText = document.getElementById('session-status');
+
+  const memoryTurn = document.getElementById('memory-turn');
+  const memoryWindow = document.getElementById('memory-window');
+  const memoryCoherence = document.getElementById('memory-coherence');
+  const memorySummary = document.getElementById('memory-summary');
+
+  const topicPrimary = document.getElementById('topic-primary');
+  const topicSecondary = document.getElementById('topic-secondary');
+  const topicStates = document.getElementById('topic-states');
+  const topicEdges = document.getElementById('topic-edges');
+  const metricsList = document.getElementById('metrics-list');
+  const SESSION_STORAGE_KEY = 'rag2.activeRealtimeSessionId';
+
+  let refreshTimer = null;
+
+  const renderRows = (target, items, renderer) => {
+    target.innerHTML = '';
+    if (!Array.isArray(items) || !items.length) {
+      target.innerHTML = '<div class="route-row"><p class="route-path">Sin datos</p></div>';
+      return;
+    }
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'route-row';
+      row.innerHTML = renderer(item);
+      target.appendChild(row);
+    }
+  };
+
+  const loadIntel = async () => {
+    const sessionId = sessionIdInput.value.trim();
+    if (!sessionId) {
+      statusText.textContent = 'Debes indicar un session_id para consultar continuidad.';
+      return;
+    }
+
+    const limit = Math.max(1, Number(metricsLimitInput.value || 20));
+    statusText.textContent = 'Consultando memoria, temas y metricas...';
+
+    try {
+      const [memoryRes, topicRes, metricsRes] = await Promise.all([
+        fetch(`/api/interaction/sessions/${encodeURIComponent(sessionId)}/memory?limit=${limit}`),
+        fetch(`/api/interaction/sessions/${encodeURIComponent(sessionId)}/topics?limit=${limit}`),
+        fetch(`/api/interaction/sessions/${encodeURIComponent(sessionId)}/metrics?limit=${limit}`),
+      ]);
+
+      const memory = await memoryRes.json();
+      const topics = await topicRes.json();
+      const metrics = await metricsRes.json();
+
+      memoryTurn.textContent = memory.last_turn_id || '-';
+      memoryWindow.textContent = String(memory.sliding_window_size || '-');
+      memoryCoherence.textContent = String(memory.coherence_score ?? '-');
+      memorySummary.textContent = memory.summary_text || 'Sin resumen incremental aun.';
+
+      topicPrimary.textContent = topics.primary_topic || '-';
+      topicSecondary.textContent = (topics.secondary_topics || []).join(', ') || '-';
+
+      renderRows(
+        topicStates,
+        Object.entries(topics.topic_states || {}).map(([topic, state]) => ({ topic, state })),
+        (item) => `<p class="route-path">${item.topic}</p><div class="route-meta"><span class="pill">${item.state}</span></div>`
+      );
+
+      renderRows(
+        topicEdges,
+        topics.edges || [],
+        (edge) => `<p class="route-path">${edge.source || '-'} -> ${edge.target || '-'}</p><div class="route-meta"><span class="pill">${edge.relation || 'link'}</span></div>`
+      );
+
+      renderRows(
+        metricsList,
+        metrics || [],
+        (metric) => {
+          const secondary = Array.isArray(metric.secondary_topics) ? metric.secondary_topics.join(', ') : '';
+          return `<p class="route-path">${metric.turn_id || '-'} · score=${metric.coherence_score ?? '-'}</p>` +
+            `<div class="route-meta"><span class="pill" data-uppercase="false">primary: ${metric.primary_topic || '-'}</span>` +
+            `<span class="pill" data-uppercase="false">secondary: ${secondary || '-'}</span></div>`;
+        }
+      );
+
+      statusText.textContent = `Actualizado para session_id ${sessionId}.`;
+    } catch (error) {
+      statusText.textContent = `Fallo consultando continuidad: ${String(error)}`;
+    }
+  };
+
+  const scheduleAutoRefresh = () => {
+    if (refreshTimer) {
+      clearInterval(refreshTimer);
+      refreshTimer = null;
+    }
+    const interval = Number(autoRefreshSelect.value || 0);
+    if (interval > 0) {
+      refreshTimer = setInterval(() => {
+        loadIntel();
+      }, interval);
+    }
+  };
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    loadIntel();
+  });
+
+  autoRefreshSelect.addEventListener('change', () => {
+    scheduleAutoRefresh();
+  });
+
+  const initializeSessionId = () => {
+    const params = new URLSearchParams(window.location.search);
+    const querySessionId = (params.get('session_id') || '').trim();
+    const rememberedSessionId = (window.localStorage.getItem(SESSION_STORAGE_KEY) || '').trim();
+    const initialSessionId = querySessionId || rememberedSessionId;
+    if (!initialSessionId) {
+      return;
+    }
+    sessionIdInput.value = initialSessionId;
+    window.localStorage.setItem(SESSION_STORAGE_KEY, initialSessionId);
+    loadIntel();
+  };
+
+  sessionIdInput.addEventListener('change', () => {
+    const value = sessionIdInput.value.trim();
+    if (!value) {
+      return;
+    }
+    window.localStorage.setItem(SESSION_STORAGE_KEY, value);
+  });
+
+  initializeSessionId();
+  scheduleAutoRefresh();
+})();
+</script>
+{% endblock %}

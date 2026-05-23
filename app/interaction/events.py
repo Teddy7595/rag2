@@ -20,6 +20,7 @@ class InteractionMessageRecordRequest:
     author: str
     content: str
     channel: str = "chat"
+    session_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,12 @@ class InteractionRealtimeInput:
     identity_id: str | None = None
     context_limit: int = 5
     history_limit: int = 20
+
+
+@dataclass(frozen=True)
+class InteractionSessionRequest:
+    session_id: str
+    limit: int = 20
 
 
 REQUEST_INTERACTION_SUMMARY = EventSpec[InteractionSummaryRequest, dict](
@@ -54,6 +61,30 @@ REQUEST_INTERACTION_MESSAGE_RECORD = EventSpec[InteractionMessageRecordRequest, 
     channel=EventChannel.DOMAIN,
     input_type=InteractionMessageRecordRequest,
     output_type=dict,
+)
+
+REQUEST_INTERACTION_SESSION_MEMORY = EventSpec[InteractionSessionRequest, dict](
+    name="interaction.session.memory.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_SESSION_TOPIC_GRAPH = EventSpec[InteractionSessionRequest, dict](
+    name="interaction.session.topic_graph.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_TURN_METRICS = EventSpec[InteractionSessionRequest, list](
+    name="interaction.session.turn_metrics.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionRequest,
+    output_type=list,
 )
 
 PUBLISH_INTERACTION_MESSAGE_RECORDED = EventSpec[dict, dict](
@@ -109,6 +140,7 @@ __all__ = [
     "InteractionHistoryRequest",
     "InteractionMessageRecordRequest",
     "InteractionRealtimeInput",
+    "InteractionSessionRequest",
     "InteractionSummaryRequest",
     "PUBLISH_INTERACTION_MESSAGE_RECORDED",
     "PUBLISH_INTERACTION_REALTIME_MESSAGE_RECEIVED",
@@ -118,5 +150,8 @@ __all__ = [
     "PUBLISH_INTERACTION_REALTIME_TURN_COMPLETED",
     "REQUEST_INTERACTION_MESSAGE_RECORD",
     "REQUEST_INTERACTION_MESSAGES",
+    "REQUEST_INTERACTION_SESSION_MEMORY",
+    "REQUEST_INTERACTION_SESSION_TOPIC_GRAPH",
+    "REQUEST_INTERACTION_TURN_METRICS",
     "REQUEST_INTERACTION_SUMMARY",
 ]

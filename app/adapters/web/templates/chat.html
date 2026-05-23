@@ -312,6 +312,7 @@
       <span class="chat-chip">Historia persistente</span>
       <span class="chat-chip">Contexto por knowledge</span>
       <span class="chat-chip">Futuro runtime local llama.cpp</span>
+      <a class="chat-chip" id="chat-session-intel-link" href="/admin/session-intel">Monitor de sesion</a>
     </div>
     <form class="chat-form" id="chat-form">
       <div class="chat-vision-panel">
@@ -344,10 +345,35 @@
   const imageFile = document.getElementById('chat-image-file');
   const imagePreview = document.getElementById('chat-image-preview');
   const visionPrompt = document.getElementById('chat-vision-prompt');
+  const sessionIntelLink = document.getElementById('chat-session-intel-link');
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
+  const SESSION_STORAGE_KEY = 'rag2.activeRealtimeSessionId';
   let typingRow = null;
   let streamedTokens = [];
+  let activeSessionId = '';
+
+  const persistSessionId = (sessionId) => {
+    if (!sessionId) {
+      return;
+    }
+    activeSessionId = sessionId;
+    window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
+    if (sessionIntelLink) {
+      sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
+    }
+  };
+
+  const preloadSessionLink = () => {
+    const remembered = window.localStorage.getItem(SESSION_STORAGE_KEY) || '';
+    if (!remembered || !sessionIntelLink) {
+      return;
+    }
+    activeSessionId = remembered;
+    sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(remembered)}`;
+  };
+
+  preloadSessionLink();
 
   const scrollToBottom = () => {
     log.scrollTop = log.scrollHeight;
@@ -428,6 +454,7 @@
     const packet = JSON.parse(event.data);
     switch (packet.type) {
       case 'session_started':
+        persistSessionId(String(packet.session_id || ''));
         help.textContent = `Sesion ${packet.session_id.slice(0, 8)} activa.`;
         break;
       case 'welcome':
@@ -453,6 +480,9 @@
       case 'turn_complete':
         clearTypingRow();
         send.disabled = false;
+        if (packet.session_id) {
+          persistSessionId(String(packet.session_id));
+        }
         help.textContent = `Turno completado. Historial persistido: ${packet.history_count} mensajes.`;
         break;
       case 'error':

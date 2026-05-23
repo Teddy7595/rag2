@@ -86,6 +86,17 @@ class OperationsSagaDebateRequest:
         self.persist_memory = persist_memory
 
 
+class OperationsSagaConsistencyRequest:
+    def __init__(self, saga_id: str) -> None:
+        self.saga_id = saga_id
+
+
+class OperationsSagaRetconRequest:
+    def __init__(self, saga_id: str, apply: bool = False) -> None:
+        self.saga_id = saga_id
+        self.apply = apply
+
+
 REQUEST_OPERATIONS_STATUS = EventSpec[OperationsStatusRequest, dict](
     name="operations.status.request",
     kind=EventKind.REQUEST,
@@ -158,6 +169,22 @@ REQUEST_OPERATIONS_SAGA_DEBATE = EventSpec[OperationsSagaDebateRequest, dict](
     output_type=dict,
 )
 
+REQUEST_OPERATIONS_SAGA_CONSISTENCY = EventSpec[OperationsSagaConsistencyRequest, dict](
+    name="operations.saga.consistency.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=OperationsSagaConsistencyRequest,
+    output_type=dict,
+)
+
+REQUEST_OPERATIONS_SAGA_RETCON = EventSpec[OperationsSagaRetconRequest, dict](
+    name="operations.saga.retcon.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=OperationsSagaRetconRequest,
+    output_type=dict,
+)
+
 PUBLISH_OPERATIONS_SAGA_STARTED = EventSpec[dict, dict](
     name="operations.saga.started",
     kind=EventKind.PUBLISH,
@@ -205,7 +232,9 @@ __all__ = [
     "OperationsSagaCommandAppendRequest",
     "OperationsSagaDeleteRequest",
     "OperationsSagaDebateRequest",
+    "OperationsSagaConsistencyRequest",
     "OperationsSagaDetailRequest",
+        "OperationsSagaRetconRequest",
     "OperationsSagaListRequest",
     "OperationsSagaStartRequest",
     "OperationsSagaUpdateRequest",
@@ -216,7 +245,9 @@ __all__ = [
     "PUBLISH_OPERATIONS_SAGA_UPDATED",
     "REQUEST_OPERATIONS_AUDIT_LOG",
     "REQUEST_OPERATIONS_SAGA_COMMAND_APPEND",
+    "REQUEST_OPERATIONS_SAGA_CONSISTENCY",
     "REQUEST_OPERATIONS_SAGA_DEBATE",
+        "REQUEST_OPERATIONS_SAGA_RETCON",
     "REQUEST_OPERATIONS_SAGA_DELETE",
     "REQUEST_OPERATIONS_SAGA_DETAIL",
     "REQUEST_OPERATIONS_SAGA_LIST",

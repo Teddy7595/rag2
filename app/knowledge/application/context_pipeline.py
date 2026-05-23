@@ -11,7 +11,11 @@ from app.knowledge.domain import Identity, KnowledgeEntry
 
 
 def _normalize_text(raw_text: str) -> str:
-    return " ".join(raw_text.lower().split())
+    text = raw_text.lower()
+    text = re.sub(r"```[\s\S]*?```", " ", text)
+    text = re.sub(r"`{1,3}", " ", text)
+    text = re.sub(r"[*_~#>{2,}|]", " ", text)
+    return " ".join(text.split())
 
 
 def _tokenize(raw_text: str) -> tuple[str, ...]:
@@ -311,6 +315,7 @@ class ContextRetrieverRuntime:
         entries = self.knowledge_repository.list_all()
         matches = [self._score_knowledge_entry(entry, query_tokens, query_embedding) for entry in entries]
         ranked = sorted(matches, key=lambda match: (match.score, match.metadata.get("created_at", ""), match.label), reverse=True)
+        ranked = list(self._rerank_knowledge_diversity(ranked, route.limit))
 
         if not any(match.score > 0 for match in ranked):
             recent_entries = self.knowledge_repository.list_recent(route.limit)
@@ -327,6 +332,27 @@ class ContextRetrieverRuntime:
             )
 
         return tuple(ranked[: route.limit])
+
+    def _rerank_knowledge_diversity(self, ranked: list[ContextMatch], limit: int) -> tuple[ContextMatch, ...]:
+        selected: list[ContextMatch] = []
+        seen_docs: set[str] = set()
+        for match in ranked:
+            document_id = str(match.metadata.get("document_id") or "")
+            if document_id and document_id in seen_docs and len(selected) >= max(1, limit // 2):
+                continue
+            selected.append(match)
+            if document_id:
+                seen_docs.add(document_id)
+            if len(selected) >= limit:
+                break
+        if len(selected) < limit:
+            for match in ranked:
+                if match in selected:
+                    continue
+                selected.append(match)
+                if len(selected) >= limit:
+                    break
+        return tuple(selected)
 
     def _retrieve_engrams(self, query_tokens: tuple[str, ...], route: QueryRoutingPlan) -> tuple[ContextMatch, ...]:
         identities = self.engram_repository.list_all() if self.engram_repository else []
@@ -380,6 +406,11 @@ class ContextRetrieverRuntime:
             if token in content_tokens:
                 score += 1.0
 
+        token_union = title_tokens | tag_tokens | content_tokens
+        if query_tokens:
+            coverage = len([token for token in query_tokens if token in token_union]) / len(query_tokens)
+            score += coverage * 3.0
+
         embedding_score = _cosine_similarity(query_embedding, list(entry.embedding)) if entry.embedding else 0.0
         score += embedding_score * 4.0
 
@@ -387,6 +418,8 @@ class ContextRetrieverRuntime:
             score += 0.5
         elif entry.source_type == "document_chunk":
             score += 1.5
+        elif entry.source_type == "document_image":
+            score += 1.0
 
         label = entry.document_title or entry.title
         if entry.source_type == "document_chunk":

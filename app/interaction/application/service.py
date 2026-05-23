@@ -5,6 +5,7 @@ from app.interaction.domain import ConversationMessage
 from app.interaction.events import (
     InteractionHistoryRequest,
     InteractionMessageRecordRequest,
+    InteractionSessionRequest,
     InteractionSummaryRequest,
     PUBLISH_INTERACTION_MESSAGE_RECORDED,
 )
@@ -40,6 +41,7 @@ class InteractionService:
             author=request.author,
             content=request.content,
             channel=request.channel,
+            session_id=request.session_id,
         )
         persisted = self.repository.save(message)
         payload = persisted.as_dict()
@@ -50,3 +52,26 @@ class InteractionService:
             metadata={"author": message.author, "channel": message.channel},
         )
         return payload
+
+    def session_memory(self, request: InteractionSessionRequest) -> dict[str, object]:
+        return self.repository.get_session_memory(request.session_id) or {
+            "session_id": request.session_id,
+            "summary_text": "",
+            "sliding_window_size": max(1, request.limit),
+            "last_turn_id": None,
+            "coherence_score": 0.0,
+            "updated_at": None,
+        }
+
+    def session_topic_graph(self, request: InteractionSessionRequest) -> dict[str, object]:
+        return self.repository.get_session_topic_graph(request.session_id) or {
+            "session_id": request.session_id,
+            "primary_topic": "",
+            "secondary_topics": [],
+            "topic_states": {},
+            "edges": [],
+            "updated_at": None,
+        }
+
+    def turn_metrics(self, request: InteractionSessionRequest) -> list[dict[str, object]]:
+        return self.repository.list_turn_metrics(request.session_id, limit=request.limit)

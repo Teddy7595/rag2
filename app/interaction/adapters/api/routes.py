@@ -11,8 +11,12 @@ from app.interaction.events import (
     InteractionMessageRecordRequest,
     InteractionRealtimeInput,
     InteractionSummaryRequest,
+    InteractionSessionRequest,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
+    REQUEST_INTERACTION_SESSION_MEMORY,
+    REQUEST_INTERACTION_SESSION_TOPIC_GRAPH,
+    REQUEST_INTERACTION_TURN_METRICS,
     REQUEST_INTERACTION_SUMMARY,
 )
 
@@ -21,6 +25,7 @@ class InteractionMessageInput(BaseModel):
     author: str
     content: str
     channel: str = "chat"
+    session_id: str | None = None
 
 
 class InteractionRealtimeInputModel(BaseModel):
@@ -79,4 +84,34 @@ async def stream_chat(request: Request, payload: InteractionRealtimeInputModel) 
         stream,
         media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
+    )
+
+
+@router.get("/sessions/{session_id}/memory")
+async def session_memory(request: Request, session_id: str, limit: int = 20) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_MEMORY,
+        InteractionSessionRequest(session_id=session_id, limit=limit),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@router.get("/sessions/{session_id}/topics")
+async def session_topic_graph(request: Request, session_id: str, limit: int = 20) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_TOPIC_GRAPH,
+        InteractionSessionRequest(session_id=session_id, limit=limit),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@router.get("/sessions/{session_id}/metrics")
+async def session_turn_metrics(request: Request, session_id: str, limit: int = 20) -> list[dict[str, object]]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_TURN_METRICS,
+        InteractionSessionRequest(session_id=session_id, limit=limit),
+        source_module="interaction.adapters.api.routes",
     )

@@ -25,6 +25,17 @@ def _tokenize(text: str) -> tuple[str, ...]:
     return tuple(tokens)
 
 
+def _clean_ingested_text(raw_text: str) -> str:
+    text = raw_text.replace("\ufeff", " ")
+    text = re.sub(r"```[\s\S]*?```", " ", text)
+    text = re.sub(r"`{1,3}", " ", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"\[[^\]]*\]\([^)]*\)", " ", text)
+    text = re.sub(r"(^|\s)[*_~#>{2,}|]+", " ", text)
+    text = re.sub(r"\s+", " ", text)
+    return text.strip()
+
+
 def _embedding_from_tokens(tokens: tuple[str, ...], dimensions: int = 64) -> list[float]:
     vector = [0.0] * dimensions
     for token in tokens:
@@ -62,9 +73,29 @@ def _read_pdf_pages(pdf_path: str) -> list[str]:
     reader = PdfReader(pdf_path)
     pages: list[str] = []
     for page in reader.pages:
-        extracted = page.extract_text() or ""
+        extracted = _clean_ingested_text(page.extract_text() or "")
         pages.append(extracted.strip())
     return pages
+
+
+def _read_pdf_image_metadata(pdf_path: str) -> list[dict[str, object]]:
+    reader = PdfReader(pdf_path)
+    payload: list[dict[str, object]] = []
+    for page_index, page in enumerate(reader.pages, start=1):
+        images = getattr(page, "images", [])
+        for image_index, image in enumerate(images, start=1):
+            name = str(getattr(image, "name", f"image_{page_index}_{image_index}"))
+            data = getattr(image, "data", None)
+            size = len(data) if isinstance(data, (bytes, bytearray)) else 0
+            payload.append(
+                {
+                    "page_number": page_index,
+                    "image_index": image_index,
+                    "name": name,
+                    "bytes": size,
+                }
+            )
+    return payload
 
 
 def _stable_document_id(title: str, source_uri: str, content: str) -> str:
@@ -79,6 +110,7 @@ class DocumentIngestionService:
     def ingest(self, request: DocumentIngestRequest) -> dict[str, object]:
         source_uri = request.source_uri or request.pdf_path or "memory://document"
         pages = self._extract_pages(request)
+        image_artifacts = self._extract_pdf_images(request)
         if not pages:
             raise ValueError("Document did not contain any extractable text")
 
@@ -133,11 +165,37 @@ class DocumentIngestionService:
         if chunk_records:
             self._touch_document_chunk_count(saved_document, len(chunk_records))
 
+        image_records: list[KnowledgeEntry] = []
+        for artifact in image_artifacts:
+            page_number = int(artifact.get("page_number") or 0)
+            image_index = int(artifact.get("image_index") or 0)
+            image_name = str(artifact.get("name") or f"image_{page_number}_{image_index}")
+            byte_size = int(artifact.get("bytes") or 0)
+            content = f"PDF image artifact '{image_name}' on page {page_number} ({byte_size} bytes)."
+            image_entry = KnowledgeEntry(
+                id=BaseEntity.build_stable_id("document_image", f"{document_id}:{page_number}:{image_index}:{image_name}"),
+                title=f"{request.title} :: image p{page_number} #{image_index}",
+                content=content,
+                tags=self._base_tags(request.tags) + ["document", "image", f"page:{page_number}"],
+                source_type="document_image",
+                source_uri=source_uri,
+                document_id=document_id,
+                document_title=request.title,
+                page_number=page_number,
+                chunk_index=image_index,
+                chunk_count=None,
+                source_chars=len(content),
+                embedding=_embedding_from_tokens(_tokenize(content)),
+            )
+            image_records.append(self.repository.save(image_entry))
+
         return {
             "document": saved_document.as_dict(),
             "chunks": [chunk.as_dict() for chunk in chunk_records],
+            "images": [image.as_dict() for image in image_records],
             "page_count": page_count,
             "chunk_count": len(chunk_records),
+            "image_count": len(image_records),
         }
 
     def list_documents(self, request: DocumentListRequest) -> list[dict[str, object]]:
@@ -170,13 +228,25 @@ class DocumentIngestionService:
             return pages
 
         if request.raw_text is not None:
-            return [request.raw_text]
+            return [_clean_ingested_text(request.raw_text)]
 
         raise ValueError("Either raw_text or pdf_path must be provided")
 
     @staticmethod
     def _base_tags(tags: tuple[str, ...]) -> list[str]:
         return [tag for tag in tags if tag]
+
+    @staticmethod
+    def _extract_pdf_images(request: DocumentIngestRequest) -> list[dict[str, object]]:
+        if not request.pdf_path:
+            return []
+        pdf_path = Path(request.pdf_path)
+        if not pdf_path.exists():
+            return []
+        try:
+            return _read_pdf_image_metadata(str(pdf_path))
+        except Exception:
+            return []
 
     def _touch_document_chunk_count(self, document: KnowledgeEntry, chunk_count: int) -> None:
         document.chunk_count = chunk_count

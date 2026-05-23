@@ -70,6 +70,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/admin",
         "/admin/runtime-ai",
         "/admin/context-graph",
+        "/admin/session-intel",
         "/chat",
         "/admin/routes",
         "/admin/models",
@@ -77,10 +78,15 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/messages",
         "/api/interaction/summary",
         "/api/interaction/stream",
+        "/api/interaction/sessions/{session_id}/memory",
+        "/api/interaction/sessions/{session_id}/topics",
+        "/api/interaction/sessions/{session_id}/metrics",
         "/api/operations/sagas",
         "/api/operations/sagas/{saga_id}",
         "/api/operations/sagas/{saga_id}/commands",
+        "/api/operations/sagas/{saga_id}/consistency",
         "/api/operations/sagas/{saga_id}/debate",
+        "/api/operations/sagas/{saga_id}/retcon",
         "/api/storage/overview",
         "/api/storage/public",
         "/api/storage/uploads",
@@ -127,6 +133,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         chat_response = client.get("/chat")
         assert chat_response.status_code == 200
         assert "Chat realtime" in chat_response.text
+        assert "/admin/session-intel" in chat_response.text
 
         models_response = client.get("/admin/models")
         assert models_response.status_code == 200
@@ -139,6 +146,11 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         context_graph_admin_response = client.get("/admin/context-graph")
         assert context_graph_admin_response.status_code == 200
         assert "Laboratorio de coherencia" in context_graph_admin_response.text
+
+        session_intel_admin_response = client.get("/admin/session-intel")
+        assert session_intel_admin_response.status_code == 200
+        assert "Monitor de continuidad por sesion" in session_intel_admin_response.text
+        assert "rag2.activeRealtimeSessionId" in session_intel_admin_response.text
 
         frontend_response = client.get("/ui-assets/")
         assert frontend_response.status_code == 200
@@ -463,6 +475,46 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_append_payload["appended"] is True
         assert saga_append_payload["saga"]["command_count"] == 2
 
+        contradiction_append_one = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/commands",
+            json={"command": "Atlas vive tras el duelo final", "note": "estado inicial"},
+        )
+        assert contradiction_append_one.status_code == 200
+        assert contradiction_append_one.json()["appended"] is True
+
+        contradiction_append_two = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/commands",
+            json={"command": "Atlas muere en el mismo duelo final", "note": "giro conflictivo"},
+        )
+        assert contradiction_append_two.status_code == 200
+        assert contradiction_append_two.json()["appended"] is True
+
+        consistency_response = client.get(f"/api/operations/sagas/{saga_payload['id']}/consistency")
+        assert consistency_response.status_code == 200
+        consistency_payload = consistency_response.json()
+        assert consistency_payload["found"] is True
+        assert consistency_payload["timeline_conflict_count"] >= 1
+        assert consistency_payload["coherence_score"] < 1.0
+        assert consistency_payload["retcon_suggestion"]
+
+        retcon_preview_response = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/retcon",
+            json={"apply": False},
+        )
+        assert retcon_preview_response.status_code == 200
+        retcon_preview_payload = retcon_preview_response.json()
+        assert retcon_preview_payload["applied"] is False
+        assert retcon_preview_payload["retcon"]
+
+        retcon_apply_response = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/retcon",
+            json={"apply": True},
+        )
+        assert retcon_apply_response.status_code == 200
+        retcon_apply_payload = retcon_apply_response.json()
+        assert retcon_apply_payload["applied"] is True
+        assert retcon_apply_payload["result"]["appended"] is True
+
         saga_debate_response = client.post(
             f"/api/operations/sagas/{saga_payload['id']}/debate",
             json={
@@ -475,14 +527,14 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_debate_response.status_code == 200
         saga_debate_payload = saga_debate_response.json()
         assert saga_debate_payload["debated"] is True
-        assert saga_debate_payload["saga"]["command_count"] >= 3
+        assert saga_debate_payload["saga"]["command_count"] >= 6
         assert saga_debate_payload["memory"]["title"].startswith("Debate saga")
 
         saga_detail_response = client.get(f"/api/operations/sagas/{saga_payload['id']}")
         assert saga_detail_response.status_code == 200
         saga_detail = saga_detail_response.json()
         assert saga_detail["title"] == "Saga Atlas"
-        assert saga_detail["command_count"] >= 3
+        assert saga_detail["command_count"] >= 6
         assert saga_detail["last_command"] in {
             "avanza al siguiente acto",
             "Debatir el conflicto principal y alternativas del antagonista",
@@ -626,6 +678,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_detail_again_payload["title"] == "Saga Atlas Renacida"
         assert saga_detail_again_payload["command_count"] >= 4
 
+        consistency_again = client_again.get(f"/api/operations/sagas/{saga_payload['id']}/consistency")
+        assert consistency_again.status_code == 200
+        assert consistency_again.json()["found"] is True
+
         interaction_messages_response = client_again.get("/api/interaction/messages", params={"limit": 10})
         assert interaction_messages_response.status_code == 200
         assert any(message["content"] == "Hola" for message in interaction_messages_response.json())
@@ -701,9 +757,12 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
 
         with client.websocket_connect("/ws/chat") as websocket:
             bootstrap_types: list[str] = []
+            realtime_session_id = ""
             for _ in range(8):
                 packet = websocket.receive_json()
                 bootstrap_types.append(str(packet["type"]))
+                if packet["type"] == "session_started":
+                    realtime_session_id = str(packet.get("session_id") or "")
                 if packet["type"] == "welcome":
                     break
 
@@ -733,6 +792,28 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
             assert "assistant_message" in turn_types
             assert "Contexto recuperado" in assistant_message_text
             assert "Base de conocimiento realtime" in assistant_message_text
+
+        assert realtime_session_id
+
+        memory_response = client.get(f"/api/interaction/sessions/{realtime_session_id}/memory", params={"limit": 20})
+        assert memory_response.status_code == 200
+        memory_payload = memory_response.json()
+        assert memory_payload["session_id"] == realtime_session_id
+        assert memory_payload["summary_text"]
+        assert memory_payload["last_turn_id"]
+
+        topics_response = client.get(f"/api/interaction/sessions/{realtime_session_id}/topics", params={"limit": 20})
+        assert topics_response.status_code == 200
+        topics_payload = topics_response.json()
+        assert topics_payload["session_id"] == realtime_session_id
+        assert isinstance(topics_payload["edges"], list)
+
+        metrics_response = client.get(f"/api/interaction/sessions/{realtime_session_id}/metrics", params={"limit": 20})
+        assert metrics_response.status_code == 200
+        metrics_payload = metrics_response.json()
+        assert len(metrics_payload) >= 1
+        assert any(metric["session_id"] == realtime_session_id for metric in metrics_payload)
+        assert any((metric.get("coherence_score") or 0) >= 0 for metric in metrics_payload)
 
         sse_response = client.post(
             "/api/interaction/stream",
@@ -773,3 +854,15 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         assert summary_response.status_code == 200
         summary_payload = summary_response.json()
         assert summary_payload["channel_counts"]["assistant"] >= 2
+
+        memory_again = client_again.get(f"/api/interaction/sessions/{realtime_session_id}/memory", params={"limit": 20})
+        assert memory_again.status_code == 200
+        assert memory_again.json()["summary_text"]
+
+        topics_again = client_again.get(f"/api/interaction/sessions/{realtime_session_id}/topics", params={"limit": 20})
+        assert topics_again.status_code == 200
+        assert isinstance(topics_again.json()["edges"], list)
+
+        metrics_again = client_again.get(f"/api/interaction/sessions/{realtime_session_id}/metrics", params={"limit": 20})
+        assert metrics_again.status_code == 200
+        assert len(metrics_again.json()) >= 1

@@ -40,6 +40,44 @@ def _packet(packet_type: str, *, session_id: str, **payload: object) -> dict[str
     return {"type": packet_type, "session_id": session_id, **payload}
 
 
+def _unique(items: list[str]) -> list[str]:
+    seen: set[str] = set()
+    ordered: list[str] = []
+    for item in items:
+        normalized = item.strip().lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        ordered.append(item.strip())
+    return ordered
+
+
+def _incremental_summary(previous: str, user_text: str, assistant_text: str, *, max_chars: int = 1400) -> str:
+    blocks = [
+        part.strip()
+        for part in [
+            previous.strip(),
+            f"Usuario: {user_text.strip()}",
+            f"Asistente: {assistant_text.strip()[:360]}",
+        ]
+        if part and part.strip()
+    ]
+    summary = "\n".join(blocks)
+    if len(summary) <= max_chars:
+        return summary
+    return summary[-max_chars:]
+
+
+def _coherence_score(main_idea: str, secondary_ideas: list[str], context_text: str, assistant_reply: str) -> float:
+    targets = _extract_topics(" ".join([main_idea] + secondary_ideas + [context_text]), max_items=8)
+    if not targets:
+        return 0.5
+    haystack = set(_extract_topics(assistant_reply, max_items=30))
+    overlap = len([token for token in targets if token in haystack])
+    ratio = overlap / max(1, len(targets))
+    return round(max(0.0, min(1.0, ratio)), 3)
+
+
 def _extract_topics(text: str, *, max_items: int = 5) -> list[str]:
     stopwords = {
         "de",
@@ -229,6 +267,7 @@ class RealtimeChatService:
                 author=input_data.author,
                 content=input_data.content,
                 channel=input_data.channel,
+                session_id=session_id,
             )
         )
         self.event_bus.publish(
@@ -250,6 +289,7 @@ class RealtimeChatService:
                 author=assistant_author,
                 content=assistant_reply,
                 channel="assistant",
+                session_id=session_id,
             )
         )
         self.event_bus.publish(
@@ -282,6 +322,16 @@ class RealtimeChatService:
             },
         )
 
+        topic_data = self._extract_turn_topics(input_data.content, assistant_reply, context_preview)
+        self._persist_session_intelligence(
+            session_id=session_id,
+            turn_id=turn_id,
+            user_input=input_data.content,
+            assistant_reply=assistant_reply,
+            topic_data=topic_data,
+            context_preview=context_preview,
+        )
+
         return RealtimeTurnResult(
             session_id=session_id,
             turn_id=turn_id,
@@ -291,6 +341,89 @@ class RealtimeChatService:
             assistant_message=assistant_message,
             assistant_reply=assistant_reply,
             history_messages=history_messages,
+        )
+
+    def _extract_turn_topics(
+        self,
+        user_input: str,
+        assistant_reply: str,
+        context_preview: dict[str, object],
+    ) -> dict[str, object]:
+        context_pack = context_preview.get("context_pack", {}) if isinstance(context_preview, dict) else {}
+        route_payload = context_pack.get("route", {}) if isinstance(context_pack, dict) else {}
+        route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
+        candidates = _unique(
+            _extract_topics(user_input, max_items=6)
+            + [str(item).strip() for item in route_keywords if str(item).strip()]
+            + _extract_topics(assistant_reply, max_items=6)
+        )
+        primary = candidates[0] if candidates else ""
+        secondary = candidates[1:5] if len(candidates) > 1 else []
+        return {"primary": primary, "secondary": secondary}
+
+    def _persist_session_intelligence(
+        self,
+        *,
+        session_id: str,
+        turn_id: str,
+        user_input: str,
+        assistant_reply: str,
+        topic_data: dict[str, object],
+        context_preview: dict[str, object],
+    ) -> None:
+        repository = self.interaction_service.repository
+        memory = repository.get_session_memory(session_id) or {}
+        previous_summary = str(memory.get("summary_text") or "")
+
+        primary_topic = str(topic_data.get("primary") or "")
+        secondary_topics = [str(item).strip() for item in list(topic_data.get("secondary") or []) if str(item).strip()]
+        context_text = str(context_preview.get("context_text") or "")
+        coherence = _coherence_score(primary_topic, secondary_topics, context_text, assistant_reply)
+        summary_text = _incremental_summary(previous_summary, user_input, assistant_reply)
+
+        repository.save_session_memory(
+            session_id,
+            summary_text=summary_text,
+            sliding_window_size=20,
+            last_turn_id=turn_id,
+            coherence_score=coherence,
+        )
+
+        graph = repository.get_session_topic_graph(session_id) or {}
+        previous_primary = str(graph.get("primary_topic") or "")
+        existing_secondary = [str(item).strip() for item in list(graph.get("secondary_topics") or []) if str(item).strip()]
+        merged_secondary = _unique(existing_secondary + secondary_topics)
+        topic_states = {str(k): str(v) for k, v in dict(graph.get("topic_states") or {}).items()}
+        if primary_topic:
+            topic_states[primary_topic] = "active"
+        for topic in merged_secondary:
+            topic_states.setdefault(topic, "tracked")
+
+        edges = [dict(edge) for edge in list(graph.get("edges") or []) if isinstance(edge, dict)]
+        if previous_primary and primary_topic and previous_primary != primary_topic:
+            edges.append({"source": previous_primary, "target": primary_topic, "relation": "shift"})
+        for topic in secondary_topics:
+            if primary_topic and topic != primary_topic:
+                edges.append({"source": primary_topic, "target": topic, "relation": "supports"})
+
+        repository.save_session_topic_graph(
+            session_id,
+            primary_topic=primary_topic or previous_primary,
+            secondary_topics=merged_secondary,
+            topic_states=topic_states,
+            edges=edges[-40:],
+        )
+
+        trace = context_preview.get("context_pack", {}).get("trace", {}) if isinstance(context_preview, dict) else {}
+        repository.save_turn_metric(
+            turn_id=turn_id,
+            session_id=session_id,
+            user_input=user_input,
+            assistant_reply=assistant_reply,
+            primary_topic=primary_topic,
+            secondary_topics=secondary_topics,
+            coherence_score=coherence,
+            context_trace=trace if isinstance(trace, dict) else {},
         )
 
     def close_session(self, session_id: str, *, reason: str = "client_disconnect") -> None:
