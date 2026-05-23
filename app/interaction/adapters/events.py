@@ -5,11 +5,14 @@ from app.core.events import EventEnvelope
 from app.interaction.application import InteractionService
 from app.interaction.events import (
     REQUEST_INTERACTION_CONTEXT_TRACES,
+    REQUEST_INTERACTION_DELETED_SESSIONS,
     REQUEST_INTERACTION_MESSAGE_HIDE,
     REQUEST_INTERACTION_MESSAGE_MEMORIZE,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
     REQUEST_INTERACTION_SESSIONS,
+    REQUEST_INTERACTION_SESSION_DELETE,
+    REQUEST_INTERACTION_SESSION_RESTORE,
     REQUEST_INTERACTION_SESSION_REWIND,
     REQUEST_INTERACTION_SESSION_MEMORY,
     REQUEST_INTERACTION_SESSION_MESSAGES,
@@ -66,6 +69,15 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     def handle_session_rewind(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.rewind_session(envelope.payload)
 
+    def handle_session_delete(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.delete_session(envelope.payload)
+
+    def handle_deleted_sessions(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
+        return service.list_deleted_sessions(envelope.payload)
+
+    def handle_session_restore(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.restore_session(envelope.payload)
+
     def handle_context_traces(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
         return service.context_traces(envelope.payload)
 
@@ -80,6 +92,9 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_CONDITIONS, handle_session_conditions)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_CONDITIONS_SET, handle_session_conditions_set)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_REWIND, handle_session_rewind)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_DELETE, handle_session_delete)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_DELETED_SESSIONS, handle_deleted_sessions)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_RESTORE, handle_session_restore)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_TOPIC_GRAPH, handle_session_topic_graph)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_TURN_METRICS, handle_turn_metrics)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_CONTEXT_TRACES, handle_context_traces)

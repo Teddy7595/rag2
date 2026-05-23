@@ -21,6 +21,11 @@ class InteractionSessionsRequest:
 
 
 @dataclass(frozen=True)
+class InteractionDeletedSessionsRequest:
+    limit: int = 20
+
+
+@dataclass(frozen=True)
 class InteractionMessageRecordRequest:
     author: str
     content: str
@@ -63,6 +68,12 @@ class InteractionSessionRewindRequest:
 
 
 @dataclass(frozen=True)
+class InteractionSessionDeleteRequest:
+    session_id: str
+    hard_delete: bool = False
+
+
+@dataclass(frozen=True)
 class InteractionContextTraceRequest:
     trace_id: str | None = None
     session_id: str | None = None
@@ -91,6 +102,14 @@ REQUEST_INTERACTION_SESSIONS = EventSpec[InteractionSessionsRequest, list](
     kind=EventKind.REQUEST,
     channel=EventChannel.DOMAIN,
     input_type=InteractionSessionsRequest,
+    output_type=list,
+)
+
+REQUEST_INTERACTION_DELETED_SESSIONS = EventSpec[InteractionDeletedSessionsRequest, list](
+    name="interaction.sessions.deleted.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionDeletedSessionsRequest,
     output_type=list,
 )
 
@@ -174,6 +193,22 @@ REQUEST_INTERACTION_SESSION_REWIND = EventSpec[InteractionSessionRewindRequest, 
     output_type=dict,
 )
 
+REQUEST_INTERACTION_SESSION_DELETE = EventSpec[InteractionSessionDeleteRequest, dict](
+    name="interaction.session.delete.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionDeleteRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_SESSION_RESTORE = EventSpec[InteractionSessionDeleteRequest, dict](
+    name="interaction.session.restore.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionDeleteRequest,
+    output_type=dict,
+)
+
 REQUEST_INTERACTION_CONTEXT_TRACES = EventSpec[InteractionContextTraceRequest, list](
     name="interaction.context_traces.request",
     kind=EventKind.REQUEST,
@@ -238,6 +273,8 @@ __all__ = [
     "InteractionSessionsRequest",
     "InteractionMessageActionRequest",
     "InteractionRealtimeInput",
+    "InteractionDeletedSessionsRequest",
+    "InteractionSessionDeleteRequest",
     "InteractionSessionRewindRequest",
     "InteractionSessionConditionsRequest",
     "InteractionSessionRequest",
@@ -254,6 +291,9 @@ __all__ = [
     "REQUEST_INTERACTION_MESSAGE_RECORD",
     "REQUEST_INTERACTION_MESSAGES",
     "REQUEST_INTERACTION_SESSIONS",
+    "REQUEST_INTERACTION_DELETED_SESSIONS",
+    "REQUEST_INTERACTION_SESSION_DELETE",
+    "REQUEST_INTERACTION_SESSION_RESTORE",
     "REQUEST_INTERACTION_SESSION_CONDITIONS",
     "REQUEST_INTERACTION_SESSION_CONDITIONS_SET",
     "REQUEST_INTERACTION_SESSION_MESSAGES",

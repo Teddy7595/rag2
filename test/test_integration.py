@@ -118,6 +118,9 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/messages/{message_id}/memorize",
         "/api/interaction/summary",
         "/api/interaction/sessions",
+        "/api/interaction/sessions/deleted",
+        "/api/interaction/sessions/{session_id}",
+        "/api/interaction/sessions/{session_id}/restore",
         "/api/interaction/stream",
         "/api/interaction/sessions/{session_id}/rewind/{message_id}",
         "/api/interaction/sessions/{session_id}/memory",
@@ -1061,6 +1064,94 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         metrics_again = client_again.get(f"/api/interaction/sessions/{realtime_session_id}/metrics", params={"limit": 20})
         assert metrics_again.status_code == 200
         assert len(metrics_again.json()) >= 1
+
+
+def test_delete_session_purges_related_interaction_data(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+    session_id = "delete-room"
+
+    with TestClient(app) as client:
+        seed_user = client.post(
+            "/api/interaction/messages",
+            json={"author": "user", "content": "Mensaje semilla", "channel": "chat", "session_id": session_id},
+        )
+        assert seed_user.status_code == 200
+
+        set_conditions = client.put(
+            f"/api/interaction/sessions/{session_id}/conditions",
+            json={"world_rules": "Regla temporal para borrar."},
+        )
+        assert set_conditions.status_code == 200
+
+        with client.websocket_connect(f"/ws/chat?session_id={session_id}") as websocket:
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "welcome":
+                    break
+
+            websocket.send_json(
+                {
+                    "content": "Genera trazas y metricas para este chat",
+                    "context_limit": 5,
+                    "history_limit": 5,
+                }
+            )
+
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "turn_complete":
+                    break
+
+        delete_response = client.delete(f"/api/interaction/sessions/{session_id}")
+        assert delete_response.status_code == 200
+        delete_payload = delete_response.json()
+        assert delete_payload["deleted"] is True
+        assert delete_payload["soft_deleted"] is True
+        assert delete_payload["removed_total"] >= 1
+
+        deleted_sessions_response = client.get("/api/interaction/sessions/deleted", params={"limit": 20})
+        assert deleted_sessions_response.status_code == 200
+        deleted_sessions_payload = deleted_sessions_response.json()
+        assert any(str(row.get("session_id", "")) == session_id for row in deleted_sessions_payload)
+
+        messages_response = client.get(f"/api/interaction/sessions/{session_id}/messages", params={"limit": 50})
+        assert messages_response.status_code == 200
+        assert messages_response.json() == []
+
+        memory_response = client.get(f"/api/interaction/sessions/{session_id}/memory", params={"limit": 20})
+        assert memory_response.status_code == 200
+        memory_payload = memory_response.json()
+        assert memory_payload["summary_text"] == ""
+        assert memory_payload["last_turn_id"] is None
+
+        topics_response = client.get(f"/api/interaction/sessions/{session_id}/topics", params={"limit": 20})
+        assert topics_response.status_code == 200
+        topics_payload = topics_response.json()
+        assert topics_payload["primary_topic"] == ""
+        assert topics_payload["secondary_topics"] == []
+
+        metrics_response = client.get(f"/api/interaction/sessions/{session_id}/metrics", params={"limit": 20})
+        assert metrics_response.status_code == 200
+        assert metrics_response.json() == []
+
+        conditions_response = client.get(f"/api/interaction/sessions/{session_id}/conditions")
+        assert conditions_response.status_code == 200
+        assert conditions_response.json()["world_rules"] == ""
+
+        restore_response = client.post(f"/api/interaction/sessions/{session_id}/restore")
+        assert restore_response.status_code == 200
+        restore_payload = restore_response.json()
+        assert restore_payload["restored"] is True
+
+        restored_messages = client.get(f"/api/interaction/sessions/{session_id}/messages", params={"limit": 50})
+        assert restored_messages.status_code == 200
+        assert len(restored_messages.json()) >= 1
+
+        hard_delete_response = client.delete(f"/api/interaction/sessions/{session_id}", params={"hard": "true"})
+        assert hard_delete_response.status_code == 200
+        hard_delete_payload = hard_delete_response.json()
+        assert hard_delete_payload["deleted"] is True
+        assert hard_delete_payload["hard_deleted"] is True
 
 
 def test_realtime_greeting_reply_avoids_internal_scaffolding(tmp_path: Path, monkeypatch) -> None:

@@ -13,7 +13,10 @@ from app.models.runtime_service import LocalInferenceService
 
 def register_interaction_module(app: FastAPI) -> None:
     context = app.state.context
-    repository = SqlAlchemyInteractionMessageRepository(context.database)
+    repository = SqlAlchemyInteractionMessageRepository(
+        context.database,
+        trash_retention_hours=context.settings.chat_trash_retention_hours,
+    )
     service = InteractionService(context.event_bus, repository)
     model_runtime = context.services.get("model_runtime")
     knowledge_service = context.services.get("knowledge")

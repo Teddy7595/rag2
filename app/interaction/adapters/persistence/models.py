@@ -91,3 +91,12 @@ class SessionConditionsRecord(DatabaseBase):
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     world_rules: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class DeletedSessionRecord(DatabaseBase):
+    __tablename__ = "interaction_deleted_sessions"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
+    deleted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)

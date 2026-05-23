@@ -1248,6 +1248,11 @@
         <button type="button" class="lobby-btn" id="lobby-enter-last">Ultima sesion</button>
       </div>
       <div id="lobby-sessions-list"></div>
+      <header class="lobby-header" style="margin-top: 12px;">
+        <h2 class="lobby-title" style="font-size: 1rem;">Papelera</h2>
+        <p class="lobby-subtitle">Chats eliminados recientemente que puedes restaurar.</p>
+      </header>
+      <div id="lobby-trash-list"></div>
     </article>
 
     <article class="lobby-card">
@@ -1368,6 +1373,11 @@
       </div>
       <ul id="hud-sessions-list" class="hud-list"></ul>
     </section>
+
+    <section class="hud-block">
+      <p class="hud-title">Papelera</p>
+      <ul id="hud-trash-list" class="hud-list"></ul>
+    </section>
   </div>
 </aside>
 
@@ -1446,9 +1456,11 @@
   const hudRulesSave = document.getElementById('hud-rules-save');
   const hudRulesClear = document.getElementById('hud-rules-clear');
   const hudSessionsList = document.getElementById('hud-sessions-list');
+  const hudTrashList = document.getElementById('hud-trash-list');
   const hudNewChat = document.getElementById('hud-new-chat');
   const chatLobby = document.getElementById('chat-lobby');
   const lobbySessionsList = document.getElementById('lobby-sessions-list');
+  const lobbyTrashList = document.getElementById('lobby-trash-list');
   const lobbyRefreshSessions = document.getElementById('lobby-refresh-sessions');
   const lobbyEnterLast = document.getElementById('lobby-enter-last');
   const lobbySessionIdInput = document.getElementById('lobby-session-id');
@@ -1740,6 +1752,10 @@
     statusBar.className = `${blinking ? 'blinking ' : ''}status-tone-${tone}`.trim();
   }
 
+  function setActionStatus(text, tone = 'neutral') {
+    setStatus(String(text || ''), { blinking: false, tone });
+  }
+
   function renderProcessingStatus() {
     if (!isProcessing) {
       return;
@@ -1885,21 +1901,37 @@
 
   async function loadSessionList() {
     try {
-      const response = await fetch('/api/interaction/sessions?limit=40');
-      if (!response.ok) {
-        throw new Error(await response.text());
+      const [sessionsResponse, trashResponse] = await Promise.all([
+        fetch('/api/interaction/sessions?limit=40'),
+        fetch('/api/interaction/sessions/deleted?limit=40'),
+      ]);
+      if (!sessionsResponse.ok) {
+        throw new Error(await sessionsResponse.text());
       }
-      const payload = await response.json();
-      const sessions = Array.isArray(payload) ? payload : [];
+      if (!trashResponse.ok) {
+        throw new Error(await trashResponse.text());
+      }
+      const sessionsPayload = await sessionsResponse.json();
+      const trashPayload = await trashResponse.json();
+      const sessions = Array.isArray(sessionsPayload) ? sessionsPayload : [];
+      const deletedSessions = Array.isArray(trashPayload) ? trashPayload : [];
       renderSessionList(sessions);
       renderLobbySessionList(sessions);
+      renderDeletedSessionList(deletedSessions);
+      renderLobbyDeletedSessionList(deletedSessions);
       if (!lobbySelectedSessionId && activeSessionId) {
         applySessionConfigToLobby(activeSessionId);
       }
     } catch (error) {
       hudSessionsList.innerHTML = `<li class="hud-list-empty">No se pudo cargar chats: ${String(error)}</li>`;
+      if (hudTrashList) {
+        hudTrashList.innerHTML = `<li class="hud-list-empty">No se pudo cargar papelera: ${String(error)}</li>`;
+      }
       if (lobbySessionsList) {
         lobbySessionsList.innerHTML = `<p class="lobby-note">No se pudo cargar chats: ${String(error)}</p>`;
+      }
+      if (lobbyTrashList) {
+        lobbyTrashList.innerHTML = `<p class="lobby-note">No se pudo cargar papelera: ${String(error)}</p>`;
       }
     }
   }
@@ -1934,10 +1966,54 @@
         <p class="hud-session-meta">${String(row.last_excerpt || '').replace(/</g, '&lt;')}</p>
         <div class="hud-row-actions">
           <button type="button" class="hud-btn" data-open-session="${sessionId}">Abrir chat</button>
+          <button type="button" class="hud-btn" data-delete-session="${sessionId}">Eliminar chat</button>
           <a class="hud-link" href="/admin/session-intel?session_id=${encodeURIComponent(sessionId)}" target="_blank" rel="noopener noreferrer">Abrir Session Intel</a>
         </div>
       `;
       hudSessionsList.appendChild(rowNode);
+    }
+  }
+
+  function formatTrashTime(value) {
+    const raw = String(value || '').trim();
+    if (!raw) {
+      return '-';
+    }
+    const date = new Date(raw);
+    if (Number.isNaN(date.getTime())) {
+      return raw;
+    }
+    return date.toLocaleString();
+  }
+
+  function renderDeletedSessionList(sessions) {
+    if (!hudTrashList) {
+      return;
+    }
+    const items = Array.isArray(sessions) ? sessions : [];
+    hudTrashList.innerHTML = '';
+    if (!items.length) {
+      hudTrashList.innerHTML = '<li class="hud-list-empty">Papelera vacia.</li>';
+      return;
+    }
+
+    for (const row of items) {
+      const sessionId = String(row.session_id || '').trim();
+      if (!sessionId) {
+        continue;
+      }
+      const rowNode = document.createElement('li');
+      rowNode.className = 'hud-session-item';
+      rowNode.innerHTML = `
+        <p class="hud-session-main">${sessionId}</p>
+        <p class="hud-session-meta">eliminado=${formatTrashTime(row.deleted_at)} · vence=${formatTrashTime(row.expires_at)}</p>
+        <p class="hud-session-meta">mensajes=${Number(row.message_count || 0)} · autor=${String(row.last_author || '-')}</p>
+        <div class="hud-row-actions">
+          <button type="button" class="hud-btn" data-restore-session="${sessionId}">Restaurar</button>
+          <button type="button" class="hud-btn" data-hard-delete-session="${sessionId}">Borrar definitivo</button>
+        </div>
+      `;
+      hudTrashList.appendChild(rowNode);
     }
   }
 
@@ -1980,27 +2056,11 @@
     const selectableCount = Number(catalogState.summary && catalogState.summary.selectable_bundle_count) || 0;
     const textMissing = !(runtimeState && runtimeState.selected_text_model_path);
     if (selectableCount === 0 || textMissing) {
-      appendMessage(
-        'No hay modelo de texto activo en esta sala. Usa /models para ver opciones y /model text <bundle_id> para seleccionar.',
-        false,
-        currentEngramAvatar,
-        true,
-        null,
-        'system',
-        'system'
-      );
+      setActionStatus('No hay modelo de texto activo. Usa /models o /model text <bundle_id>.', 'amber');
     }
 
     if (!visionEnabled) {
-      appendMessage(
-        'Visión local está desactivada. Para habilitarla usa /model vision <bundle_id>.',
-        false,
-        currentEngramAvatar,
-        true,
-        null,
-        'system',
-        'system'
-      );
+      setActionStatus('Vision local desactivada. Usa /model vision <bundle_id>.', 'amber');
     }
   }
 
@@ -2012,7 +2072,7 @@
     });
     const payload = await response.json();
     if (!response.ok) {
-      appendMessage(`No se pudo actualizar modelos: ${JSON.stringify(payload)}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`No se pudo actualizar modelos: ${JSON.stringify(payload)}`, 'danger');
       return false;
     }
     catalogState = payload;
@@ -2207,7 +2267,7 @@
       const response = await fetch(`/api/interaction/messages/${encodeURIComponent(messageId)}/memorize`, { method: 'POST' });
       const payload = await response.json();
       starButton.classList.add('active');
-      appendMessage(response.ok && payload.ok ? `Memorizado: ${messageId}` : `No se pudo memorizar ${messageId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(response.ok && payload.ok ? `Memorizado: ${messageId}` : `No se pudo memorizar ${messageId}`, response.ok && payload.ok ? 'green' : 'danger');
     });
     controls.appendChild(starButton);
 
@@ -2230,7 +2290,7 @@
     deleteButton.addEventListener('click', async () => {
       const response = await fetch(`/api/interaction/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' });
       const payload = await response.json();
-      appendMessage(response.ok && payload.ok ? `Oculto: ${messageId}` : `No se pudo ocultar ${messageId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(response.ok && payload.ok ? `Oculto: ${messageId}` : `No se pudo ocultar ${messageId}`, response.ok && payload.ok ? 'green' : 'danger');
     });
     controls.appendChild(deleteButton);
 
@@ -2330,6 +2390,88 @@
   function startNewChat() {
     const nextSessionId = generateSessionId();
     activateSession(nextSessionId, { clearTimeline: true });
+  }
+
+  async function deleteChatSession(sessionId, { hardDelete = false } = {}) {
+    const key = String(sessionId || '').trim();
+    if (!key) {
+      return;
+    }
+    const confirmText = hardDelete
+      ? `Borrar definitivamente ${key.slice(0, 12)}? Esta acción no se puede deshacer.`
+      : `Mover chat ${key.slice(0, 12)} a la papelera? Podras restaurarlo antes de que expire.`;
+    const confirmed = window.confirm(confirmText);
+    if (!confirmed) {
+      return;
+    }
+
+    startProcessingFeedback(hardDelete ? 'borrando definitivo' : 'moviendo a papelera', hardDelete ? 'danger' : 'amber');
+    try {
+      const endpoint = hardDelete
+        ? `/api/interaction/sessions/${encodeURIComponent(key)}?hard=true`
+        : `/api/interaction/sessions/${encodeURIComponent(key)}`;
+      const response = await fetch(endpoint, { method: 'DELETE' });
+      const payload = await response.json();
+      if (!response.ok || !payload.deleted) {
+        setActionStatus(`No se pudo ${hardDelete ? 'borrar' : 'mover a papelera'} chat ${key.slice(0, 8)}.`, 'danger');
+        return;
+      }
+
+      window.localStorage.removeItem(`${WORLD_RULES_PREFIX}${key}`);
+      window.localStorage.removeItem(`${ENGRAM_PREFIX}${key}`);
+      window.localStorage.removeItem(`${LIMITS_PREFIX}${key}`);
+      if (window.localStorage.getItem(SESSION_STORAGE_KEY) === key) {
+        window.localStorage.removeItem(SESSION_STORAGE_KEY);
+      }
+
+      if (activeSessionId === key) {
+        activeSessionId = '';
+        preferredSessionId = '';
+        resetChatTimeline();
+        if (lobbySessionIdInput) {
+          lobbySessionIdInput.value = generateSessionId();
+        }
+        openLobby();
+      }
+
+      await loadSessionList();
+      if (hardDelete) {
+        setActionStatus(`Chat ${key.slice(0, 8)} borrado definitivamente.`, 'green');
+      } else {
+        const restoreUntil = String(payload.restore_until || '').trim();
+        const when = restoreUntil ? ` hasta ${formatTrashTime(restoreUntil)}` : '';
+        setActionStatus(`Chat ${key.slice(0, 8)} movido a papelera${when}.`, 'green');
+      }
+    } catch (error) {
+      setActionStatus(`Fallo eliminando chat: ${String(error)}`, 'danger');
+    } finally {
+      stopProcessingFeedback();
+      updateSendButtonState();
+    }
+  }
+
+  async function restoreChatSession(sessionId) {
+    const key = String(sessionId || '').trim();
+    if (!key) {
+      return;
+    }
+
+    startProcessingFeedback('restaurando chat', 'emerald');
+    try {
+      const response = await fetch(`/api/interaction/sessions/${encodeURIComponent(key)}/restore`, { method: 'POST' });
+      const payload = await response.json();
+      if (!response.ok || !payload.restored) {
+        setActionStatus(`No se pudo restaurar chat ${key.slice(0, 8)}.`, 'danger');
+        return;
+      }
+      await loadSessionList();
+      setActionStatus(`Chat ${key.slice(0, 8)} restaurado.`, 'green');
+    } catch (error) {
+      setActionStatus(`Fallo restaurando chat: ${String(error)}`, 'danger');
+    } finally {
+      stopProcessingFeedback();
+      updateSendButtonState();
+    }
   }
 
   function generateSessionId() {
@@ -2471,9 +2613,41 @@
         <div class="lobby-actions">
           <button type="button" class="lobby-btn" data-lobby-select="${sessionId}">Seleccionar</button>
           <button type="button" class="lobby-btn" data-lobby-enter="${sessionId}">Entrar</button>
+          <button type="button" class="lobby-btn" data-lobby-delete="${sessionId}">Eliminar</button>
         </div>
       `;
       lobbySessionsList.appendChild(card);
+    }
+  }
+
+  function renderLobbyDeletedSessionList(sessions) {
+    if (!lobbyTrashList) {
+      return;
+    }
+    const items = Array.isArray(sessions) ? sessions : [];
+    lobbyTrashList.innerHTML = '';
+    if (!items.length) {
+      lobbyTrashList.innerHTML = '<p class="lobby-note">Papelera vacia.</p>';
+      return;
+    }
+
+    for (const row of items) {
+      const sessionId = String(row.session_id || '').trim();
+      if (!sessionId) {
+        continue;
+      }
+      const card = document.createElement('article');
+      card.className = 'lobby-session-row';
+      card.innerHTML = `
+        <p class="lobby-session-id">${sessionId}</p>
+        <p class="lobby-session-meta">eliminado=${formatTrashTime(row.deleted_at)} · vence=${formatTrashTime(row.expires_at)}</p>
+        <p class="lobby-session-meta">mensajes=${Number(row.message_count || 0)} · autor=${String(row.last_author || '-')}</p>
+        <div class="lobby-actions">
+          <button type="button" class="lobby-btn" data-lobby-restore="${sessionId}">Restaurar</button>
+          <button type="button" class="lobby-btn" data-lobby-hard-delete="${sessionId}">Borrar definitivo</button>
+        </div>
+      `;
+      lobbyTrashList.appendChild(card);
     }
   }
 
@@ -2610,16 +2784,16 @@
 
   async function uploadAttachedFile() {
     if (!activeSessionId) {
-      appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('No hay session_id activo aun.', 'amber');
       return;
     }
     if (!attachedFile) {
-      appendMessage('No hay archivo adjunto. Usa /attach.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('No hay archivo adjunto. Usa /attach.', 'amber');
       return;
     }
 
     if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
-      appendMessage('Subiste una imagen pero visión está desactivada. Activa un modelo con /model vision <bundle_id>.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('Subiste una imagen, pero vision esta desactivada. Usa /model vision <bundle_id>.', 'amber');
     }
 
     const formData = new FormData();
@@ -2630,22 +2804,22 @@
     });
     const payload = await response.json();
     if (!response.ok) {
-      appendMessage(`Fallo upload: ${JSON.stringify(payload)}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`Fallo upload: ${JSON.stringify(payload)}`, 'danger');
       return;
     }
 
     lastUploadedPath = String(payload.relative_path || '');
-    appendMessage(`Asset subido: ${lastUploadedPath || attachedFile.name}`, false, currentEngramAvatar, true, null, 'system', 'system');
+    setActionStatus(`Asset subido: ${lastUploadedPath || attachedFile.name}`, 'green');
   }
 
   async function runVisionCommand(promptText) {
     if (!visionEnabled) {
-      appendMessage('No hay modelo de visión activo. Usa /model vision <bundle_id> para habilitarlo.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('No hay modelo de vision activo. Usa /model vision <bundle_id>.', 'amber');
       return;
     }
 
     if (!attachedFile) {
-      appendMessage('Adjunta una imagen con /attach para usar /vision.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('Adjunta una imagen con /attach para usar /vision.', 'amber');
       return;
     }
 
@@ -2663,22 +2837,14 @@
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      appendMessage(
-        'Comandos: /help · /models · /model text <bundle_id> · /model vision <bundle_id|off> · /attach · /clearfile · /upload · /assets list · /vault list · /ingest <ruta_relativa_vault> · /vision <prompt> · /mem [message_id] · /hide [message_id] · /rewind [message_id] · /trace [trigger] · /rules show · /rules <texto> · /ctx <1-50> · /history <1-100> · /limits. Usa @ para engramas.',
-        false,
-        currentEngramAvatar,
-        true,
-        null,
-        'system',
-        'system'
-      );
+      setActionStatus('Comandos disponibles cargados. Usa /models, /rules show o /attach para empezar.', 'sky');
       return true;
     }
 
     if (command === '/models') {
       await refreshModelState({ announce: false });
       if (!catalogState) {
-        appendMessage('No se pudo leer el catálogo de modelos.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No se pudo leer el catalogo de modelos.', 'danger');
         return true;
       }
       const bundles = Array.isArray(catalogState.bundles) ? catalogState.bundles : [];
@@ -2688,7 +2854,7 @@
         : 'sin bundles locales';
       const selectedText = catalogState.selection.text_bundle_id || catalogState.selection.text_model_name || 'sin modelo';
       const selectedVision = catalogState.selection.vision_bundle_id || catalogState.selection.vision_model_name || 'off';
-      appendMessage(`Modelos activos\ntexto: ${selectedText}\nvision: ${selectedVision}\n\nBundles:\n${listText}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`Modelos activos -> texto: ${selectedText} · vision: ${selectedVision} · bundles: ${localBundles.length}`, 'sky');
       return true;
     }
 
@@ -2696,14 +2862,14 @@
       const [target, ...tail] = args.split(/\s+/);
       const value = tail.join(' ').trim();
       if (!target || !value) {
-        appendMessage('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', 'amber');
         return true;
       }
 
       if (target === 'text') {
         const ok = await updateModelSelection({ text_provider: 'local', text_bundle_id: value, text_model_name: null });
         if (ok) {
-          appendMessage(`Modelo de texto activo: ${value}`, false, currentEngramAvatar, true, null, 'system', 'system');
+          setActionStatus(`Modelo de texto activo: ${value}`, 'green');
         }
         return true;
       }
@@ -2713,49 +2879,49 @@
           visionForcedOff = true;
           visionEnabled = false;
           renderModelChip();
-          appendMessage('Visión local desactivada en esta sala. Para reactivar: /model vision <bundle_id>.', false, currentEngramAvatar, true, null, 'system', 'system');
+          setActionStatus('Vision local desactivada. Para reactivar: /model vision <bundle_id>.', 'amber');
           return true;
         }
         visionForcedOff = false;
         const ok = await updateModelSelection({ vision_provider: 'local', vision_bundle_id: value, vision_model_name: null });
         if (ok) {
-          appendMessage(`Modelo de visión activo: ${value}`, false, currentEngramAvatar, true, null, 'system', 'system');
+          setActionStatus(`Modelo de vision activo: ${value}`, 'green');
         }
         return true;
       }
 
-      appendMessage('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', 'amber');
       return true;
     }
 
     if (command === '/ctx') {
       const value = Number(args || 0);
       if (!Number.isFinite(value) || value < 1 || value > 50) {
-        appendMessage('Uso: /ctx <1-50>', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('Uso: /ctx <1-50>', 'amber');
         return true;
       }
       contextLimit = Math.floor(value);
       persistLimits(activeSessionId);
       renderLimitsChip();
-      appendMessage(`Context limit actualizado a ${contextLimit}.`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`Context limit actualizado a ${contextLimit}.`, 'green');
       return true;
     }
 
     if (command === '/history') {
       const value = Number(args || 0);
       if (!Number.isFinite(value) || value < 1 || value > 100) {
-        appendMessage('Uso: /history <1-100>', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('Uso: /history <1-100>', 'amber');
         return true;
       }
       historyLimit = Math.floor(value);
       persistLimits(activeSessionId);
       renderLimitsChip();
-      appendMessage(`History limit actualizado a ${historyLimit}.`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`History limit actualizado a ${historyLimit}.`, 'green');
       return true;
     }
 
     if (command === '/limits') {
-      appendMessage(`Límites activos: context_limit=${contextLimit}, history_limit=${historyLimit}.`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`Limites activos: context_limit=${contextLimit}, history_limit=${historyLimit}.`, 'sky');
       return true;
     }
 
@@ -2768,7 +2934,7 @@
       attachedFile = null;
       fileUpload.value = '';
       renderAttachedFile();
-      appendMessage('Adjunto limpiado.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('Adjunto limpiado.', 'green');
       return true;
     }
 
@@ -2779,12 +2945,12 @@
 
     if (command === '/assets' && args === 'list') {
       if (!activeSessionId) {
-        appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No hay session_id activo aun.', 'amber');
         return true;
       }
       const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`);
       const payload = await response.json();
-      appendMessage(`Assets de sala: ${(payload || []).join(', ') || 'sin archivos'}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(`Assets de sala: ${(payload || []).join(', ') || 'sin archivos'}`, 'sky');
       return true;
     }
 
@@ -2794,19 +2960,19 @@
       const preview = Array.isArray(payload)
         ? payload.slice(0, 20).map((item) => item.relative_path).join('\n')
         : '';
-      appendMessage(preview || 'Vault sin archivos.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(preview ? `Vault: ${preview.split('\n').length} archivos listados.` : 'Vault sin archivos.', 'sky');
       return true;
     }
 
     if (command === '/ingest') {
       const targetPath = args || lastUploadedPath;
       if (!targetPath) {
-        appendMessage('Uso: /ingest <ruta_relativa_en_vault> o sube con /upload primero.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('Uso: /ingest <ruta_relativa_en_vault> o sube con /upload primero.', 'amber');
         return true;
       }
       const response = await fetch(`/api/storage/vault/ingest?relative_path=${encodeURIComponent(targetPath)}`, { method: 'POST' });
       const payload = await response.json();
-      appendMessage(response.ok ? `Ingestado: ${payload.relative_path || targetPath}` : `Fallo ingest: ${JSON.stringify(payload)}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(response.ok ? `Ingestado: ${payload.relative_path || targetPath}` : `Fallo ingest: ${JSON.stringify(payload)}`, response.ok ? 'green' : 'danger');
       return true;
     }
 
@@ -2818,46 +2984,46 @@
     if (command === '/mem') {
       const targetId = args || lastAssistantMessageId || lastMessageId;
       if (!targetId) {
-        appendMessage('No hay message_id para memorizar.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No hay message_id para memorizar.', 'amber');
         return true;
       }
       const response = await fetch(`/api/interaction/messages/${encodeURIComponent(targetId)}/memorize`, { method: 'POST' });
       const payload = await response.json();
-      appendMessage(response.ok && payload.ok ? `Memorizado: ${targetId}` : `No se pudo memorizar ${targetId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(response.ok && payload.ok ? `Memorizado: ${targetId}` : `No se pudo memorizar ${targetId}`, response.ok && payload.ok ? 'green' : 'danger');
       return true;
     }
 
     if (command === '/hide') {
       const targetId = args || lastAssistantMessageId || lastMessageId;
       if (!targetId) {
-        appendMessage('No hay message_id para ocultar.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No hay message_id para ocultar.', 'amber');
         return true;
       }
       const response = await fetch(`/api/interaction/messages/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
       const payload = await response.json();
-      appendMessage(response.ok && payload.ok ? `Oculto: ${targetId}` : `No se pudo ocultar ${targetId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(response.ok && payload.ok ? `Oculto: ${targetId}` : `No se pudo ocultar ${targetId}`, response.ok && payload.ok ? 'green' : 'danger');
       return true;
     }
 
     if (command === '/rewind') {
       if (!activeSessionId) {
-        appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No hay session_id activo aun.', 'amber');
         return true;
       }
       const targetId = args || lastAssistantMessageId || lastMessageId;
       if (!targetId) {
-        appendMessage('No hay message_id para rewind.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No hay message_id para rewind.', 'amber');
         return true;
       }
       const response = await fetch(`/api/interaction/sessions/${encodeURIComponent(activeSessionId)}/rewind/${encodeURIComponent(targetId)}`, { method: 'POST' });
       const payload = await response.json();
-      appendMessage(response.ok && payload.rewound ? `Rewind aplicado. Mensajes eliminados: ${payload.removed}` : `No se pudo rewind para ${targetId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus(response.ok && payload.rewound ? `Rewind aplicado. Mensajes eliminados: ${payload.removed}` : `No se pudo rewind para ${targetId}`, response.ok && payload.rewound ? 'green' : 'danger');
       return true;
     }
 
     if (command === '/trace') {
       if (!activeSessionId) {
-        appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('No hay session_id activo aun.', 'amber');
         return true;
       }
       const params = new URLSearchParams({ session_id: activeSessionId });
@@ -2865,13 +3031,13 @@
         params.set('trigger', args);
       }
       window.open(`/admin/context-traces?${params.toString()}`, '_blank', 'noopener,noreferrer');
-      appendMessage('Inspector de trazas abierto en nueva pestaña.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('Inspector de trazas abierto en nueva pestana.', 'sky');
       return true;
     }
 
     if (command === '/rules') {
       if (!args || args === 'show') {
-        appendMessage(worldRules ? `World rules: ${worldRules}` : 'No hay world rules activas.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus(worldRules ? `World rules activas: ${worldRules}` : 'No hay world rules activas.', 'sky');
         return true;
       }
       worldRules = args;
@@ -2879,7 +3045,7 @@
       renderWorldRulesHud();
       renderLobbyRules();
       await saveWorldRules();
-      appendMessage('World rules actualizadas para esta sesion.', false, currentEngramAvatar, true, null, 'system', 'system');
+      setActionStatus('World rules actualizadas para esta sesion.', 'green');
       return true;
     }
 
@@ -3078,7 +3244,7 @@
     if (attachedFile) {
       setStatus(`Adjunto listo: ${attachedFile.name}`, false);
       if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
-        appendMessage('Imagen adjunta detectada, pero visión está desactivada. Activa /model vision <bundle_id> para analizar imágenes.', false, currentEngramAvatar, true, null, 'system', 'system');
+        setActionStatus('Imagen adjunta detectada, pero vision esta desactivada. Activa /model vision <bundle_id>.', 'amber');
       }
     }
   });
@@ -3292,6 +3458,15 @@
   }
 
   hudSessionsList.addEventListener('click', (event) => {
+    const deleteButton = event.target.closest('button[data-delete-session]');
+    if (deleteButton) {
+      const sessionId = String(deleteButton.dataset.deleteSession || '').trim();
+      if (sessionId) {
+        deleteChatSession(sessionId);
+      }
+      return;
+    }
+
     const button = event.target.closest('button[data-open-session]');
     if (!button) {
       return;
@@ -3303,6 +3478,20 @@
     activateSession(sessionId, { clearTimeline: true });
   });
 
+  if (hudTrashList) {
+    hudTrashList.addEventListener('click', (event) => {
+      const restoreButton = event.target.closest('button[data-restore-session]');
+      if (restoreButton) {
+        restoreChatSession(String(restoreButton.dataset.restoreSession || ''));
+        return;
+      }
+      const hardDeleteButton = event.target.closest('button[data-hard-delete-session]');
+      if (hardDeleteButton) {
+        deleteChatSession(String(hardDeleteButton.dataset.hardDeleteSession || ''), { hardDelete: true });
+      }
+    });
+  }
+
   hudNewChat.addEventListener('click', () => {
     if (lobbySessionIdInput) {
       lobbySessionIdInput.value = generateSessionId();
@@ -3312,6 +3501,12 @@
 
   if (lobbySessionsList) {
     lobbySessionsList.addEventListener('click', (event) => {
+      const deleteButton = event.target.closest('button[data-lobby-delete]');
+      if (deleteButton) {
+        deleteChatSession(String(deleteButton.dataset.lobbyDelete || ''));
+        return;
+      }
+
       const selectButton = event.target.closest('button[data-lobby-select]');
       if (selectButton) {
         applySessionConfigToLobby(String(selectButton.dataset.lobbySelect || ''));
@@ -3321,6 +3516,21 @@
       const enterButton = event.target.closest('button[data-lobby-enter]');
       if (enterButton) {
         enterChatSession(String(enterButton.dataset.lobbyEnter || ''));
+      }
+    });
+  }
+
+  if (lobbyTrashList) {
+    lobbyTrashList.addEventListener('click', (event) => {
+      const restoreButton = event.target.closest('button[data-lobby-restore]');
+      if (restoreButton) {
+        restoreChatSession(String(restoreButton.dataset.lobbyRestore || ''));
+        return;
+      }
+
+      const hardDeleteButton = event.target.closest('button[data-lobby-hard-delete]');
+      if (hardDeleteButton) {
+        deleteChatSession(String(hardDeleteButton.dataset.lobbyHardDelete || ''), { hardDelete: true });
       }
     });
   }

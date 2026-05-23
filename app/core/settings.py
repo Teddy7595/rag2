@@ -121,6 +121,7 @@ class AppSettings:
     conversation_deadline_scale_percent: int
     conversation_intent_bundle_id: str | None
     conversation_intent_max_tokens: int
+    chat_trash_retention_hours: int
     embedding_model_dir: Path
     ai_model_dir: Path
     web_frontend_dir: Path
@@ -169,6 +170,7 @@ def load_settings(project_root: Path) -> AppSettings:
         conversation_deadline_scale_percent=max(10, min(500, _read_int_env("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", 100))),
         conversation_intent_bundle_id=(_read_env("APP_CONVERSATION_INTENT_BUNDLE_ID", "") or None),
         conversation_intent_max_tokens=max(4, min(16, _read_int_env("APP_CONVERSATION_INTENT_MAX_TOKENS", 8))),
+        chat_trash_retention_hours=max(1, min(168, _read_int_env("APP_CHAT_TRASH_RETENTION_HOURS", 24))),
         embedding_model_dir=embedding_model_dir,
         ai_model_dir=ai_model_dir,
         web_frontend_dir=web_frontend_dir,

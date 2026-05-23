@@ -8,21 +8,26 @@ from app.interaction.adapters.realtime import build_realtime_stream
 from app.interaction.application.realtime import RealtimeChatService
 from app.interaction.events import (
     InteractionContextTraceRequest,
+    InteractionDeletedSessionsRequest,
     InteractionHistoryRequest,
     InteractionMessageActionRequest,
     InteractionMessageRecordRequest,
     InteractionRealtimeInput,
     InteractionSessionConditionsRequest,
+    InteractionSessionDeleteRequest,
     InteractionSessionRewindRequest,
     InteractionSummaryRequest,
     InteractionSessionRequest,
     InteractionSessionsRequest,
     REQUEST_INTERACTION_CONTEXT_TRACES,
+    REQUEST_INTERACTION_DELETED_SESSIONS,
     REQUEST_INTERACTION_MESSAGE_HIDE,
     REQUEST_INTERACTION_MESSAGE_MEMORIZE,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
     REQUEST_INTERACTION_SESSIONS,
+    REQUEST_INTERACTION_SESSION_DELETE,
+    REQUEST_INTERACTION_SESSION_RESTORE,
     REQUEST_INTERACTION_SESSION_CONDITIONS,
     REQUEST_INTERACTION_SESSION_CONDITIONS_SET,
     REQUEST_INTERACTION_SESSION_MESSAGES,
@@ -85,6 +90,16 @@ async def list_sessions(request: Request, limit: int = 20) -> list[dict[str, obj
     return context.event_bus.request(
         REQUEST_INTERACTION_SESSIONS,
         InteractionSessionsRequest(limit=limit),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@interaction_router.get("/sessions/deleted")
+async def list_deleted_sessions(request: Request, limit: int = 20) -> list[dict[str, object]]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_DELETED_SESSIONS,
+        InteractionDeletedSessionsRequest(limit=limit),
         source_module="interaction.adapters.api.routes",
     )
 
@@ -206,6 +221,26 @@ async def rewind_session(request: Request, session_id: str, message_id: str) -> 
     return context.event_bus.request(
         REQUEST_INTERACTION_SESSION_REWIND,
         InteractionSessionRewindRequest(session_id=session_id, message_id=message_id),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@interaction_router.delete("/sessions/{session_id}")
+async def delete_session(request: Request, session_id: str, hard: bool = False) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_DELETE,
+        InteractionSessionDeleteRequest(session_id=session_id, hard_delete=hard),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@interaction_router.post("/sessions/{session_id}/restore")
+async def restore_session(request: Request, session_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_RESTORE,
+        InteractionSessionDeleteRequest(session_id=session_id),
         source_module="interaction.adapters.api.routes",
     )
 

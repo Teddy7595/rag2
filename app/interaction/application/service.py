@@ -7,7 +7,9 @@ from app.interaction.events import (
     InteractionHistoryRequest,
     InteractionMessageActionRequest,
     InteractionMessageRecordRequest,
+    InteractionDeletedSessionsRequest,
     InteractionSessionsRequest,
+    InteractionSessionDeleteRequest,
     InteractionSessionRewindRequest,
     InteractionSessionRequest,
     InteractionSessionConditionsRequest,
@@ -48,6 +50,9 @@ class InteractionService:
 
     def list_sessions(self, request: InteractionSessionsRequest) -> list[dict[str, object]]:
         return self.repository.list_sessions(limit=request.limit)
+
+    def list_deleted_sessions(self, request: InteractionDeletedSessionsRequest) -> list[dict[str, object]]:
+        return self.repository.list_deleted_sessions(limit=request.limit)
 
     def list_session_messages(self, request: InteractionSessionRequest) -> list[dict[str, object]]:
         messages = self.repository.list_session_messages(request.session_id, request.limit)
@@ -102,6 +107,12 @@ class InteractionService:
 
     def rewind_session(self, request: InteractionSessionRewindRequest) -> dict[str, object]:
         return self.repository.rewind_session(request.session_id, request.message_id)
+
+    def delete_session(self, request: InteractionSessionDeleteRequest) -> dict[str, object]:
+        return self.repository.delete_session(request.session_id, hard_delete=request.hard_delete)
+
+    def restore_session(self, request: InteractionSessionDeleteRequest) -> dict[str, object]:
+        return self.repository.restore_session(request.session_id)
 
     def context_traces(self, request: InteractionContextTraceRequest) -> list[dict[str, object]]:
         return self.repository.list_context_traces(
