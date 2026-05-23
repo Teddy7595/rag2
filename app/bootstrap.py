@@ -12,6 +12,7 @@ from app.core.module_registry import include_registered_routers
 from app.core.settings import ensure_runtime_directories, load_settings
 from app.knowledge.knowledge_module import register_knowledge_module
 from app.interaction.interaction_module import register_interaction_module
+from app.models.models_module import register_models_module
 from app.operations.operations_module import register_operations_module
 from app.core.middleware import RequestContextMiddleware
 from app.platform.platform_module import register_platform_module
@@ -49,6 +50,7 @@ def create_app() -> FastAPI:
 
     register_platform_module(app)
     register_storage_module(app)
+    register_models_module(app)
     register_knowledge_module(app)
     register_interaction_module(app)
     register_operations_module(app)

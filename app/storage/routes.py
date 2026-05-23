@@ -391,6 +391,7 @@ async def landing_page(request: Request) -> HTMLResponse:
                 "<ul style='margin: 0; padding-left: 18px;'>"
                 "<li><a href='/api/platform/health' style='color: #7dd3fc;'>/api/platform/health</a></li>"
                 "<li><a href='/api/storage/overview' style='color: #7dd3fc;'>/api/storage/overview</a></li>"
+                "<li><a href='/admin/models' style='color: #7dd3fc;'>/admin/models</a></li>"
                 "<li><a href='/admin' style='color: #7dd3fc;'>/admin</a></li>"
                 "</ul>"
             ),
@@ -443,6 +444,14 @@ async def admin_page(request: Request) -> HTMLResponse:
             accent="#86efac",
         ),
         _card(
+            "Modelos AI",
+            (
+                "<p style='margin-top: 0;'>Explora los bundles locales de <code>ai_models</code> y cambia entre texto/visión.</p>"
+                "<p><a href='/admin/models' style='color: #7dd3fc;'>Abrir catálogo de modelos</a></p>"
+            ),
+            accent="#f59e0b",
+        ),
+        _card(
             "Visualizador de rutas",
             (
                 f"<p style='margin-top: 0;'>Módulos registrados: <strong>{route_summary['module_count']}</strong></p>"
@@ -452,7 +461,7 @@ async def admin_page(request: Request) -> HTMLResponse:
                 "<p>Explora el árbol de módulos y rutas con una vista tipo NestJS.</p>"
                 "<p><a href='/admin/routes' style='color: #7dd3fc;'>Abrir visualizador</a></p>"
             ),
-            accent="#f59e0b",
+            accent="#7dd3fc",
         ),
         _card(
             "Montajes y directorios",

@@ -64,8 +64,8 @@ def load_settings(project_root: Path) -> AppSettings:
     project_root = project_root.resolve()
     env_path = project_root / ".env"
     ai_model_dir = _resolve_path(
-        os.getenv("AI_MODEL_DIR"),
-        project_root / "ai_model",
+        os.getenv("AI_MODELS_DIR") or os.getenv("AI_MODEL_DIR"),
+        project_root / "ai_models",
     )
     vault_dir = _resolve_path(os.getenv("VAULT_DIR"), project_root / ".vault")
 

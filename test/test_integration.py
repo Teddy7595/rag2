@@ -39,11 +39,12 @@ def build_simple_pdf_bytes(text: str) -> bytes:
 
 def build_test_app(tmp_path: Path, monkeypatch, extra_env: dict[str, str] | None = None) -> object:
     vault_dir = tmp_path / "vault"
-    ai_model_dir = tmp_path / "ai_model"
+    ai_model_dir = tmp_path / "ai_models"
     database_path = tmp_path / "rag2.sqlite3"
 
     monkeypatch.setenv("VAULT_DIR", str(vault_dir))
     monkeypatch.setenv("AI_MODEL_DIR", str(ai_model_dir))
+    monkeypatch.setenv("AI_MODELS_DIR", str(ai_model_dir))
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
     monkeypatch.setenv("DATABASE_CREATE_SCHEMA_ON_START", "true")
     monkeypatch.setenv("DATABASE_ECHO", "false")
@@ -68,6 +69,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/",
         "/admin",
         "/admin/routes",
+        "/admin/models",
         "/api/platform/health",
         "/api/interaction/messages",
         "/api/interaction/summary",
@@ -93,6 +95,8 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/knowledge/identity/resolve",
         "/api/operations/audit-log",
         "/api/operations/status",
+        "/api/models/catalog",
+        "/api/models/selection",
         "/public",
         "/uploads",
         "/ws/chat",
@@ -111,6 +115,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         admin_response = client.get("/admin")
         assert admin_response.status_code == 200
         assert "Panel de administración" in admin_response.text
+
+        models_response = client.get("/admin/models")
+        assert models_response.status_code == 200
+        assert "Modelos y proveedores" in models_response.text
 
         routes_response = client.get("/admin/routes")
         assert routes_response.status_code == 200
@@ -142,6 +150,28 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         refreshed_storage = refreshed_storage_response.json()
         assert refreshed_storage["public_file_count"] == 1
         assert refreshed_storage["upload_file_count"] == 1
+
+        model_bundle_dir = app.state.context.settings.ai_model_dir / "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"
+        model_bundle_dir.mkdir(parents=True, exist_ok=True)
+        text_model_path = model_bundle_dir / "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-Q8_K_P.gguf"
+        projector_path = model_bundle_dir / "mmproj-Gemma-4-E4B-Uncensored-HauhauCS-Aggressive-f16.gguf"
+        text_model_path.write_bytes(b"text-model")
+        projector_path.write_bytes(b"vision-model")
+
+        catalog_response = client.get("/api/models/catalog")
+        assert catalog_response.status_code == 200
+        catalog_payload = catalog_response.json()
+        assert catalog_payload["summary"]["bundle_count"] >= 1
+        bundle_payload = next(bundle for bundle in catalog_payload["bundles"] if bundle["bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive")
+        assert bundle_payload["supports_text"] is True
+        assert bundle_payload["supports_vision"] is True
+
+        selection_response = client.patch(
+            "/api/models/selection",
+            json={"text_provider": "local", "text_bundle_id": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"},
+        )
+        assert selection_response.status_code == 200
+        assert selection_response.json()["selection"]["text_bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"
 
         health_response = client.get("/api/platform/health")
         assert health_response.status_code == 200

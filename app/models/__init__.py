@@ -1,0 +1,1 @@
+"""AI model catalog and selection package."""
