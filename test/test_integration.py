@@ -972,7 +972,7 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
             lowered_assistant = assistant_message_text.lower()
             assert "contexto recuperado" not in lowered_assistant
             assert "smoke-doc" not in lowered_assistant
-            assert "Base de conocimiento realtime" in assistant_message_text or "punto principal" in assistant_message_text
+            assert "base de conocimiento realtime" in lowered_assistant or "puntos accionables" in lowered_assistant
 
         assert realtime_session_id
 
@@ -1043,7 +1043,8 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         messages = messages_response.json()
         assert any(message["channel"] == "assistant" for message in messages)
         assert any(
-            "Base de conocimiento realtime" in message["content"]
+            ("base de conocimiento realtime" in str(message["content"]).lower())
+            or ("puntos accionables" in str(message["content"]).lower())
             for message in messages
             if message["channel"] == "assistant"
         )

@@ -14,8 +14,6 @@ from app.interaction.application.governance import (
     compact_context_for_prompt,
     dedupe_rule_lines,
     instruction_echo_prefix_detected,
-    is_identity_question,
-    is_simple_greeting,
     looks_like_internal_reasoning,
     sanitize_generated_reply,
     sanitize_history_content,
@@ -423,8 +421,8 @@ class RealtimeChatService:
             )
 
         return (
-            f"Vamos a aterrizarlo mejor. Soy {identity_name}. En vez de repetir contexto, te propongo un caso concreto sobre '{main_idea}': "
-            "1) objetivo, 2) accion recomendada, 3) resultado esperado."
+            f"Vamos por una respuesta mas clara. Soy {identity_name}. "
+            "Si quieres, dime el objetivo puntual y te lo aterrizo en 3 pasos accionables."
         )
 
     def open_session(self, session_id: str | None = None, *, history_limit: int = 20) -> RealtimeSessionSnapshot:
@@ -904,14 +902,14 @@ class RealtimeChatService:
         if not main_idea:
             main_idea = input_data.content.strip()[:80]
 
-        if knowledge_matches:
-            primary_label = str(knowledge_matches[0].get("label") or main_idea).strip() if isinstance(knowledge_matches[0], dict) else main_idea
-            fallback_reply = (
-                f"Entendido. Soy {identity_name}. El punto principal es '{primary_label}'. "
-                "Si quieres, te lo explico en breve o lo aterrizo a un caso concreto."
-            )
-        else:
+        if conversational_mode:
             fallback_reply = _choose_conversational_fallback(input_data.content, identity_name)
+        else:
+            user_focus = re.sub(r"\s+", " ", input_data.content).strip()[:80]
+            fallback_reply = (
+                f"Soy {identity_name}. Sobre '{user_focus}', puedo resumirtelo en claro y sin metacomentarios. "
+                "Si quieres, te lo doy por puntos accionables."
+            )
 
         prompt_sections = [
             f"Identidad activa: {identity_name}.",
@@ -968,16 +966,6 @@ class RealtimeChatService:
             "guard_path": "",
             "instruction_echo_stripped": False,
         }
-
-        if guard_enabled and is_simple_greeting(input_data.content) and not has_custom_engram:
-            quality_flags["guard_path"] = "greeting_guard_default"
-            return f"Hola, soy {identity_name}. En que te ayudo hoy?", quality_flags
-        if guard_enabled and is_identity_question(input_data.content) and not has_custom_engram:
-            quality_flags["guard_path"] = "identity_guard_default"
-            return (
-                f"Si, soy {identity_name}, tu asistente activo en este chat. Puedo ayudarte con dudas tecnicas, RAG y tareas operativas.",
-                quality_flags,
-            )
 
         default_temperature = policy.temperature
         default_top_p = policy.top_p

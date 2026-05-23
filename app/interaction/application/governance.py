@@ -397,6 +397,8 @@ def instruction_echo_prefix_detected(text: str) -> bool:
         r"\bsolo\s+(enfoca|muestra|coloca)\b.*\b(respuesta|usuario|bloque|texto)\b",
         r"\b(enfoca(?:te)?|enf[oó]cate|coloca|pon|escribe|redacta|responde|contesta)\b.*\b(respuesta|usuario|tono|bloque|texto|separaciones)\b",
         r"\bevitar\s+lenguaje\b.*\bformal\b",
+        r"\bevitar?\s+metacomentarios\b",
+        r"\bevitar?\s+.*\bexplicaciones?\b.*\bengrama",
         r"\brespuesta\s+del\s+engrama\b",
         r"\ben\s+un\s+solo\s+bloque\s+de\s+texto\b",
         r"\bno\s+separaciones\b",

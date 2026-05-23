@@ -71,6 +71,12 @@ def test_sanitize_generated_reply_strips_multiple_instruction_prefixes() -> None
     assert cleaned.startswith("Si, te respondo directo")
 
 
+def test_sanitize_generated_reply_strips_metacommentary_directive_prefix() -> None:
+    noisy = "Evita metacomentarios o explicaciones de la accion de los engramas. Hola, que gusto leerte de nuevo."
+    cleaned = sanitize_generated_reply(noisy)
+    assert cleaned.startswith("Hola, que gusto leerte")
+
+
 def test_sanitize_history_content_masks_internal_reasoning() -> None:
     masked = sanitize_history_content("1. **Analyze the Request:** user input")
     assert "omitida por seguridad" in masked
