@@ -62,6 +62,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/platform/health",
         "/api/interaction/messages",
         "/api/interaction/summary",
+        "/api/interaction/stream",
         "/api/knowledge/items",
         "/api/knowledge/context/pack",
         "/api/knowledge/context/prompt",
@@ -77,6 +78,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/knowledge/identity/resolve",
         "/api/operations/audit-log",
         "/api/operations/status",
+        "/ws/chat",
     }
     assert expected_paths <= route_paths
 
@@ -328,3 +330,103 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         audit_log_payload = audit_log_response.json()
         assert any(entry["event_name"] == "knowledge.item.created" for entry in audit_log_payload)
         assert any(entry["event_name"] == "knowledge.document.ingested" for entry in audit_log_payload)
+
+
+def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        knowledge_response = client.post(
+            "/api/knowledge/items",
+            json={
+                "title": "Base de conocimiento realtime",
+                "content": "Atlas responde con contexto persistente y trazable.",
+                "tags": ["realtime", "chat"],
+            },
+        )
+        assert knowledge_response.status_code == 200
+
+        engram_response = client.post(
+            "/api/knowledge/engrams",
+            json={
+                "name": "Atlas",
+                "behavior_prompt": "Responde con claridad y foco.",
+                "dialogue_examples": ["Hola Atlas"],
+            },
+        )
+        assert engram_response.status_code == 200
+
+        with client.websocket_connect("/ws/chat") as websocket:
+            bootstrap_types: list[str] = []
+            for _ in range(8):
+                packet = websocket.receive_json()
+                bootstrap_types.append(str(packet["type"]))
+                if packet["type"] == "welcome":
+                    break
+
+            assert "session_started" in bootstrap_types
+            assert "meta_update" in bootstrap_types
+            assert "welcome" in bootstrap_types
+
+            websocket.send_json(
+                {
+                    "content": "Atlas resume la base de conocimiento realtime",
+                    "context_limit": 5,
+                    "history_limit": 5,
+                }
+            )
+
+            turn_types: list[str] = []
+            assistant_message_text = ""
+            while True:
+                packet = websocket.receive_json()
+                turn_types.append(str(packet["type"]))
+                if packet["type"] == "assistant_message":
+                    assistant_message_text = str(packet["message"]["content"])
+                if packet["type"] == "turn_complete":
+                    break
+
+            assert "turn_started" in turn_types
+            assert "assistant_message" in turn_types
+            assert "Contexto recuperado" in assistant_message_text
+            assert "Base de conocimiento realtime" in assistant_message_text
+
+        sse_response = client.post(
+            "/api/interaction/stream",
+            json={
+                "content": "Atlas vuelve a resumir la base de conocimiento realtime",
+                "context_limit": 5,
+                "history_limit": 5,
+            },
+        )
+        assert sse_response.status_code == 200
+        sse_text = sse_response.text
+        assert "event: session_started" in sse_text
+        assert "event: turn_complete" in sse_text
+        assert "assistant_message" in sse_text
+
+        status_response = client.get("/api/operations/status", params={"limit": 200})
+        assert status_response.status_code == 200
+        status_payload = status_response.json()
+        assert status_payload["event_counts"]["interaction.realtime.session.started"] >= 2
+        assert status_payload["event_counts"]["interaction.realtime.message.received"] >= 2
+        assert status_payload["event_counts"]["interaction.realtime.reply.streamed"] >= 2
+        assert status_payload["event_counts"]["interaction.realtime.turn.completed"] >= 2
+
+    app_again = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app_again) as client_again:
+        messages_response = client_again.get("/api/interaction/messages", params={"limit": 50})
+        assert messages_response.status_code == 200
+        messages = messages_response.json()
+        assert any(message["channel"] == "assistant" for message in messages)
+        assert any(
+            "Base de conocimiento realtime" in message["content"]
+            for message in messages
+            if message["channel"] == "assistant"
+        )
+
+        summary_response = client_again.get("/api/interaction/summary", params={"limit": 50})
+        assert summary_response.status_code == 200
+        summary_payload = summary_response.json()
+        assert summary_payload["channel_counts"]["assistant"] >= 2

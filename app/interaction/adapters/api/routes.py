@@ -1,10 +1,15 @@
 from fastapi import APIRouter, Request
 from pydantic import BaseModel
+from starlette.responses import StreamingResponse
+from uuid import uuid4
 
 from app.core.app_context import get_app_context_from_request
+from app.interaction.adapters.realtime import build_realtime_stream
+from app.interaction.application.realtime import RealtimeChatService
 from app.interaction.events import (
     InteractionHistoryRequest,
     InteractionMessageRecordRequest,
+    InteractionRealtimeInput,
     InteractionSummaryRequest,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
@@ -16,6 +21,15 @@ class InteractionMessageInput(BaseModel):
     author: str
     content: str
     channel: str = "chat"
+
+
+class InteractionRealtimeInputModel(BaseModel):
+    content: str
+    author: str = "user"
+    channel: str = "chat"
+    identity_id: str | None = None
+    context_limit: int = 5
+    history_limit: int = 20
 
 
 router = APIRouter(prefix="/api/interaction", tags=["interaction"])
@@ -48,4 +62,21 @@ async def record_message(request: Request, payload: InteractionMessageInput) -> 
         REQUEST_INTERACTION_MESSAGE_RECORD,
         InteractionMessageRecordRequest(**payload.model_dump()),
         source_module="interaction.adapters.api.routes",
+    )
+
+
+@router.post("/stream")
+async def stream_chat(request: Request, payload: InteractionRealtimeInputModel) -> StreamingResponse:
+    context = get_app_context_from_request(request)
+    service = context.services.get("interaction_realtime")
+    if not isinstance(service, RealtimeChatService):
+        raise RuntimeError("Interaction realtime service not registered")
+
+    session_id = request.headers.get("x-session-id") or str(uuid4())
+    input_data = InteractionRealtimeInput(**payload.model_dump())
+    stream = build_realtime_stream(service, input_data, session_id=session_id)
+    return StreamingResponse(
+        stream,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"},
     )
