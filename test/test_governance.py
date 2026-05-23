@@ -60,7 +60,15 @@ def test_sanitize_generated_reply_strips_meta_instruction_prefix() -> None:
 
 def test_instruction_echo_prefix_detected_matches_known_pattern() -> None:
     assert instruction_echo_prefix_detected("Coloca la respuesta en un solo bloque de texto sin separaciones. Si, es cierto.") is True
+    assert instruction_echo_prefix_detected("Evitar lenguaje formal y academico.") is True
+    assert instruction_echo_prefix_detected("Respuesta del engrama (Mistress Keynes): texto") is True
     assert instruction_echo_prefix_detected("Si, es cierto.") is False
+
+
+def test_sanitize_generated_reply_strips_multiple_instruction_prefixes() -> None:
+    noisy = "Evitar lenguaje formal y academico. Respuesta del engrama (Mistress Keynes): [resto del mensaje en ingles]. Si, te respondo directo."
+    cleaned = sanitize_generated_reply(noisy)
+    assert cleaned.startswith("Si, te respondo directo")
 
 
 def test_sanitize_history_content_masks_internal_reasoning() -> None:

@@ -268,6 +268,30 @@ def test_compose_reply_sets_instruction_echo_flag_when_prefix_is_stripped() -> N
     assert "solo enfoca" not in reply.lower()
 
 
+def test_compose_reply_conversational_english_output_falls_back_to_spanish() -> None:
+    event_bus = FakeEventBus(
+        {
+            "ok": True,
+            "content": "I can answer your question directly and clearly if you want to continue this conversation.",
+        }
+    )
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=100),
+    )
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Como sigues?"),
+        _custom_engram_context_preview(),
+        session_id="session-english-fallback",
+    )
+
+    assert quality["fallback_used"] is True
+    assert quality["guard_path"] == "language_fallback_spanish"
+    assert "soy mistress keynes" in reply.lower()
+
+
 def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch) -> None:
     event_bus = FakeEventBus({"ok": True, "content": "ok"})
     repository = FakeRepository(

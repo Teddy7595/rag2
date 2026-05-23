@@ -88,6 +88,60 @@ def _recent_assistant_replies(messages: list[dict[str, object]], *, limit: int =
     return replies
 
 
+def _looks_mostly_english(text: str) -> bool:
+    lowered = re.sub(r"\s+", " ", text.lower()).strip()
+    if not lowered:
+        return False
+
+    english_tokens = {
+        "the",
+        "and",
+        "you",
+        "your",
+        "are",
+        "is",
+        "with",
+        "for",
+        "this",
+        "that",
+        "can",
+        "will",
+        "from",
+        "about",
+        "please",
+        "answer",
+        "response",
+    }
+    spanish_tokens = {
+        "el",
+        "la",
+        "los",
+        "las",
+        "que",
+        "como",
+        "para",
+        "con",
+        "sin",
+        "por",
+        "respuesta",
+        "usuario",
+        "puedo",
+        "quiero",
+        "estoy",
+        "eres",
+        "soy",
+    }
+    words = re.findall(r"[a-záéíóúñ]{2,}", lowered)
+    if len(words) < 6:
+        return False
+
+    eng_hits = sum(1 for word in words if word in english_tokens)
+    spa_hits = sum(1 for word in words if word in spanish_tokens)
+    has_spanish_chars = bool(re.search(r"[áéíóúñ¿¡]", lowered))
+
+    return eng_hits >= 3 and eng_hits > spa_hits and not has_spanish_chars
+
+
 def _choose_conversational_fallback(user_text: str, identity_name: str, *, repeat_variant: bool = False) -> str:
     normalized = re.sub(r"\s+", " ", user_text.lower()).strip()
     tone_index = sum(ord(char) for char in normalized) % 3 if normalized else 0
@@ -901,6 +955,21 @@ class RealtimeChatService:
                 compact = re.sub(r"\s+", " ", sanitized).strip()
                 sentences = re.split(r"(?<=[.!?])\s+", compact)
                 sanitized = " ".join(part for part in sentences[:2] if part).strip()
+            if conversational_mode and sanitized and _looks_mostly_english(sanitized):
+                quality_flags["guard_triggered"] = True
+                quality_flags["fallback_used"] = True
+                quality_flags["guard_path"] = "language_fallback_spanish"
+                return (
+                    self._avoid_repetitive_fallback(
+                        fallback_reply,
+                        identity_name=identity_name,
+                        user_input=input_data.content,
+                        main_idea=main_idea,
+                        conversational_mode=conversational_mode,
+                        history_messages=history_messages,
+                    ),
+                    quality_flags,
+                )
             if guard_enabled and content and not sanitized:
                 quality_flags["guard_triggered"] = True
                 quality_flags["guard_path"] = "sanitizer_blocked"

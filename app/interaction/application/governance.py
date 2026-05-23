@@ -300,6 +300,7 @@ def looks_like_internal_reasoning(text: str) -> bool:
         "meta-regla del engrama:",
         "reglas del mundo activas para esta sesion:",
         "tono conversacional:",
+        "resto del mensaje en ingles",
     )
     if any(marker in lower for marker in markers):
         return True
@@ -321,6 +322,12 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
     cleaned = text.strip()
     if not cleaned:
         return ""
+
+    # First strip leading prompt-echo directives so we can preserve any valid remainder.
+    cleaned = _strip_instruction_echo_prefix(cleaned)
+    if not cleaned:
+        return ""
+
     if looks_like_internal_reasoning(cleaned):
         return ""
 
@@ -350,12 +357,6 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
     if not result:
         return ""
 
-    # Models can echo prompt directives first (e.g., "Solo enfoca la respuesta...").
-    # Strip that leading meta-instruction sentence when detected.
-    result = _strip_instruction_echo_prefix(result)
-    if not result:
-        return ""
-
     if len(result) > max_chars:
         result = result[:max_chars].rstrip() + "..."
 
@@ -374,11 +375,13 @@ def _strip_instruction_echo_prefix(text: str) -> str:
     if not sentences:
         return compact
 
-    first = sentences[0].strip().strip('"\'` ')
-    if not instruction_echo_prefix_detected(first):
+    if not instruction_echo_prefix_detected(sentences[0]):
         return compact
 
-    remainder = " ".join(sentences[1:]).strip()
+    while sentences and instruction_echo_prefix_detected(sentences[0]):
+        sentences.pop(0)
+
+    remainder = " ".join(sentences).strip()
     if remainder:
         return remainder
     return ""
@@ -393,6 +396,8 @@ def instruction_echo_prefix_detected(text: str) -> bool:
     instruction_echo_patterns = (
         r"\bsolo\s+(enfoca|muestra|coloca)\b.*\b(respuesta|usuario|bloque|texto)\b",
         r"\b(enfoca(?:te)?|enf[oó]cate|coloca|pon|escribe|redacta|responde|contesta)\b.*\b(respuesta|usuario|tono|bloque|texto|separaciones)\b",
+        r"\bevitar\s+lenguaje\b.*\bformal\b",
+        r"\brespuesta\s+del\s+engrama\b",
         r"\ben\s+un\s+solo\s+bloque\s+de\s+texto\b",
         r"\bno\s+separaciones\b",
     )
