@@ -234,6 +234,19 @@ async def admin_page(request: Request) -> HTMLResponse:
     storage = _get_storage(request)
     overview = storage.overview()
     catalog_context = _model_catalog_context(request)
+    allowed_remote_paths = tuple(getattr(context.settings, "admin_remote_allow_paths", ()) or ())
+    available_paths = {
+        str(getattr(route, "path", ""))
+        for route in request.app.routes
+        if _is_route_object(route)
+    }
+    smartphone_admin_entries = [
+        {
+            "path": path,
+            "exists": path in available_paths,
+        }
+        for path in allowed_remote_paths
+    ]
     return _render(
         request,
         "admin.html",
@@ -244,6 +257,7 @@ async def admin_page(request: Request) -> HTMLResponse:
         overview=overview,
         module_count=len(context.module_groups),
         runtime=catalog_context["catalog"]["runtime"],
+        smartphone_admin_entries=smartphone_admin_entries,
     )
 
 
@@ -290,6 +304,24 @@ async def context_graph_page(request: Request) -> HTMLResponse:
         description=(
             "Construye el grafo de contexto del RAG, analiza tema principal/secundarios y "
             "debate elementos de saga para generar memoria inspiracional reutilizable por engrama."
+        ),
+        **runtime_context,
+    )
+
+
+@router.get("/admin/sagas")
+async def sagas_admin_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    runtime_context = _runtime_context(request)
+    return _render(
+        request,
+        "sagas.html",
+        title=f"{context.settings.app_name} | Sagas",
+        eyebrow="Saga Workspace",
+        headline="Sala de continuidad narrativa",
+        description=(
+            "Orquesta ciclos de saga end-to-end: semilla, comandos por acto, debate, "
+            "consistencia, retcon y cierre desde una interfaz movil-first."
         ),
         **runtime_context,
     )

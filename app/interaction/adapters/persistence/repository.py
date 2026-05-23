@@ -694,6 +694,7 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                 "non_rag_mode": bool(quality.get("non_rag_mode")),
                 "guard_path": str(quality.get("guard_path") or ""),
                 "instruction_echo_stripped": bool(quality.get("instruction_echo_stripped")),
+                "saga_context_used": bool(quality.get("saga_context_used")),
             }
 
             rows.append(

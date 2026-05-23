@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import asyncio
 import json
-from typing import Any
+from typing import Any, cast
 from uuid import uuid4
 
 from fastapi import APIRouter, FastAPI, WebSocket, WebSocketDisconnect
 
-from app.core.app_context import get_app_context_from_app, get_app_context_from_request
-from app.interaction.application import InteractionService
+from app.core.app_context import get_app_context_from_app
 from app.interaction.application.realtime import RealtimeChatService
 from app.interaction.events import InteractionRealtimeInput
 
@@ -31,11 +30,11 @@ def _decode_payload(raw_message: str) -> dict[str, Any]:
         return {"content": raw_message}
 
     if isinstance(parsed, dict):
-        return parsed
+        return cast(dict[str, Any], parsed)
     return {"content": str(parsed)}
 
 
-def _build_input(payload: dict[str, Any]) -> InteractionRealtimeInput:
+def _build_input(payload: dict[str, Any], *, default_saga_id: str | None = None) -> InteractionRealtimeInput:
     content = str(payload.get("content") or payload.get("message") or "").strip()
     if not content:
         raise ValueError("content is required")
@@ -45,6 +44,7 @@ def _build_input(payload: dict[str, Any]) -> InteractionRealtimeInput:
         author=str(payload.get("author") or "user"),
         channel=str(payload.get("channel") or "chat"),
         identity_id=payload.get("identity_id"),
+        saga_id=str(payload.get("saga_id") or default_saga_id or "").strip() or None,
         context_limit=int(payload.get("context_limit") or payload.get("limit") or 5),
         history_limit=int(payload.get("history_limit") or 20),
         world_rules=str(payload.get("world_rules") or ""),
@@ -68,7 +68,13 @@ async def _send_session_bootstrap(websocket: WebSocket, service: RealtimeChatSer
         await asyncio.sleep(0.001)
 
 
-async def _run_websocket_session(websocket: WebSocket, service: RealtimeChatService, session_id: str) -> None:
+async def _run_websocket_session(
+    websocket: WebSocket,
+    service: RealtimeChatService,
+    session_id: str,
+    *,
+    default_saga_id: str | None = None,
+) -> None:
     session_closed = False
     try:
         await _send_session_bootstrap(websocket, service, session_id)
@@ -81,7 +87,7 @@ async def _run_websocket_session(websocket: WebSocket, service: RealtimeChatServ
                 continue
 
             try:
-                input_data = _build_input(payload)
+                input_data = _build_input(payload, default_saga_id=default_saga_id)
             except ValueError as exc:
                 await _send_packet(websocket, {"type": "error", "session_id": session_id, "detail": str(exc)})
                 continue
@@ -103,9 +109,10 @@ async def websocket_chat(websocket: WebSocket) -> None:
     await websocket.accept()
     service = _get_realtime_service(websocket.app)
     requested_session_id = str(websocket.query_params.get("session_id") or "").strip()
+    requested_saga_id = str(websocket.query_params.get("saga_id") or "").strip() or None
     session_id = requested_session_id or str(uuid4())
     try:
-        await _run_websocket_session(websocket, service, session_id)
+        await _run_websocket_session(websocket, service, session_id, default_saga_id=requested_saga_id)
     except WebSocketDisconnect:
         return
 

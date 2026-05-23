@@ -38,6 +38,12 @@ class OperationsSagaRetconInput(BaseModel):
     apply: bool = False
 
 
+class OperationsSagaNextContextInput(BaseModel):
+    prompt: str = ""
+    window_size: int = 6
+    recall_limit: int = 4
+
+
 router = APIRouter(prefix="/api/operations", tags=["operations"])
 
 
@@ -183,6 +189,28 @@ async def saga_retcon(
     return context.event_bus.request(
         REQUEST_OPERATIONS_SAGA_RETCON,
         OperationsSagaRetconRequest(saga_id=saga_id, apply=payload.apply),
+        source_module="operations.adapters.api.routes",
+    )
+
+
+@router.post("/sagas/{saga_id}/next-context")
+async def saga_next_context(
+    request: Request,
+    saga_id: str,
+    payload: OperationsSagaNextContextInput,
+) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    from app.operations.events import OperationsSagaNextContextRequest
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT
+
+    return context.event_bus.request(
+        REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT,
+        OperationsSagaNextContextRequest(
+            saga_id=saga_id,
+            prompt=payload.prompt,
+            window_size=payload.window_size,
+            recall_limit=payload.recall_limit,
+        ),
         source_module="operations.adapters.api.routes",
     )
 

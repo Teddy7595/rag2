@@ -51,6 +51,7 @@ class InteractionRealtimeInputModel(BaseModel):
     author: str = "user"
     channel: str = "chat"
     identity_id: str | None = None
+    saga_id: str | None = None
     context_limit: int = 5
     history_limit: int = 20
     world_rules: str = ""

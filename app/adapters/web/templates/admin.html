@@ -87,6 +87,39 @@
     font-size: 0.83rem;
     line-height: 1.35;
   }
+
+  .smartphone-entry-list {
+    margin-top: 12px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .smartphone-entry {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(130, 130, 130, 0.3);
+    border-radius: 999px;
+    padding: 4px 10px;
+    background: rgba(255, 255, 255, 0.02);
+    font-size: 0.75rem;
+    color: #cbd5e1;
+  }
+
+  .smartphone-entry code {
+    background: transparent;
+    color: #f8fafc;
+    padding: 0;
+  }
+
+  .smartphone-entry-ok {
+    color: #9ae6b4;
+  }
+
+  .smartphone-entry-missing {
+    color: #fca5a5;
+  }
 </style>
 {% endblock %}
 
@@ -135,6 +168,17 @@
     <p class="card-label">Seguridad local</p>
     <div class="card-body">
       <p>El acceso al panel se mantiene restringido a la red local, con rate limiting y ban list activados.</p>
+      <p class="small-note">Entradas admin habilitadas para smartphone segun allowlist remota:</p>
+      <div class="smartphone-entry-list">
+        {% for entry in smartphone_admin_entries %}
+        <a class="smartphone-entry" href="{{ entry.path }}">
+          <code>{{ entry.path }}</code>
+          <span class="{{ 'smartphone-entry-ok' if entry.exists else 'smartphone-entry-missing' }}">
+            {{ 'ok' if entry.exists else 'sin ruta' }}
+          </span>
+        </a>
+        {% endfor %}
+      </div>
     </div>
   </article>
   <article class="card">
@@ -154,6 +198,7 @@
       <div class="card-actions">
         <a class="link-button" href="/admin/routes">Abrir visualizador</a>
         <a class="link-button" href="/admin/context-graph">Context graph</a>
+        <a class="link-button" href="/admin/sagas">Sagas</a>
         <a class="link-button" href="/admin/session-intel">Session intel</a>
         <a class="link-button" href="/admin/context-traces">Context traces</a>
       </div>

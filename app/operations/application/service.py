@@ -79,7 +79,7 @@ class OperationsService:
             status="active",
         )
         if request.initial_command.strip():
-            workflow.record_command(request.initial_command, note="initial command")
+            workflow.record_command(request.initial_command, note="initial command", act_id="act-1", phase="seed")
         saved_workflow = saga_repository.save(workflow)
         payload = saved_workflow.as_dict()
         self.event_bus.publish(
@@ -102,7 +102,8 @@ class OperationsService:
         if not workflow:
             return {"appended": False, "saga_id": request.saga_id}
 
-        workflow.record_command(request.command, note=request.note)
+        act_id, phase = self._extract_act_marker(request.note, request.command)
+        workflow.record_command(request.command, note=request.note, act_id=act_id, phase=phase)
         saved_workflow = saga_repository.save(workflow)
         payload = saved_workflow.as_dict()
         self.event_bus.publish(
@@ -189,13 +190,17 @@ class OperationsService:
                 "detail": "Debate topic cannot be empty.",
             }
 
-        workflow.record_command(debate_topic, note=f"debate:{debate_note}" if debate_note else "debate")
+        debate_note_tag = f"debate:{debate_note}" if debate_note else "debate"
+        act_id, phase = self._extract_act_marker(debate_note_tag, debate_topic)
+        workflow.record_command(debate_topic, note=debate_note_tag, act_id=act_id, phase=phase or "debate")
         workflow.act_history.append(
             {
                 "kind": "debate",
                 "topic": debate_topic,
                 "note": debate_note,
                 "identity_name": request.identity_name,
+                "act_id": act_id,
+                "phase": phase or "debate",
             }
         )
         workflow.touch()
@@ -300,6 +305,52 @@ class OperationsService:
             "saga_id": request.saga_id,
             "retcon": suggestion,
             "analysis": analysis,
+        }
+
+    def build_saga_next_context(self, request: OperationsSagaNextContextRequest) -> dict[str, object]:
+        workflow = self._require_saga_repository().get_by_id(request.saga_id)
+        if not workflow:
+            return {"found": False, "saga_id": request.saga_id}
+
+        commands = [str(command).strip() for command in workflow.command_history if str(command).strip()]
+        window_size = max(2, min(24, int(request.window_size or 6)))
+        recall_limit = max(1, min(8, int(request.recall_limit or 4)))
+        active_window = commands[-window_size:]
+        older_commands = commands[:-window_size] if len(commands) > window_size else []
+
+        prompt_tokens = self._tokenize(str(request.prompt or ""))
+        ranked_hits: list[tuple[int, str]] = []
+        if prompt_tokens and older_commands:
+            for command in older_commands:
+                command_tokens = self._tokenize(command)
+                score = len(prompt_tokens.intersection(command_tokens))
+                if score > 0:
+                    ranked_hits.append((score, command))
+        ranked_hits.sort(key=lambda item: item[0], reverse=True)
+        deep_recall = [item[1] for item in ranked_hits[:recall_limit]]
+
+        canonical_summary = self._latest_canonical_summary(commands) or str(workflow.summary or "").strip()
+        baseline_lines = [
+            f"[CANONICAL] {canonical_summary or 'sin resumen canonico confirmado'}",
+            "[WINDOW]",
+            *(active_window or ["sin comandos recientes"]),
+            "[DEEP_RECALL]",
+            *(deep_recall or ["sin hallazgos fuera de ventana"]),
+        ]
+        baseline_context = "\n".join(baseline_lines)
+
+        return {
+            "found": True,
+            "saga_id": workflow.id,
+            "title": workflow.title,
+            "prompt": str(request.prompt or ""),
+            "window_size": window_size,
+            "recall_limit": recall_limit,
+            "canonical_summary": canonical_summary,
+            "active_window": active_window,
+            "deep_recall": deep_recall,
+            "baseline_context": baseline_context,
+            "command_count": len(commands),
         }
 
     def _detect_contradictions(self, commands: list[str]) -> list[dict[str, str]]:
@@ -452,6 +503,32 @@ class OperationsService:
             f"'{first.get('positive')}' y '{first.get('negative')}' con una causa diegetica explicita "
             "(evento intermedio, identidad encubierta o cambio de perspectiva)."
         )
+
+    def _extract_act_marker(self, note: str, command: str) -> tuple[str | None, str | None]:
+        note_text = str(note or "").strip().lower()
+        command_text = str(command or "").strip()
+
+        match = re.search(r"act:(\d+)(?::([a-z0-9_-]+))?", note_text)
+        if not match:
+            match = re.search(r"\[act\s+(\d+)\s+([a-z0-9_-]+)\]", command_text, flags=re.IGNORECASE)
+
+        if not match:
+            return None, None
+
+        act_number = match.group(1)
+        phase = (match.group(2) or "").strip().lower() or None
+        return f"act-{act_number}", phase
+
+    def _tokenize(self, text: str) -> set[str]:
+        cleaned = re.sub(r"[^a-z0-9\s]", " ", str(text or "").lower())
+        return {item for item in cleaned.split() if len(item) >= 4}
+
+    def _latest_canonical_summary(self, commands: list[str]) -> str:
+        for command in reversed(commands):
+            value = str(command).strip()
+            if value.startswith("[ACT") and "SUMMARY]" in value:
+                return value
+        return ""
 
     def _require_saga_repository(self) -> SagaWorkflowRepositoryPort:
         if not self.saga_repository:

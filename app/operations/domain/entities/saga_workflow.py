@@ -17,7 +17,14 @@ class SagaWorkflow(BaseEntity):
     command_history: list[str] = field(default_factory=list)
     act_history: list[dict[str, Any]] = field(default_factory=list)
 
-    def record_command(self, command: str, note: str = "") -> None:
+    def record_command(
+        self,
+        command: str,
+        note: str = "",
+        *,
+        act_id: str | None = None,
+        phase: str | None = None,
+    ) -> None:
         normalized_command = command.strip()
         if not normalized_command:
             return
@@ -30,6 +37,8 @@ class SagaWorkflow(BaseEntity):
                 "index": len(self.command_history),
                 "command": normalized_command,
                 "note": note,
+                "act_id": act_id,
+                "phase": phase,
                 "recorded_at": timestamp,
             }
         )

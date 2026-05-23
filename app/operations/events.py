@@ -97,6 +97,20 @@ class OperationsSagaRetconRequest:
         self.apply = apply
 
 
+class OperationsSagaNextContextRequest:
+    def __init__(
+        self,
+        saga_id: str,
+        prompt: str = "",
+        window_size: int = 6,
+        recall_limit: int = 4,
+    ) -> None:
+        self.saga_id = saga_id
+        self.prompt = prompt
+        self.window_size = window_size
+        self.recall_limit = recall_limit
+
+
 REQUEST_OPERATIONS_STATUS = EventSpec[OperationsStatusRequest, dict](
     name="operations.status.request",
     kind=EventKind.REQUEST,
@@ -185,6 +199,14 @@ REQUEST_OPERATIONS_SAGA_RETCON = EventSpec[OperationsSagaRetconRequest, dict](
     output_type=dict,
 )
 
+REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT = EventSpec[OperationsSagaNextContextRequest, dict](
+    name="operations.saga.next_context.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=OperationsSagaNextContextRequest,
+    output_type=dict,
+)
+
 PUBLISH_OPERATIONS_SAGA_STARTED = EventSpec[dict, dict](
     name="operations.saga.started",
     kind=EventKind.PUBLISH,
@@ -234,7 +256,8 @@ __all__ = [
     "OperationsSagaDebateRequest",
     "OperationsSagaConsistencyRequest",
     "OperationsSagaDetailRequest",
-        "OperationsSagaRetconRequest",
+    "OperationsSagaRetconRequest",
+    "OperationsSagaNextContextRequest",
     "OperationsSagaListRequest",
     "OperationsSagaStartRequest",
     "OperationsSagaUpdateRequest",
@@ -247,7 +270,8 @@ __all__ = [
     "REQUEST_OPERATIONS_SAGA_COMMAND_APPEND",
     "REQUEST_OPERATIONS_SAGA_CONSISTENCY",
     "REQUEST_OPERATIONS_SAGA_DEBATE",
-        "REQUEST_OPERATIONS_SAGA_RETCON",
+    "REQUEST_OPERATIONS_SAGA_RETCON",
+    "REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT",
     "REQUEST_OPERATIONS_SAGA_DELETE",
     "REQUEST_OPERATIONS_SAGA_DETAIL",
     "REQUEST_OPERATIONS_SAGA_LIST",

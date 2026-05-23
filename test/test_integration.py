@@ -106,6 +106,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/admin",
         "/admin/runtime-ai",
         "/admin/context-graph",
+        "/admin/sagas",
         "/admin/session-intel",
         "/admin/context-traces",
         "/admin/engrams",
@@ -134,6 +135,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/operations/sagas/{saga_id}/commands",
         "/api/operations/sagas/{saga_id}/consistency",
         "/api/operations/sagas/{saga_id}/debate",
+        "/api/operations/sagas/{saga_id}/next-context",
         "/api/operations/sagas/{saga_id}/retcon",
         "/api/storage/overview",
         "/api/storage/public",
@@ -182,6 +184,9 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         admin_response = client.get("/admin")
         assert admin_response.status_code == 200
         assert "Panel de administración" in admin_response.text
+        assert "/admin/engrams" in admin_response.text
+        assert "/admin/context-graph" in admin_response.text
+        assert "/admin/sagas" in admin_response.text
 
         chat_response = client.get("/chat")
         assert chat_response.status_code == 200
@@ -199,6 +204,11 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         context_graph_admin_response = client.get("/admin/context-graph")
         assert context_graph_admin_response.status_code == 200
         assert "Laboratorio de coherencia" in context_graph_admin_response.text
+
+        sagas_admin_response = client.get("/admin/sagas")
+        assert sagas_admin_response.status_code == 200
+        assert "Sala de continuidad narrativa" in sagas_admin_response.text
+        assert "/api/operations/sagas" in sagas_admin_response.text
 
         session_intel_admin_response = client.get("/admin/session-intel")
         assert session_intel_admin_response.status_code == 200
@@ -646,12 +656,14 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
 
         saga_append_response = client.post(
             f"/api/operations/sagas/{saga_payload['id']}/commands",
-            json={"command": "avanza al siguiente acto", "note": "cierre del primer giro"},
+            json={"command": "avanza al siguiente acto", "note": "act:1:checkpoint"},
         )
         assert saga_append_response.status_code == 200
         saga_append_payload = saga_append_response.json()
         assert saga_append_payload["appended"] is True
         assert saga_append_payload["saga"]["command_count"] == 2
+        assert saga_append_payload["saga"]["act_history"][-1]["act_id"] == "act-1"
+        assert saga_append_payload["saga"]["act_history"][-1]["phase"] == "checkpoint"
 
         contradiction_append_one = client.post(
             f"/api/operations/sagas/{saga_payload['id']}/commands",
@@ -697,7 +709,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
             f"/api/operations/sagas/{saga_payload['id']}/debate",
             json={
                 "topic": "Debatir el conflicto principal y alternativas del antagonista",
-                "note": "usar tono epico y consistente",
+                "note": "act:1:post-close usar tono epico y consistente",
                 "identity_name": "Atlas",
                 "persist_memory": True,
             },
@@ -707,6 +719,29 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_debate_payload["debated"] is True
         assert saga_debate_payload["saga"]["command_count"] >= 6
         assert saga_debate_payload["memory"]["title"].startswith("Debate saga")
+        assert any(
+            entry.get("kind") == "debate"
+            and entry.get("act_id") == "act-1"
+            and entry.get("phase") == "post-close"
+            for entry in saga_debate_payload["saga"]["act_history"]
+        )
+
+        saga_next_context_response = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/next-context",
+            json={
+                "prompt": "duelo final atlas continuidad acto siguiente",
+                "window_size": 6,
+                "recall_limit": 3,
+            },
+        )
+        assert saga_next_context_response.status_code == 200
+        saga_next_context_payload = saga_next_context_response.json()
+        assert saga_next_context_payload["found"] is True
+        assert saga_next_context_payload["saga_id"] == saga_payload["id"]
+        assert isinstance(saga_next_context_payload["baseline_context"], str)
+        assert "[CANONICAL]" in saga_next_context_payload["baseline_context"]
+        assert "[WINDOW]" in saga_next_context_payload["baseline_context"]
+        assert "[DEEP_RECALL]" in saga_next_context_payload["baseline_context"]
 
         saga_detail_response = client.get(f"/api/operations/sagas/{saga_payload['id']}")
         assert saga_detail_response.status_code == 200
@@ -910,6 +945,98 @@ def test_security_middleware_applies_rate_limit_and_ban_list(tmp_path: Path, mon
         assert banned_response.json()["detail"] == "Client is banned"
 
 
+def test_saga_next_context_includes_closed_act_canonical_summary(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        start_response = client.post(
+            "/api/operations/sagas",
+            json={
+                "title": "Saga Continuidad",
+                "premise": "Prueba de continuidad entre actos.",
+                "initial_command": "Acto inicial de continuidad",
+            },
+        )
+        assert start_response.status_code == 200
+        saga_id = start_response.json()["id"]
+
+        summary_command = "[ACT 1 SUMMARY] objetivo=consolidar alianza; coherence=0.92; contradictions=0; hitos=acuerdo sellado"
+        append_summary = client.post(
+            f"/api/operations/sagas/{saga_id}/commands",
+            json={"command": summary_command, "note": "act:1:summary"},
+        )
+        assert append_summary.status_code == 200
+        assert append_summary.json()["appended"] is True
+
+        close_marker = client.post(
+            f"/api/operations/sagas/{saga_id}/commands",
+            json={"command": "[ACT 1 CLOSE] coherencia=0.92 contradicciones=0", "note": "act:1:close"},
+        )
+        assert close_marker.status_code == 200
+        assert close_marker.json()["appended"] is True
+
+        next_context_response = client.post(
+            f"/api/operations/sagas/{saga_id}/next-context",
+            json={
+                "prompt": "arranca el acto 2 manteniendo la continuidad",
+                "window_size": 6,
+                "recall_limit": 3,
+            },
+        )
+        assert next_context_response.status_code == 200
+        payload = next_context_response.json()
+        assert payload["found"] is True
+        assert payload["canonical_summary"].startswith("[ACT 1 SUMMARY]")
+        assert summary_command in payload["baseline_context"]
+
+
+def test_saga_next_context_recovers_out_of_window_reference(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        start_response = client.post(
+            "/api/operations/sagas",
+            json={
+                "title": "Saga Recall Profundo",
+                "premise": "Validar recuperacion fuera de ventana.",
+                "initial_command": "prologo breve",
+            },
+        )
+        assert start_response.status_code == 200
+        saga_id = start_response.json()["id"]
+
+        old_fact = "La reliquia omega queda oculta en la torre norte"
+        old_fact_response = client.post(
+            f"/api/operations/sagas/{saga_id}/commands",
+            json={"command": old_fact, "note": "act:1:fact"},
+        )
+        assert old_fact_response.status_code == 200
+        assert old_fact_response.json()["appended"] is True
+
+        for index in range(10):
+            filler_response = client.post(
+                f"/api/operations/sagas/{saga_id}/commands",
+                json={"command": f"evento secundario {index}", "note": "act:2:progress"},
+            )
+            assert filler_response.status_code == 200
+            assert filler_response.json()["appended"] is True
+
+        next_context_response = client.post(
+            f"/api/operations/sagas/{saga_id}/next-context",
+            json={
+                "prompt": "recuerda donde estaba la reliquia omega para el acto final",
+                "window_size": 4,
+                "recall_limit": 3,
+            },
+        )
+        assert next_context_response.status_code == 200
+        payload = next_context_response.json()
+        assert payload["found"] is True
+        assert len(payload["active_window"]) <= 4
+        assert any("reliquia omega" in str(item).lower() for item in payload["deep_recall"])
+        assert "reliquia omega" in payload["baseline_context"].lower()
+
+
 def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch) -> None:
     app = build_test_app(tmp_path, monkeypatch)
 
@@ -934,6 +1061,17 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         )
         assert engram_response.status_code == 200
 
+        saga_response = client.post(
+            "/api/operations/sagas",
+            json={
+                "title": "Saga Realtime",
+                "premise": "Integracion de continuidad para chat realtime.",
+                "initial_command": "[ACT 1 SUMMARY] objetivo=proteger reliquia omega; coherence=0.9; contradictions=0",
+            },
+        )
+        assert saga_response.status_code == 200
+        saga_id = saga_response.json()["id"]
+
         with client.websocket_connect("/ws/chat") as websocket:
             bootstrap_types: list[str] = []
             realtime_session_id = ""
@@ -951,7 +1089,7 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
 
             websocket.send_json(
                 {
-                    "content": "Atlas resume la base de conocimiento realtime",
+                    "content": f"saga_id:{saga_id} Atlas resume la continuidad de saga y la base de conocimiento realtime",
                     "context_limit": 5,
                     "history_limit": 5,
                 }
@@ -1011,21 +1149,77 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         trace_for_session = next(trace for trace in traces_payload if trace["session_id"] == realtime_session_id)
         assert "quality_flags" in trace_for_session
         assert isinstance(trace_for_session["quality_flags"], dict)
+        trace_payload = dict(trace_for_session.get("context_trace") or {})
+        saga_trace = dict(trace_payload.get("saga_next_context") or {})
+        assert saga_trace.get("saga_id") == saga_id
+        assert "canonical_summary" in saga_trace
         assert any((metric.get("coherence_score") or 0) >= 0 for metric in metrics_payload)
+
+        with client.websocket_connect(f"/ws/chat?saga_id={saga_id}") as saga_websocket:
+            query_session_id = ""
+            while True:
+                packet = saga_websocket.receive_json()
+                if packet["type"] == "session_started":
+                    query_session_id = str(packet.get("session_id") or "")
+                if packet["type"] == "welcome":
+                    break
+
+            saga_websocket.send_json(
+                {
+                    "content": "Resume continuidad sin enviar saga_id en el mensaje.",
+                    "context_limit": 5,
+                    "history_limit": 5,
+                }
+            )
+
+            while True:
+                packet = saga_websocket.receive_json()
+                if packet["type"] == "turn_complete":
+                    break
+
+        assert query_session_id
+        query_traces = client.get(
+            "/api/admin/context-traces",
+            params={"session_id": query_session_id, "limit": 20},
+        )
+        assert query_traces.status_code == 200
+        query_traces_payload = query_traces.json()
+        assert any(trace["session_id"] == query_session_id for trace in query_traces_payload)
+        query_trace_for_session = next(trace for trace in query_traces_payload if trace["session_id"] == query_session_id)
+        query_trace_payload = dict(query_trace_for_session.get("context_trace") or {})
+        query_saga_trace = dict(query_trace_payload.get("saga_next_context") or {})
+        assert query_saga_trace.get("saga_id") == saga_id
+        query_quality_flags = dict(query_trace_for_session.get("quality_flags") or {})
+        assert query_quality_flags.get("saga_context_used") is True
 
         sse_response = client.post(
             "/api/interaction/stream",
             json={
                 "content": "Atlas vuelve a resumir la base de conocimiento realtime",
+                "saga_id": saga_id,
                 "context_limit": 5,
                 "history_limit": 5,
             },
+            headers={"x-session-id": "sse-saga-session"},
         )
         assert sse_response.status_code == 200
         sse_text = sse_response.text
         assert "event: session_started" in sse_text
         assert "event: turn_complete" in sse_text
         assert "assistant_message" in sse_text
+
+        sse_traces = client.get(
+            "/api/admin/context-traces",
+            params={"session_id": "sse-saga-session", "limit": 20},
+        )
+        assert sse_traces.status_code == 200
+        sse_traces_payload = sse_traces.json()
+        assert any(trace.get("session_id") == "sse-saga-session" for trace in sse_traces_payload)
+        sse_trace_row = next(trace for trace in sse_traces_payload if trace.get("session_id") == "sse-saga-session")
+        sse_trace_payload = dict(sse_trace_row.get("context_trace") or {})
+        sse_saga_trace = dict(sse_trace_payload.get("saga_next_context") or {})
+        assert sse_saga_trace.get("saga_id") == saga_id
+        assert sse_saga_trace.get("used") is True
 
         status_response = client.get("/api/operations/status", params={"limit": 200})
         assert status_response.status_code == 200

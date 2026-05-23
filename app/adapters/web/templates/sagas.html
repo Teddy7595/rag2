@@ -1,0 +1,1284 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+  .shell {
+    max-width: 100%;
+    padding: 16px 12px 32px;
+  }
+
+  .hero {
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .headline {
+    max-width: 100%;
+    font-size: clamp(1.9rem, 8vw, 2.8rem);
+    line-height: 1.02;
+  }
+
+  .description {
+    font-size: 0.95rem;
+    line-height: 1.55;
+  }
+
+  .stats {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .stat-card {
+    border-radius: 14px;
+    padding: 12px 14px;
+  }
+
+  .stat-value {
+    font-size: 1.55rem;
+  }
+
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .panel {
+    border-radius: 14px;
+    padding: 14px;
+  }
+
+  .panel-title {
+    font-size: 1rem;
+    margin-bottom: 8px;
+  }
+
+  .panel-body {
+    line-height: 1.55;
+  }
+
+  .form-stack {
+    display: grid;
+    gap: 10px;
+  }
+
+  .control-label {
+    font-size: 0.74rem;
+  }
+
+  .control-input,
+  .control-select,
+  .search-input {
+    font-size: 0.98rem;
+    min-height: 46px;
+    border-radius: 12px;
+    padding: 11px 12px;
+  }
+
+  textarea.control-input {
+    min-height: 104px;
+    resize: vertical;
+  }
+
+  .save-button,
+  .link-button {
+    min-height: 46px;
+    border-radius: 12px;
+    font-size: 0.93rem;
+    width: 100%;
+  }
+
+  .row-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr;
+  }
+
+  .small-note {
+    font-size: 0.82rem;
+  }
+
+  .route-search,
+  .route-row {
+    border-radius: 12px;
+  }
+
+  .route-row {
+    padding: 12px;
+    cursor: pointer;
+  }
+
+  .route-row.active {
+    border-color: rgba(125, 211, 252, 0.75);
+    box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.16);
+  }
+
+  .meta-grid {
+    display: grid;
+    gap: 10px;
+    grid-template-columns: 1fr;
+  }
+
+  .seed-grid {
+    display: grid;
+    gap: 10px;
+  }
+
+  .seed-progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .seed-progress .pill {
+    font-size: 0.7rem;
+  }
+
+  .json-box {
+    font-size: 0.79rem;
+    max-height: 42dvh;
+    overflow: auto;
+    white-space: pre-wrap;
+    overflow-wrap: anywhere;
+    margin: 0;
+  }
+
+  @media (min-width: 720px) {
+    .shell {
+      padding: 20px 16px 34px;
+    }
+
+    .stats {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .row-actions {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1040px) {
+    .shell {
+      max-width: 1380px;
+      margin: 0 auto;
+      padding: 34px 20px 56px;
+    }
+
+    .stats {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .layout {
+      grid-template-columns: minmax(300px, 0.9fr) minmax(0, 1.7fr);
+      align-items: start;
+    }
+
+    .save-button,
+    .link-button {
+      width: auto;
+      min-width: 170px;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Runtime texto</span>
+    <strong class="stat-value">{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin modelo local activo' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Runtime vision</span>
+    <strong class="stat-value">{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Binding llama.cpp</span>
+    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.binding_version or 'sin version detectada' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Acceso rapido</span>
+    <strong class="stat-value"><a href="/admin/context-graph">context graph</a></strong>
+    <span class="stat-copy">complementa el workspace con analisis de contexto</span>
+  </article>
+</section>
+
+<section class="layout">
+  <article class="panel">
+    <h2 class="panel-title">Sagas registradas</h2>
+    <div class="panel-body" style="display: grid; gap: 12px;">
+      <div class="route-search" style="margin: 0;">
+        <label class="search-label" for="filter-status">Filtrar por estado</label>
+        <select id="filter-status" class="control-select">
+          <option value="">todos</option>
+          <option value="active">active</option>
+          <option value="paused">paused</option>
+          <option value="closed">closed</option>
+        </select>
+      </div>
+      <div class="row-actions">
+        <button id="refresh-list" class="save-button" type="button">Refrescar lista</button>
+        <button id="clear-selection" class="save-button" type="button">Limpiar seleccion</button>
+      </div>
+      <p class="small-note" id="list-status">Cargando sagas...</p>
+      <div class="route-rows" id="saga-list"></div>
+    </div>
+  </article>
+
+  <div style="display: grid; gap: 12px;">
+    <article class="panel">
+      <h2 class="panel-title">Seed wizard + crear saga</h2>
+      <div class="panel-body">
+        <div class="seed-grid">
+          <label class="control-label" for="seed-question">Pregunta guiada (dimensiones pendientes)</label>
+          <textarea id="seed-question" class="control-input" readonly></textarea>
+
+          <label class="control-label" for="seed-answer">Respuesta</label>
+          <textarea id="seed-answer" class="control-input" placeholder="Escribe la respuesta para esta dimension."></textarea>
+
+          <div class="row-actions">
+            <button id="seed-save-next" class="save-button" type="button">Guardar y siguiente</button>
+            <button id="seed-skip-next" class="save-button" type="button">Saltar dimension</button>
+            <button id="seed-apply" class="save-button" type="button">Aplicar seed al formulario</button>
+            <button id="seed-reset" class="save-button" type="button">Reset seed</button>
+          </div>
+
+          <div class="seed-progress" id="seed-progress"></div>
+          <p class="small-note" id="seed-status">Seed wizard inicializado.</p>
+        </div>
+
+        <form id="create-form" class="form-stack">
+          <label class="control-label" for="create-title">Titulo</label>
+          <input id="create-title" class="control-input" type="text" required placeholder="Atlas y la ciudad sumergida">
+
+          <label class="control-label" for="create-premise">Premisa</label>
+          <textarea id="create-premise" class="control-input" placeholder="Situacion inicial, tono y conflicto de arranque."></textarea>
+
+          <label class="control-label" for="create-summary">Resumen inicial</label>
+          <textarea id="create-summary" class="control-input" placeholder="Resumen corto que servira de ancla narrativa."></textarea>
+
+          <label class="control-label" for="create-world">World building</label>
+          <textarea id="create-world" class="control-input" placeholder="Reglas del mundo, facciones y limites."></textarea>
+
+          <label class="control-label" for="create-command">Comando inicial</label>
+          <input id="create-command" class="control-input" type="text" placeholder="Inicia el acto 1 con un conflicto en la frontera.">
+
+          <button class="save-button" type="submit">Crear saga</button>
+        </form>
+        <p class="small-note" id="create-status">Sin acciones recientes.</p>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h2 class="panel-title">Detalle y mantenimiento</h2>
+      <div class="panel-body" style="display: grid; gap: 12px;">
+        <div class="meta-grid">
+          <div>
+            <strong>Saga activa:</strong> <span id="active-saga-id">-</span>
+          </div>
+          <div>
+            <strong>Estado:</strong> <span id="active-saga-status">-</span>
+          </div>
+          <div>
+            <strong>Comandos:</strong> <span id="active-saga-count">0</span>
+          </div>
+        </div>
+
+        <form id="update-form" class="form-stack">
+          <label class="control-label" for="update-title">Titulo</label>
+          <input id="update-title" class="control-input" type="text" placeholder="Titulo de saga">
+
+          <label class="control-label" for="update-premise">Premisa</label>
+          <textarea id="update-premise" class="control-input" placeholder="Premisa actualizada"></textarea>
+
+          <label class="control-label" for="update-summary">Resumen</label>
+          <textarea id="update-summary" class="control-input" placeholder="Resumen actual"></textarea>
+
+          <label class="control-label" for="update-world">World building</label>
+          <textarea id="update-world" class="control-input" placeholder="Mundo actual"></textarea>
+
+          <label class="control-label" for="update-status">Estado</label>
+          <select id="update-status" class="control-select">
+            <option value="active">active</option>
+            <option value="paused">paused</option>
+            <option value="closed">closed</option>
+          </select>
+
+          <div class="row-actions">
+            <button class="save-button" type="submit">Guardar cambios</button>
+            <button id="delete-saga" class="save-button" type="button">Eliminar saga</button>
+          </div>
+        </form>
+        <p class="small-note" id="update-status-msg">Selecciona una saga para editar.</p>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h2 class="panel-title">Actos, debate y cierre canonico</h2>
+      <div class="panel-body" style="display: grid; gap: 10px;">
+        <form id="act-form" class="form-stack">
+          <label class="control-label" for="act-number">Acto actual</label>
+          <input id="act-number" class="control-input" type="number" min="1" value="1">
+
+          <label class="control-label" for="act-goal">Objetivo del acto</label>
+          <textarea id="act-goal" class="control-input" placeholder="Que debe quedar resuelto al cerrar este acto."></textarea>
+
+          <label class="control-label" for="act-pre-debate">Debate pre-cierre (opcional)</label>
+          <textarea id="act-pre-debate" class="control-input" placeholder="Pregunta de debate antes de cerrar el acto."></textarea>
+
+          <label class="control-label" for="act-post-debate">Debate post-cierre (opcional)</label>
+          <textarea id="act-post-debate" class="control-input" placeholder="Debate de ajuste despues del cierre."></textarea>
+
+          <div class="row-actions">
+            <button id="act-open" class="save-button" type="button">Abrir checkpoint de acto</button>
+            <button id="act-close" class="save-button" type="button">Cerrar acto con resumen</button>
+          </div>
+        </form>
+
+        <form id="command-form" class="form-stack">
+          <label class="control-label" for="command-input">Nuevo comando narrativo</label>
+          <textarea id="command-input" class="control-input" placeholder="Describe el siguiente paso narrativo."></textarea>
+
+          <label class="control-label" for="command-note">Nota</label>
+          <input id="command-note" class="control-input" type="text" placeholder="Contexto del comando (opcional)">
+
+          <button class="save-button" type="submit">Agregar comando</button>
+        </form>
+
+        <form id="debate-form" class="form-stack">
+          <label class="control-label" for="debate-topic">Tema de debate</label>
+          <textarea id="debate-topic" class="control-input" placeholder="Contrasta dos decisiones narrativas antes del siguiente acto."></textarea>
+
+          <label class="control-label" for="debate-note">Nota de debate</label>
+          <input id="debate-note" class="control-input" type="text" placeholder="Restricciones o tono">
+
+          <label class="control-label" for="debate-identity">Engrama</label>
+          <input id="debate-identity" class="control-input" type="text" value="System">
+
+          <button class="save-button" type="submit">Debatir y guardar memoria</button>
+        </form>
+        <p class="small-note" id="actions-status">Aun sin comandos o debate.</p>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h2 class="panel-title">Contexto N+1 (sliding + recall)</h2>
+      <div class="panel-body" style="display: grid; gap: 10px;">
+        <label class="control-label" for="next-act-prompt">Prompt para siguiente acto</label>
+        <textarea id="next-act-prompt" class="control-input" placeholder="Que quieres desarrollar en el siguiente acto."></textarea>
+
+        <div class="row-actions">
+          <button id="prepare-context" class="save-button" type="button">Preparar contexto baseline</button>
+          <button id="inject-context-command" class="save-button" type="button">Enviar a comando narrativo</button>
+        </div>
+
+        <label class="control-label" for="next-act-context">Contexto propuesto</label>
+        <textarea id="next-act-context" class="control-input" placeholder="Aqui aparece la combinacion de resumen canonico, ventana activa y recall profundo."></textarea>
+        <p class="small-note" id="context-status">Todavia sin contexto preparado.</p>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h2 class="panel-title">Consistencia y retcon</h2>
+      <div class="panel-body" style="display: grid; gap: 10px;">
+        <div class="row-actions">
+          <button id="check-consistency" class="save-button" type="button">Analizar consistencia</button>
+          <button id="preview-retcon" class="save-button" type="button">Retcon sugerido</button>
+          <button id="apply-retcon" class="save-button" type="button">Aplicar retcon</button>
+        </div>
+        <p class="small-note" id="consistency-status">Sin analisis ejecutado.</p>
+      </div>
+    </article>
+
+    <article class="panel">
+      <h2 class="panel-title">Salida JSON</h2>
+      <div class="panel-body">
+        <pre id="json-output" class="json-box">Esperando interaccion...</pre>
+      </div>
+    </article>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const listStatus = document.getElementById('list-status');
+  const sagaList = document.getElementById('saga-list');
+  const filterStatus = document.getElementById('filter-status');
+  const refreshList = document.getElementById('refresh-list');
+  const clearSelection = document.getElementById('clear-selection');
+
+  const createForm = document.getElementById('create-form');
+  const createStatus = document.getElementById('create-status');
+
+  const seedQuestion = document.getElementById('seed-question');
+  const seedAnswer = document.getElementById('seed-answer');
+  const seedSaveNext = document.getElementById('seed-save-next');
+  const seedSkipNext = document.getElementById('seed-skip-next');
+  const seedApply = document.getElementById('seed-apply');
+  const seedReset = document.getElementById('seed-reset');
+  const seedProgress = document.getElementById('seed-progress');
+  const seedStatus = document.getElementById('seed-status');
+
+  const activeSagaId = document.getElementById('active-saga-id');
+  const activeSagaStatus = document.getElementById('active-saga-status');
+  const activeSagaCount = document.getElementById('active-saga-count');
+
+  const updateForm = document.getElementById('update-form');
+  const updateStatusMsg = document.getElementById('update-status-msg');
+  const deleteSaga = document.getElementById('delete-saga');
+
+  const commandForm = document.getElementById('command-form');
+  const debateForm = document.getElementById('debate-form');
+  const actionsStatus = document.getElementById('actions-status');
+
+  const actOpen = document.getElementById('act-open');
+  const actClose = document.getElementById('act-close');
+  const actNumber = document.getElementById('act-number');
+  const actGoal = document.getElementById('act-goal');
+  const actPreDebate = document.getElementById('act-pre-debate');
+  const actPostDebate = document.getElementById('act-post-debate');
+
+  const prepareContext = document.getElementById('prepare-context');
+  const injectContextCommand = document.getElementById('inject-context-command');
+  const nextActPrompt = document.getElementById('next-act-prompt');
+  const nextActContext = document.getElementById('next-act-context');
+  const contextStatus = document.getElementById('context-status');
+
+  const checkConsistency = document.getElementById('check-consistency');
+  const previewRetcon = document.getElementById('preview-retcon');
+  const applyRetcon = document.getElementById('apply-retcon');
+  const consistencyStatus = document.getElementById('consistency-status');
+
+  const jsonOutput = document.getElementById('json-output');
+
+  const fields = {
+    create: {
+      title: document.getElementById('create-title'),
+      premise: document.getElementById('create-premise'),
+      summary: document.getElementById('create-summary'),
+      worldBuilding: document.getElementById('create-world'),
+      initialCommand: document.getElementById('create-command'),
+    },
+    update: {
+      title: document.getElementById('update-title'),
+      premise: document.getElementById('update-premise'),
+      summary: document.getElementById('update-summary'),
+      worldBuilding: document.getElementById('update-world'),
+      status: document.getElementById('update-status'),
+    },
+    command: {
+      command: document.getElementById('command-input'),
+      note: document.getElementById('command-note'),
+    },
+    debate: {
+      topic: document.getElementById('debate-topic'),
+      note: document.getElementById('debate-note'),
+      identity: document.getElementById('debate-identity'),
+    },
+  };
+
+  let selectedSagaId = '';
+  let selectedSaga = null;
+
+  const seedOrder = [
+    'genre',
+    'tone',
+    'setting',
+    'timeline',
+    'pov',
+    'conflict',
+    'cast',
+    'stakes',
+  ];
+
+  const seedPrompts = {
+    genre: 'Genero: Que tipo de historia quieres (fantasia, sci-fi, noir, etc.)?',
+    tone: 'Tono: Cual es el tono emocional (oscuro, epico, intimo, ironico)?',
+    setting: 'Escenario: Donde sucede la historia y cual es su atmosfera base?',
+    timeline: 'Restricciones temporales: En que epoca y con que limites de tiempo?',
+    pov: 'POV: Desde que perspectiva principal se narra?',
+    conflict: 'Conflicto clave: Cual es la tension central que mueve el acto 1?',
+    cast: 'Elenco: Quienes son los personajes centrales y su rol breve?',
+    stakes: 'Stakes: Que se pierde si fallan los protagonistas?',
+  };
+
+  let seedAnswers = {
+    genre: '',
+    tone: '',
+    setting: '',
+    timeline: '',
+    pov: '',
+    conflict: '',
+    cast: '',
+    stakes: '',
+  };
+  let seedQueue = [...seedOrder];
+
+  const tokenize = (text) => {
+    return String(text || '')
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, ' ')
+      .split(/\s+/)
+      .filter((item) => item.length >= 4);
+  };
+
+  const uniqueTokens = (tokens) => {
+    const out = [];
+    for (const item of tokens) {
+      if (!out.includes(item)) {
+        out.push(item);
+      }
+    }
+    return out;
+  };
+
+  const unresolvedSeedKeys = () => {
+    return seedOrder.filter((key) => !String(seedAnswers[key] || '').trim());
+  };
+
+  const currentSeedKey = () => {
+    for (const key of seedQueue) {
+      if (!String(seedAnswers[key] || '').trim()) {
+        return key;
+      }
+    }
+    return null;
+  };
+
+  const renderSeedProgress = () => {
+    seedProgress.innerHTML = '';
+    for (const key of seedOrder) {
+      const done = Boolean(String(seedAnswers[key] || '').trim());
+      const pill = document.createElement('span');
+      pill.className = 'pill';
+      pill.dataset.uppercase = 'false';
+      pill.textContent = `${done ? 'ok' : 'pendiente'}:${key}`;
+      seedProgress.appendChild(pill);
+    }
+  };
+
+  const updateSeedQuestion = () => {
+    const key = currentSeedKey();
+    if (!key) {
+      seedQuestion.value = 'Seed completo. Puedes aplicar al formulario y crear saga.';
+      seedStatus.textContent = 'Todas las dimensiones requeridas estan completas.';
+      seedAnswer.value = '';
+      renderSeedProgress();
+      return;
+    }
+    seedQuestion.value = seedPrompts[key];
+    seedAnswer.value = String(seedAnswers[key] || '');
+    seedStatus.textContent = `Dimension pendiente: ${key}. Quedan ${unresolvedSeedKeys().length}.`;
+    renderSeedProgress();
+  };
+
+  const applySeedToCreateForm = () => {
+    const unresolved = unresolvedSeedKeys();
+    if (unresolved.length) {
+      seedStatus.textContent = `Faltan dimensiones: ${unresolved.join(', ')}`;
+      return;
+    }
+
+    if (!fields.create.title.value.trim()) {
+      const baseTitle = `${seedAnswers.genre} | ${seedAnswers.setting}`.trim();
+      fields.create.title.value = baseTitle || 'Saga sin titulo';
+    }
+
+    fields.create.premise.value = [
+      `Genero: ${seedAnswers.genre}`,
+      `Tono: ${seedAnswers.tone}`,
+      `Escenario: ${seedAnswers.setting}`,
+      `Timeline: ${seedAnswers.timeline}`,
+      `POV: ${seedAnswers.pov}`,
+      `Conflicto: ${seedAnswers.conflict}`,
+      `Elenco: ${seedAnswers.cast}`,
+      `Stakes: ${seedAnswers.stakes}`,
+    ].join('\n');
+
+    fields.create.summary.value = [
+      `${seedAnswers.pov} enfrenta ${seedAnswers.conflict}.`,
+      `En ${seedAnswers.setting}, con tono ${seedAnswers.tone} y reglas temporales: ${seedAnswers.timeline}.`,
+      `Si falla: ${seedAnswers.stakes}.`,
+    ].join(' ');
+
+    fields.create.worldBuilding.value = [
+      `Escenario base: ${seedAnswers.setting}`,
+      `Reglas temporales: ${seedAnswers.timeline}`,
+      `Actores clave: ${seedAnswers.cast}`,
+      `Riesgo narrativo: ${seedAnswers.stakes}`,
+    ].join('\n');
+
+    fields.create.initialCommand.value = `Acto 1: ${seedAnswers.conflict}`;
+    seedStatus.textContent = 'Seed aplicado al formulario de creacion.';
+  };
+
+  const readSagaCommands = (saga) => {
+    if (!saga || !Array.isArray(saga.command_history)) {
+      return [];
+    }
+    return saga.command_history.map((item) => String(item || '').trim()).filter(Boolean);
+  };
+
+  const latestCanonicalSummary = (saga) => {
+    const commands = readSagaCommands(saga);
+    for (let index = commands.length - 1; index >= 0; index -= 1) {
+      const value = commands[index];
+      if (value.startsWith('[ACT') && value.includes('SUMMARY]')) {
+        return value;
+      }
+    }
+    return '';
+  };
+
+  const deepRecall = (commands, promptText, limit = 3) => {
+    const activeWindowSize = 6;
+    const windowSlice = commands.slice(Math.max(0, commands.length - activeWindowSize));
+    const olderSlice = commands.slice(0, Math.max(0, commands.length - activeWindowSize));
+    const promptTokens = uniqueTokens(tokenize(promptText));
+    if (!promptTokens.length || !olderSlice.length) {
+      return { windowSlice, recallHits: [] };
+    }
+
+    const ranked = olderSlice
+      .map((entry) => {
+        const entryTokens = uniqueTokens(tokenize(entry));
+        const overlap = entryTokens.filter((token) => promptTokens.includes(token));
+        return { entry, score: overlap.length };
+      })
+      .filter((item) => item.score > 0)
+      .sort((left, right) => right.score - left.score)
+      .slice(0, limit);
+
+    return {
+      windowSlice,
+      recallHits: ranked.map((item) => item.entry),
+    };
+  };
+
+  const appendCommand = async (sagaId, command, note = '') => {
+    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command, note }),
+    });
+    const payload = await readJson(response);
+    if (!payload.appended || !payload.saga) {
+      throw new Error('No se pudo guardar el comando en saga.');
+    }
+    return payload.saga;
+  };
+
+  const debateSaga = async (sagaId, topic, note) => {
+    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}/debate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        topic,
+        note,
+        identity_name: fields.debate.identity.value.trim() || 'System',
+        persist_memory: true,
+      }),
+    });
+    const payload = await readJson(response);
+    if (!payload.debated || !payload.saga) {
+      throw new Error(payload.detail || 'No se pudo completar el debate.');
+    }
+    return payload.saga;
+  };
+
+  const updateSagaSummary = async (sagaId, sagaPayload, appendText) => {
+    const existingSummary = String((sagaPayload && sagaPayload.summary) || '').trim();
+    const mergedSummary = existingSummary ? `${existingSummary}\n\n${appendText}` : appendText;
+    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: String(sagaPayload.title || ''),
+        premise: String(sagaPayload.premise || ''),
+        summary: mergedSummary,
+        world_building: String(sagaPayload.world_building || ''),
+        status: String(sagaPayload.status || 'active'),
+      }),
+    });
+    const payload = await readJson(response);
+    if (!payload.updated || !payload.saga) {
+      throw new Error('No se pudo persistir el resumen canonico del acto.');
+    }
+    return payload.saga;
+  };
+
+  const buildActSummary = (sagaPayload, actIdx, goal, consistency) => {
+    const commands = readSagaCommands(sagaPayload).filter((item) => !item.startsWith('[ACT'));
+    const highlights = commands.slice(Math.max(0, commands.length - 5));
+    const contradictionCount = Array.isArray(consistency && consistency.contradictions)
+      ? consistency.contradictions.length
+      : 0;
+    const coherenceScore = typeof (consistency && consistency.coherence_score) === 'number'
+      ? consistency.coherence_score
+      : 'n/a';
+
+    const highlightsText = highlights.length ? highlights.join(' | ') : 'sin hitos registrados';
+    return `[ACT ${actIdx} SUMMARY] objetivo=${goal || 'no definido'}; coherence=${coherenceScore}; contradictions=${contradictionCount}; hitos=${highlightsText}`;
+  };
+
+  const setJson = (payload) => {
+    jsonOutput.textContent = JSON.stringify(payload, null, 2);
+  };
+
+  const setSelectedSaga = (payload) => {
+    const saga = payload && payload.id ? payload : null;
+    selectedSagaId = saga ? String(saga.id) : '';
+    selectedSaga = saga;
+
+    activeSagaId.textContent = selectedSagaId || '-';
+    activeSagaStatus.textContent = saga ? String(saga.status || '-') : '-';
+    activeSagaCount.textContent = saga ? String(saga.command_count || 0) : '0';
+
+    fields.update.title.value = saga ? String(saga.title || '') : '';
+    fields.update.premise.value = saga ? String(saga.premise || '') : '';
+    fields.update.summary.value = saga ? String(saga.summary || '') : '';
+    fields.update.worldBuilding.value = saga ? String(saga.world_building || '') : '';
+    fields.update.status.value = saga ? String(saga.status || 'active') : 'active';
+
+    for (const row of sagaList.querySelectorAll('.route-row')) {
+      row.classList.toggle('active', row.dataset.sagaId === selectedSagaId);
+    }
+
+    if (saga) {
+      const nextActIdx = Math.max(1, Number(actNumber.value || 1));
+      const summary = latestCanonicalSummary(saga);
+      if (summary && !nextActContext.value.trim()) {
+        nextActContext.value = `${summary}\n\nWindow baseline: pendiente de preparar`;
+      }
+      actNumber.value = String(nextActIdx);
+    }
+  };
+
+  const readJson = async (response) => {
+    const payload = await response.json();
+    if (!response.ok) {
+      const detail = payload && payload.detail ? String(payload.detail) : `HTTP ${response.status}`;
+      throw new Error(detail);
+    }
+    return payload;
+  };
+
+  const fetchSagaDetail = async (sagaId) => {
+    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}`);
+    const data = await readJson(response);
+    if (data && data.found === false) {
+      throw new Error('Saga no encontrada');
+    }
+    return data;
+  };
+
+  const renderSagaList = (sagas) => {
+    sagaList.innerHTML = '';
+    if (!Array.isArray(sagas) || !sagas.length) {
+      const row = document.createElement('div');
+      row.className = 'route-row';
+      const line = document.createElement('p');
+      line.className = 'route-path';
+      line.textContent = 'No hay sagas para este filtro.';
+      row.appendChild(line);
+      sagaList.appendChild(row);
+      return;
+    }
+
+    for (const saga of sagas) {
+      const row = document.createElement('div');
+      row.className = 'route-row';
+      row.dataset.sagaId = String(saga.id || '');
+
+      const title = document.createElement('p');
+      title.className = 'route-path';
+      title.textContent = `${saga.title || 'sin titulo'} · ${saga.id || 'sin id'}`;
+
+      const meta = document.createElement('div');
+      meta.className = 'route-meta';
+
+      const statusPill = document.createElement('span');
+      statusPill.className = 'pill';
+      statusPill.textContent = String(saga.status || 'active');
+
+      const commandsPill = document.createElement('span');
+      commandsPill.className = 'pill';
+      commandsPill.dataset.uppercase = 'false';
+      commandsPill.textContent = `commands=${saga.command_count || 0}`;
+
+      meta.append(statusPill, commandsPill);
+      row.append(title, meta);
+
+      row.addEventListener('click', async () => {
+        const sagaId = String(saga.id || '');
+        if (!sagaId) {
+          return;
+        }
+        listStatus.textContent = `Cargando detalle de ${sagaId}...`;
+        try {
+          const detail = await fetchSagaDetail(sagaId);
+          setSelectedSaga(detail);
+          setJson(detail);
+          updateStatusMsg.textContent = `Saga ${detail.title || sagaId} cargada para edicion.`;
+          listStatus.textContent = `Saga activa: ${detail.title || sagaId}`;
+        } catch (error) {
+          listStatus.textContent = `No se pudo cargar la saga: ${String(error)}`;
+        }
+      });
+
+      sagaList.appendChild(row);
+    }
+  };
+
+  const loadSagas = async () => {
+    listStatus.textContent = 'Actualizando lista de sagas...';
+    const selectedStatus = String(filterStatus.value || '').trim();
+    const params = new URLSearchParams({ limit: '50' });
+    if (selectedStatus) {
+      params.set('statuses', selectedStatus);
+    }
+
+    try {
+      const response = await fetch(`/api/operations/sagas?${params.toString()}`);
+      const sagas = await readJson(response);
+      renderSagaList(sagas);
+      listStatus.textContent = `Sagas visibles: ${Array.isArray(sagas) ? sagas.length : 0}`;
+      if (selectedSagaId) {
+        const stillExists = Array.isArray(sagas) && sagas.some((item) => String(item.id || '') === selectedSagaId);
+        if (!stillExists) {
+          setSelectedSaga(null);
+          updateStatusMsg.textContent = 'La saga seleccionada no esta en el filtro actual.';
+        }
+      }
+    } catch (error) {
+      listStatus.textContent = `Error cargando sagas: ${String(error)}`;
+    }
+  };
+
+  createForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const title = fields.create.title.value.trim();
+    if (!title) {
+      createStatus.textContent = 'Debes indicar un titulo para crear saga.';
+      return;
+    }
+
+    createStatus.textContent = 'Creando saga...';
+    const payload = {
+      title,
+      premise: fields.create.premise.value.trim(),
+      summary: fields.create.summary.value.trim(),
+      world_building: fields.create.worldBuilding.value.trim(),
+      initial_command: fields.create.initialCommand.value.trim(),
+    };
+
+    try {
+      const response = await fetch('/api/operations/sagas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await readJson(response);
+      createStatus.textContent = `Saga creada: ${data.title || data.id}`;
+      setSelectedSaga(data);
+      setJson(data);
+      fields.create.title.value = '';
+      fields.create.premise.value = '';
+      fields.create.summary.value = '';
+      fields.create.worldBuilding.value = '';
+      fields.create.initialCommand.value = '';
+      await loadSagas();
+      seedStatus.textContent = 'Saga creada desde flujo de seed/create.';
+    } catch (error) {
+      createStatus.textContent = `Fallo creando saga: ${String(error)}`;
+    }
+  });
+
+  updateForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!selectedSagaId) {
+      updateStatusMsg.textContent = 'Selecciona una saga antes de guardar.';
+      return;
+    }
+
+    updateStatusMsg.textContent = 'Guardando cambios de saga...';
+    const payload = {
+      title: fields.update.title.value.trim(),
+      premise: fields.update.premise.value.trim(),
+      summary: fields.update.summary.value.trim(),
+      world_building: fields.update.worldBuilding.value.trim(),
+      status: fields.update.status.value,
+    };
+
+    try {
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await readJson(response);
+      if (!data.updated || !data.saga) {
+        throw new Error(data.detail || 'No se pudo actualizar la saga');
+      }
+      setSelectedSaga(data.saga);
+      setJson(data);
+      updateStatusMsg.textContent = 'Saga actualizada.';
+      await loadSagas();
+    } catch (error) {
+      updateStatusMsg.textContent = `Fallo al actualizar: ${String(error)}`;
+    }
+  });
+
+  deleteSaga.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      updateStatusMsg.textContent = 'No hay saga seleccionada para eliminar.';
+      return;
+    }
+
+    updateStatusMsg.textContent = `Eliminando ${selectedSagaId}...`;
+    try {
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}`, {
+        method: 'DELETE',
+      });
+      const data = await readJson(response);
+      if (!data.deleted) {
+        throw new Error('No se elimino la saga');
+      }
+      setJson(data);
+      setSelectedSaga(null);
+      updateStatusMsg.textContent = 'Saga eliminada.';
+      await loadSagas();
+    } catch (error) {
+      updateStatusMsg.textContent = `Fallo al eliminar: ${String(error)}`;
+    }
+  });
+
+  commandForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!selectedSagaId) {
+      actionsStatus.textContent = 'Selecciona una saga antes de agregar comando.';
+      return;
+    }
+    const command = fields.command.command.value.trim();
+    if (!command) {
+      actionsStatus.textContent = 'El comando no puede estar vacio.';
+      return;
+    }
+
+    actionsStatus.textContent = 'Agregando comando narrativo...';
+
+    try {
+      const updatedSaga = await appendCommand(
+        selectedSagaId,
+        command,
+        fields.command.note.value.trim(),
+      );
+      setSelectedSaga(updatedSaga);
+      setJson({ appended: true, saga: updatedSaga });
+      fields.command.command.value = '';
+      fields.command.note.value = '';
+      actionsStatus.textContent = 'Comando agregado a la saga.';
+      await loadSagas();
+    } catch (error) {
+      actionsStatus.textContent = `Fallo al agregar comando: ${String(error)}`;
+    }
+  });
+
+  debateForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!selectedSagaId) {
+      actionsStatus.textContent = 'Selecciona una saga antes de debatir.';
+      return;
+    }
+
+    const topic = fields.debate.topic.value.trim();
+    if (!topic) {
+      actionsStatus.textContent = 'Debes indicar un tema para el debate.';
+      return;
+    }
+
+    actionsStatus.textContent = 'Enviando debate de saga...';
+
+    try {
+      const updatedSaga = await debateSaga(selectedSagaId, topic, fields.debate.note.value.trim());
+      setSelectedSaga(updatedSaga);
+      setJson({ debated: true, saga: updatedSaga });
+      fields.debate.topic.value = '';
+      fields.debate.note.value = '';
+      actionsStatus.textContent = 'Debate registrado y memoria persistida.';
+      await loadSagas();
+    } catch (error) {
+      actionsStatus.textContent = `Fallo en debate: ${String(error)}`;
+    }
+  });
+
+  checkConsistency.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      consistencyStatus.textContent = 'Selecciona una saga para analizar consistencia.';
+      return;
+    }
+
+    consistencyStatus.textContent = 'Analizando consistencia...';
+    try {
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/consistency`);
+      const data = await readJson(response);
+      setJson(data);
+      if (!data.found) {
+        throw new Error('Saga no encontrada durante el analisis');
+      }
+      const score = typeof data.coherence_score === 'number' ? data.coherence_score : 'n/a';
+      consistencyStatus.textContent = `Consistencia lista. score=${score} contradicciones=${data.contradictions ? data.contradictions.length : 0}`;
+    } catch (error) {
+      consistencyStatus.textContent = `Fallo en consistencia: ${String(error)}`;
+    }
+  });
+
+  previewRetcon.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      consistencyStatus.textContent = 'Selecciona una saga para generar retcon.';
+      return;
+    }
+
+    consistencyStatus.textContent = 'Generando retcon sugerido...';
+    try {
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/retcon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: false }),
+      });
+      const data = await readJson(response);
+      setJson(data);
+      consistencyStatus.textContent = data.retcon
+        ? 'Retcon sugerido listo. Revisa la salida JSON.'
+        : 'No hubo retcon sugerido para esta saga.';
+    } catch (error) {
+      consistencyStatus.textContent = `Fallo al generar retcon: ${String(error)}`;
+    }
+  });
+
+  applyRetcon.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      consistencyStatus.textContent = 'Selecciona una saga para aplicar retcon.';
+      return;
+    }
+
+    consistencyStatus.textContent = 'Aplicando retcon automatico...';
+    try {
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/retcon`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ apply: true }),
+      });
+      const data = await readJson(response);
+      setJson(data);
+      if (data.result && data.result.saga) {
+        setSelectedSaga(data.result.saga);
+      }
+      consistencyStatus.textContent = data.applied
+        ? 'Retcon aplicado como comando adicional.'
+        : 'No se aplico retcon (revisar salida).';
+      await loadSagas();
+    } catch (error) {
+      consistencyStatus.textContent = `Fallo aplicando retcon: ${String(error)}`;
+    }
+  });
+
+  refreshList.addEventListener('click', () => {
+    void loadSagas();
+  });
+
+  filterStatus.addEventListener('change', () => {
+    void loadSagas();
+  });
+
+  clearSelection.addEventListener('click', () => {
+    setSelectedSaga(null);
+    updateStatusMsg.textContent = 'Seleccion limpiada.';
+    contextStatus.textContent = 'Seleccion limpia, contexto no disponible.';
+  });
+
+  seedSaveNext.addEventListener('click', () => {
+    const key = currentSeedKey();
+    if (!key) {
+      seedStatus.textContent = 'El seed ya esta completo.';
+      return;
+    }
+    const answer = seedAnswer.value.trim();
+    if (!answer) {
+      seedStatus.textContent = `Falta responder la dimension ${key}.`;
+      return;
+    }
+    seedAnswers[key] = answer;
+    seedQueue = seedQueue.filter((item) => item !== key);
+    seedQueue.push(key);
+    updateSeedQuestion();
+  });
+
+  seedSkipNext.addEventListener('click', () => {
+    const key = currentSeedKey();
+    if (!key) {
+      seedStatus.textContent = 'No quedan dimensiones pendientes.';
+      return;
+    }
+    seedQueue = seedQueue.filter((item) => item !== key);
+    seedQueue.push(key);
+    seedStatus.textContent = `Dimension ${key} saltada temporalmente.`;
+    updateSeedQuestion();
+  });
+
+  seedApply.addEventListener('click', () => {
+    applySeedToCreateForm();
+  });
+
+  seedReset.addEventListener('click', () => {
+    seedAnswers = {
+      genre: '',
+      tone: '',
+      setting: '',
+      timeline: '',
+      pov: '',
+      conflict: '',
+      cast: '',
+      stakes: '',
+    };
+    seedQueue = [...seedOrder];
+    updateSeedQuestion();
+  });
+
+  actOpen.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      actionsStatus.textContent = 'Selecciona una saga antes de abrir checkpoint de acto.';
+      return;
+    }
+
+    const actIdx = Math.max(1, Number(actNumber.value || 1));
+    const goal = actGoal.value.trim();
+    const command = `[ACT ${actIdx} OPEN] objetivo=${goal || 'sin objetivo'}`;
+    actionsStatus.textContent = 'Registrando apertura de acto...';
+    try {
+      const sagaPayload = await appendCommand(selectedSagaId, command, `act:${actIdx}:open`);
+      setSelectedSaga(sagaPayload);
+      setJson({ action: 'act_open', act: actIdx, saga: sagaPayload });
+      actionsStatus.textContent = `Acto ${actIdx} abierto.`;
+      await loadSagas();
+    } catch (error) {
+      actionsStatus.textContent = `Fallo al abrir acto: ${String(error)}`;
+    }
+  });
+
+  actClose.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      actionsStatus.textContent = 'Selecciona una saga antes de cerrar acto.';
+      return;
+    }
+
+    const actIdx = Math.max(1, Number(actNumber.value || 1));
+    const goal = actGoal.value.trim();
+    const preTopic = actPreDebate.value.trim();
+    const postTopic = actPostDebate.value.trim();
+
+    actionsStatus.textContent = `Cerrando acto ${actIdx} con chequeo de coherencia...`;
+    try {
+      let workingSaga = selectedSaga;
+      if (preTopic) {
+        workingSaga = await debateSaga(selectedSagaId, preTopic, `act:${actIdx}:pre-close`);
+      }
+
+      const consistencyResponse = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/consistency`);
+      const consistency = await readJson(consistencyResponse);
+      const summaryCommand = buildActSummary(workingSaga || selectedSaga, actIdx, goal, consistency);
+
+      workingSaga = await appendCommand(selectedSagaId, summaryCommand, `act:${actIdx}:summary`);
+      const closeMarker = `[ACT ${actIdx} CLOSE] coherencia=${consistency.coherence_score || 'n/a'} contradicciones=${Array.isArray(consistency.contradictions) ? consistency.contradictions.length : 0}`;
+      workingSaga = await appendCommand(selectedSagaId, closeMarker, `act:${actIdx}:close`);
+
+      workingSaga = await updateSagaSummary(selectedSagaId, workingSaga, summaryCommand);
+
+      if (postTopic) {
+        workingSaga = await debateSaga(selectedSagaId, postTopic, `act:${actIdx}:post-close`);
+      }
+
+      const composedContext = [
+        summaryCommand,
+        '',
+        `Continuidad base acto ${actIdx + 1}: arranca desde este resumen canonico.`,
+      ].join('\n');
+      nextActContext.value = composedContext;
+      contextStatus.textContent = `Resumen canonico de acto ${actIdx} listo para continuidad N+1.`;
+
+      setSelectedSaga(workingSaga);
+      setJson({
+        action: 'act_close',
+        act: actIdx,
+        consistency,
+        saga: workingSaga,
+      });
+      actionsStatus.textContent = `Acto ${actIdx} cerrado con resumen canonico.`;
+      actNumber.value = String(actIdx + 1);
+      actPreDebate.value = '';
+      actPostDebate.value = '';
+      await loadSagas();
+    } catch (error) {
+      actionsStatus.textContent = `Fallo al cerrar acto: ${String(error)}`;
+    }
+  });
+
+  prepareContext.addEventListener('click', async () => {
+    if (!selectedSagaId) {
+      contextStatus.textContent = 'Selecciona una saga para preparar contexto.';
+      return;
+    }
+
+    contextStatus.textContent = 'Componiendo contexto baseline (window + recall)...';
+    try {
+      const promptText = nextActPrompt.value.trim();
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/next-context`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: promptText,
+          window_size: 6,
+          recall_limit: 4,
+        }),
+      });
+      const data = await readJson(response);
+      if (!data.found) {
+        throw new Error('Saga no encontrada al preparar contexto.');
+      }
+      nextActContext.value = String(data.baseline_context || '');
+      contextStatus.textContent = `Contexto preparado con ${Array.isArray(data.active_window) ? data.active_window.length : 0} items en ventana y ${Array.isArray(data.deep_recall) ? data.deep_recall.length : 0} de recall.`;
+      setJson(data);
+    } catch (error) {
+      contextStatus.textContent = `Fallo preparando contexto: ${String(error)}`;
+    }
+  });
+
+  injectContextCommand.addEventListener('click', () => {
+    const contextText = nextActContext.value.trim();
+    if (!contextText) {
+      contextStatus.textContent = 'No hay contexto preparado para inyectar.';
+      return;
+    }
+    fields.command.command.value = contextText;
+    fields.command.note.value = `act:${Math.max(1, Number(actNumber.value || 1))}:context-baseline`;
+    contextStatus.textContent = 'Contexto inyectado en el formulario de comando narrativo.';
+  });
+
+  updateSeedQuestion();
+
+  void loadSagas();
+})();
+</script>
+{% endblock %}

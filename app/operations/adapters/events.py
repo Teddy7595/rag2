@@ -13,6 +13,7 @@ def register_operations_event_handlers(app: FastAPI) -> None:
     from app.operations.events import REQUEST_OPERATIONS_SAGA_DELETE
     from app.operations.events import REQUEST_OPERATIONS_SAGA_DETAIL
     from app.operations.events import REQUEST_OPERATIONS_SAGA_LIST
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT
     from app.operations.events import REQUEST_OPERATIONS_SAGA_RETCON
     from app.operations.events import REQUEST_OPERATIONS_SAGA_START
     from app.operations.events import REQUEST_OPERATIONS_SAGA_UPDATE
@@ -56,6 +57,9 @@ def register_operations_event_handlers(app: FastAPI) -> None:
     def handle_saga_retcon(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.apply_saga_retcon(envelope.payload)
 
+    def handle_saga_next_context(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.build_saga_next_context(envelope.payload)
+
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_STATUS, handle_status)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_AUDIT_LOG, handle_audit_log)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_LIST, handle_saga_list)
@@ -67,4 +71,5 @@ def register_operations_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_DEBATE, handle_saga_debate)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_CONSISTENCY, handle_saga_consistency)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_RETCON, handle_saga_retcon)
+    context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT, handle_saga_next_context)
     context.event_bus.subscribe_channel(EventChannel.DOMAIN, service.capture_domain_event)

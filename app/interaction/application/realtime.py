@@ -233,6 +233,39 @@ def _extract_topics(text: str, *, max_items: int = 5) -> list[str]:
     return ranked
 
 
+def _extract_saga_id_hint(text: str) -> str:
+    value = str(text or "").strip()
+    if not value:
+        return ""
+    patterns = [
+        r"(?:saga[_\s-]*id|saga)\s*[:=]\s*([a-z0-9-]{6,64})",
+        r"#saga\s*[:=]\s*([a-z0-9-]{6,64})",
+    ]
+    lowered = value.lower()
+    for pattern in patterns:
+        match = re.search(pattern, lowered)
+        if match:
+            return str(match.group(1) or "").strip()
+    return ""
+
+
+def _looks_like_saga_turn(text: str) -> bool:
+    lowered = str(text or "").lower()
+    if not lowered.strip():
+        return False
+    signals = (
+        "saga",
+        "acto",
+        "retcon",
+        "canon",
+        "continuidad",
+        "trama",
+        "personaje",
+        "escena",
+    )
+    return any(signal in lowered for signal in signals)
+
+
 @dataclass(frozen=True)
 class RealtimeTurnResult:
     session_id: str
@@ -584,6 +617,13 @@ class RealtimeChatService:
             ),
             source_module="interaction.application.realtime",
         )
+        if isinstance(context_preview, dict):
+            context_preview = self._inject_saga_context(
+                context_preview,
+                user_text=input_data.content,
+                saga_id=input_data.saga_id,
+                world_rules=world_rules,
+            )
         report_progress("context_routed")
         self._debug_turn(
             debug_trace_enabled,
@@ -793,6 +833,7 @@ class RealtimeChatService:
 
         trace = context_preview.get("context_pack", {}).get("trace", {}) if isinstance(context_preview, dict) else {}
         trace_payload = dict(trace) if isinstance(trace, dict) else {}
+        saga_trace = dict(trace_payload.get("saga_next_context") or {})
         if bool(quality_flags.get("telemetry_enabled", True)):
             trace_payload["quality"] = {
                 "guard_triggered": bool(quality_flags.get("guard_triggered")),
@@ -806,6 +847,7 @@ class RealtimeChatService:
                 "non_rag_mode": bool(quality_flags.get("non_rag_mode")),
                 "guard_path": str(quality_flags.get("guard_path") or ""),
                 "instruction_echo_stripped": bool(quality_flags.get("instruction_echo_stripped")),
+                "saga_context_used": bool(saga_trace.get("used")),
             }
         repository.save_turn_metric(
             turn_id=turn_id,
@@ -1160,3 +1202,100 @@ class RealtimeChatService:
             ),
             quality_flags,
         )
+
+    def _resolve_saga_next_context(
+        self,
+        user_text: str,
+        *,
+        saga_id: str | None = None,
+        world_rules: str = "",
+    ) -> dict[str, object] | None:
+        saga_id = str(saga_id or "").strip() or _extract_saga_id_hint(user_text) or _extract_saga_id_hint(world_rules)
+        if not saga_id and not _looks_like_saga_turn(user_text):
+            return None
+
+        try:
+            from app.operations.events import OperationsSagaListRequest
+            from app.operations.events import OperationsSagaNextContextRequest
+            from app.operations.events import REQUEST_OPERATIONS_SAGA_LIST
+            from app.operations.events import REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT
+
+            if not saga_id:
+                listed = self.event_bus.request(
+                    REQUEST_OPERATIONS_SAGA_LIST,
+                    OperationsSagaListRequest(limit=1, statuses=("active", "paused", "completed")),
+                    source_module="interaction.application.realtime",
+                )
+                if isinstance(listed, list) and listed:
+                    first = listed[0] if isinstance(listed[0], dict) else {}
+                    saga_id = str(first.get("id") or "").strip()
+
+            if not saga_id:
+                return None
+
+            payload = self.event_bus.request(
+                REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT,
+                OperationsSagaNextContextRequest(
+                    saga_id=saga_id,
+                    prompt=user_text,
+                    window_size=6,
+                    recall_limit=4,
+                ),
+                source_module="interaction.application.realtime",
+            )
+            if not isinstance(payload, dict) or not bool(payload.get("found")):
+                return None
+            return payload
+        except Exception:
+            return None
+
+    def _inject_saga_context(
+        self,
+        context_preview: dict[str, object],
+        *,
+        user_text: str,
+        saga_id: str | None = None,
+        world_rules: str = "",
+    ) -> dict[str, object]:
+        saga_context = self._resolve_saga_next_context(user_text, saga_id=saga_id, world_rules=world_rules)
+        if not saga_context:
+            return context_preview
+
+        merged_preview = dict(context_preview)
+        context_pack = dict(merged_preview.get("context_pack") or {})
+        trace_payload = dict(context_pack.get("trace") or {})
+
+        trace_payload["saga_next_context"] = {
+            "saga_id": str(saga_context.get("saga_id") or ""),
+            "title": str(saga_context.get("title") or ""),
+            "window_items": len(list(saga_context.get("active_window") or [])),
+            "deep_recall_items": len(list(saga_context.get("deep_recall") or [])),
+            "canonical_summary": str(saga_context.get("canonical_summary") or ""),
+            "used": True,
+        }
+        context_pack["trace"] = trace_payload
+
+        knowledge_matches = list(context_pack.get("knowledge_matches") or [])
+        knowledge_matches.append(
+            {
+                "label": f"saga:{str(saga_context.get('title') or saga_context.get('saga_id') or 'activa')}",
+                "excerpt": str(saga_context.get("canonical_summary") or "").strip()[:220],
+            }
+        )
+        context_pack["knowledge_matches"] = knowledge_matches[-8:]
+        merged_preview["context_pack"] = context_pack
+
+        baseline = str(saga_context.get("baseline_context") or "").strip()
+        if baseline:
+            current_context = str(merged_preview.get("context_text") or "").strip()
+            combined = "\n\n".join(
+                piece
+                for piece in [
+                    current_context,
+                    f"Contexto saga activo:\n{baseline}",
+                ]
+                if piece
+            )
+            merged_preview["context_text"] = combined[:7000]
+
+        return merged_preview

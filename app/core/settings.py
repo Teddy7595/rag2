@@ -164,7 +164,11 @@ def load_settings(project_root: Path) -> AppSettings:
         port=max(1, _read_int_env("APP_PORT", 8000)),
         debug=_read_bool_env("APP_DEBUG", default=False),
         admin_local_only=_read_bool_env("APP_ADMIN_LOCAL_ONLY", default=True),
-        admin_remote_allow_paths=_read_csv_env("APP_ADMIN_REMOTE_ALLOW_PATHS") or ("/admin/engrams",),
+        admin_remote_allow_paths=_read_csv_env("APP_ADMIN_REMOTE_ALLOW_PATHS") or (
+            "/admin/engrams",
+            "/admin/context-graph",
+            "/admin/sagas",
+        ),
         rate_limit_window_seconds=max(1, _read_int_env("APP_RATE_LIMIT_WINDOW_SECONDS", 60)),
         rate_limit_max_requests=max(1, _read_int_env("APP_RATE_LIMIT_MAX_REQUESTS", 120)),
         ban_list=_read_list_env("APP_BAN_LIST"),
