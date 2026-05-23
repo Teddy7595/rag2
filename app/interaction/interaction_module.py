@@ -13,7 +13,7 @@ def register_interaction_module(app: FastAPI) -> None:
     context = app.state.context
     repository = SqlAlchemyInteractionMessageRepository(context.database)
     service = InteractionService(context.event_bus, repository)
-    realtime_service = RealtimeChatService(context.event_bus, service)
+    realtime_service = RealtimeChatService(context.event_bus, service, settings=context.settings)
     register_service(app, "interaction", service)
     register_service(app, "interaction_realtime", realtime_service)
     register_module_group(

@@ -2,10 +2,21 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import re
+import time
 from typing import AsyncIterator
 from uuid import uuid4
 
 from app.core.events import EventBus
+from app.interaction.application.governance import (
+    build_turn_policy,
+    compact_context_for_prompt,
+    dedupe_rule_lines,
+    is_identity_question,
+    is_simple_greeting,
+    looks_like_internal_reasoning,
+    sanitize_generated_reply,
+    sanitize_history_content,
+)
 from app.interaction.application.service import InteractionService
 from app.interaction.events import (
     InteractionMessageRecordRequest,
@@ -31,13 +42,7 @@ def _format_history(messages: list[dict[str, object]]) -> str:
     lines: list[str] = []
     for message in messages:
         author = str(message.get("author") or "unknown")
-        content = str(message.get("content") or "")
-        if _looks_like_internal_reasoning(content):
-            # Avoid feeding leaked scaffolding back into the next prompt/history cycle.
-            content = "[respuesta interna omitida por seguridad]"
-        content = content.strip()
-        if len(content) > 500:
-            content = content[:500].rstrip() + "..."
+        content = sanitize_history_content(str(message.get("content") or ""))
         lines.append(f"{author}: {content}")
     return "\n".join(lines).strip()
 
@@ -56,114 +61,6 @@ def _unique(items: list[str]) -> list[str]:
         seen.add(normalized)
         ordered.append(item.strip())
     return ordered
-
-
-def _dedupe_rule_lines(raw: str, *, max_lines: int = 10) -> str:
-    seen: set[str] = set()
-    cleaned: list[str] = []
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        normalized = re.sub(r"^[-*\d\s.()]+", "", stripped)
-        normalized = re.sub(r"\s+", " ", normalized).strip(" .:;,-").lower()
-        if not normalized or normalized in seen:
-            continue
-        seen.add(normalized)
-        cleaned.append(stripped)
-        if len(cleaned) >= max_lines:
-            break
-    return "\n".join(cleaned).strip()
-
-
-def _compact_context_for_prompt(raw: str, *, max_lines: int = 8) -> str:
-    kept: list[str] = []
-    for line in raw.splitlines():
-        stripped = line.strip()
-        if not stripped:
-            continue
-        lower = stripped.lower()
-        if stripped.startswith("[") and stripped.endswith("]"):
-            continue
-        if lower.startswith("intent:") or lower.startswith("keywords:") or "score=" in lower:
-            continue
-        kept.append(stripped)
-        if len(kept) >= max_lines:
-            break
-    return "\n".join(kept).strip()
-
-
-def _is_simple_greeting(text: str) -> bool:
-    normalized = re.sub(r"[^a-z0-9\s]", " ", text.lower())
-    tokens = [token for token in normalized.split() if token]
-    if not tokens:
-        return False
-
-    greeting_tokens = {
-        "hola",
-        "holi",
-        "hello",
-        "hi",
-        "hey",
-        "buenas",
-        "buenos",
-        "dias",
-        "tardes",
-        "noches",
-        "que",
-        "tal",
-    }
-    if len(tokens) > 4:
-        return False
-    non_greeting = [token for token in tokens if token not in greeting_tokens]
-    return len(non_greeting) <= 1 and any(token in greeting_tokens for token in tokens)
-
-
-def _is_identity_question(text: str) -> bool:
-    normalized = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
-    patterns = (
-        r"\bquien\s+eres\b",
-        r"\bsabes\s+quien\s+eres\b",
-        r"\bcual\s+es\s+tu\s+nombre\b",
-        r"\bcomo\s+te\s+llamas\b",
-    )
-    return any(re.search(pattern, normalized) for pattern in patterns)
-
-
-def _looks_like_internal_reasoning(text: str) -> bool:
-    lower = text.lower()
-    markers = (
-        "analyze the request",
-        "drafting the response",
-        "specific instructions",
-        "specific rule",
-        "relevant engrams",
-        "relevant knowledge",
-        "context routing",
-        "idea principal",
-    )
-    if any(marker in lower for marker in markers):
-        return True
-    if re.search(r"\d+\.\s+\*\*", text):
-        return True
-    return False
-
-
-def _sanitize_generated_reply(text: str) -> str:
-    cleaned = text.strip()
-    if not cleaned:
-        return ""
-    if _looks_like_internal_reasoning(cleaned):
-        return ""
-    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
-    filtered = [
-        line
-        for line in lines
-        if not (line.startswith("[") and line.endswith("]"))
-        and "score=" not in line.lower()
-        and not line.lower().startswith(("intent:", "keywords:"))
-    ]
-    return "\n".join(filtered).strip() or ""
 
 
 def _incremental_summary(previous: str, user_text: str, assistant_text: str, *, max_chars: int = 1400) -> str:
@@ -299,9 +196,20 @@ class RealtimeSessionSnapshot:
 
 
 class RealtimeChatService:
-    def __init__(self, event_bus: EventBus, interaction_service: InteractionService) -> None:
+    def __init__(self, event_bus: EventBus, interaction_service: InteractionService, *, settings: object | None = None) -> None:
         self.event_bus = event_bus
         self.interaction_service = interaction_service
+        self.settings = settings
+
+    def _rollout_flags(self) -> dict[str, object]:
+        settings = self.settings
+        return {
+            "guard_enabled": bool(getattr(settings, "conversation_guard_enabled", True)),
+            "sanitize_enabled": bool(getattr(settings, "conversation_sanitize_enabled", True)),
+            "timeout_enabled": bool(getattr(settings, "conversation_timeout_enabled", True)),
+            "telemetry_enabled": bool(getattr(settings, "conversation_telemetry_enabled", True)),
+            "deadline_scale_percent": int(getattr(settings, "conversation_deadline_scale_percent", 100) or 100),
+        }
 
     def open_session(self, session_id: str | None = None, *, history_limit: int = 20) -> RealtimeSessionSnapshot:
         session_id = session_id or str(uuid4())
@@ -404,7 +312,7 @@ class RealtimeChatService:
             metadata={"session_id": session_id, "turn_id": turn_id, "author": user_message.get("author")},
         )
 
-        assistant_reply = self._compose_reply(input_data, context_preview, world_rules=world_rules)
+        assistant_reply, quality_flags = self._compose_reply(input_data, context_preview, world_rules=world_rules)
         assistant_author = str(identity.get("name") or "assistant")
         assistant_message = self.interaction_service.record_message(
             InteractionMessageRecordRequest(
@@ -414,6 +322,8 @@ class RealtimeChatService:
                 session_id=session_id,
             )
         )
+        telemetry_enabled = bool(quality_flags.get("telemetry_enabled", True))
+
         self.event_bus.publish(
             PUBLISH_INTERACTION_REALTIME_REPLY_STREAMED,
             {
@@ -421,9 +331,16 @@ class RealtimeChatService:
                 "turn_id": turn_id,
                 "assistant_message": assistant_message,
                 "identity": identity,
+                "quality": quality_flags if telemetry_enabled else {},
             },
             source_module="interaction.application.realtime",
-            metadata={"session_id": session_id, "turn_id": turn_id, "assistant_author": assistant_author},
+            metadata={
+                "session_id": session_id,
+                "turn_id": turn_id,
+                "assistant_author": assistant_author,
+                "timeout_hit": bool(quality_flags.get("timeout_hit")),
+                "fallback_used": bool(quality_flags.get("fallback_used")),
+            },
         )
 
         self.event_bus.publish(
@@ -435,12 +352,15 @@ class RealtimeChatService:
                 "user_message": user_message,
                 "assistant_message": assistant_message,
                 "context_trace": context_preview.get("context_pack", {}).get("trace", {}),
+                "quality": quality_flags if telemetry_enabled else {},
             },
             source_module="interaction.application.realtime",
             metadata={
                 "session_id": session_id,
                 "turn_id": turn_id,
                 "assistant_author": assistant_author,
+                "timeout_hit": bool(quality_flags.get("timeout_hit")),
+                "fallback_used": bool(quality_flags.get("fallback_used")),
             },
         )
 
@@ -452,6 +372,7 @@ class RealtimeChatService:
             assistant_reply=assistant_reply,
             topic_data=topic_data,
             context_preview=context_preview,
+            quality_flags=quality_flags,
         )
 
         return RealtimeTurnResult(
@@ -492,6 +413,7 @@ class RealtimeChatService:
         assistant_reply: str,
         topic_data: dict[str, object],
         context_preview: dict[str, object],
+        quality_flags: dict[str, object],
     ) -> None:
         repository = self.interaction_service.repository
         memory = repository.get_session_memory(session_id) or {}
@@ -537,6 +459,17 @@ class RealtimeChatService:
         )
 
         trace = context_preview.get("context_pack", {}).get("trace", {}) if isinstance(context_preview, dict) else {}
+        trace_payload = dict(trace) if isinstance(trace, dict) else {}
+        if bool(quality_flags.get("telemetry_enabled", True)):
+            trace_payload["quality"] = {
+                "guard_triggered": bool(quality_flags.get("guard_triggered")),
+                "fallback_used": bool(quality_flags.get("fallback_used")),
+                "timeout_hit": bool(quality_flags.get("timeout_hit")),
+                "leak_detected": bool(quality_flags.get("leak_detected")),
+                "response_too_long": bool(quality_flags.get("response_too_long")),
+                "deadline_ms": int(quality_flags.get("deadline_ms") or 0),
+                "elapsed_ms": int(quality_flags.get("elapsed_ms") or 0),
+            }
         repository.save_turn_metric(
             turn_id=turn_id,
             session_id=session_id,
@@ -545,7 +478,7 @@ class RealtimeChatService:
             primary_topic=primary_topic,
             secondary_topics=secondary_topics,
             coherence_score=coherence,
-            context_trace=trace if isinstance(trace, dict) else {},
+            context_trace=trace_payload,
         )
 
     def close_session(self, session_id: str, *, reason: str = "client_disconnect") -> None:
@@ -569,18 +502,18 @@ class RealtimeChatService:
         context_preview: dict[str, object],
         *,
         world_rules: str = "",
-    ) -> str:
+    ) -> tuple[str, dict[str, object]]:
         identity = context_preview.get("identity", {})
         identity_name = str(identity.get("name") or "assistant")
-        behavior_prompt = _dedupe_rule_lines(str(identity.get("behavior_prompt") or ""), max_lines=8)
-        meta_rule = _dedupe_rule_lines(str(identity.get("meta_rule") or ""), max_lines=8)
+        behavior_prompt = dedupe_rule_lines(str(identity.get("behavior_prompt") or ""), max_lines=8)
+        meta_rule = dedupe_rule_lines(str(identity.get("meta_rule") or ""), max_lines=8)
         intellectual_profile = str(identity.get("intellectual_profile") or "").strip()
         context_pack = context_preview.get("context_pack", {})
         knowledge_matches = list(context_pack.get("knowledge_matches", []))
         engram_matches = list(context_pack.get("engram_matches", []))
         context_text = str(context_preview.get("context_text") or "").strip()
-        compact_context_text = _compact_context_for_prompt(context_text)
-        world_rules = _dedupe_rule_lines(world_rules, max_lines=10)
+        compact_context_text = compact_context_for_prompt(context_text)
+        world_rules = dedupe_rule_lines(world_rules, max_lines=10)
         route_payload = context_pack.get("route", {}) if isinstance(context_pack, dict) else {}
         route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
 
@@ -608,11 +541,6 @@ class RealtimeChatService:
 
         if not main_idea:
             main_idea = input_data.content.strip()[:80]
-
-        if _is_simple_greeting(input_data.content):
-            return f"Hola, soy {identity_name}. En que te ayudo hoy?"
-        if _is_identity_question(input_data.content):
-            return f"Si, soy {identity_name}, tu asistente activo en este chat. Puedo ayudarte con dudas tecnicas, RAG y tareas operativas."
 
         if knowledge_matches:
             primary_label = str(knowledge_matches[0].get("label") or main_idea).strip() if isinstance(knowledge_matches[0], dict) else main_idea
@@ -663,11 +591,36 @@ class RealtimeChatService:
 
         identity_id = str(identity.get("id") or "").strip().upper()
         has_custom_engram = identity_id not in {"", "DEFAULT", "SETUP", "ERR"}
+        rollout = self._rollout_flags()
+        guard_enabled = bool(rollout["guard_enabled"])
+        sanitize_enabled = bool(rollout["sanitize_enabled"])
+        timeout_enabled = bool(rollout["timeout_enabled"])
+        telemetry_enabled = bool(rollout["telemetry_enabled"])
+        deadline_scale = max(10, min(500, int(rollout["deadline_scale_percent"])))
+        policy = build_turn_policy(input_data.content, has_custom_engram=has_custom_engram)
+        scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
+        quality_flags: dict[str, object] = {
+            "guard_triggered": False,
+            "fallback_used": False,
+            "timeout_hit": False,
+            "leak_detected": False,
+            "response_too_long": False,
+            "deadline_ms": scaled_deadline_ms,
+            "elapsed_ms": 0,
+            "telemetry_enabled": telemetry_enabled,
+        }
 
-        # If no custom engram is configured, use conservative test defaults.
-        default_temperature = 0.35 if has_custom_engram else 0.2
-        default_top_p = 1.0 if has_custom_engram else 0.9
-        default_max_tokens = 768 if has_custom_engram else 512
+        if guard_enabled and is_simple_greeting(input_data.content):
+            return f"Hola, soy {identity_name}. En que te ayudo hoy?", quality_flags
+        if guard_enabled and is_identity_question(input_data.content):
+            return (
+                f"Si, soy {identity_name}, tu asistente activo en este chat. Puedo ayudarte con dudas tecnicas, RAG y tareas operativas.",
+                quality_flags,
+            )
+
+        default_temperature = policy.temperature
+        default_top_p = policy.top_p
+        default_max_tokens = policy.max_tokens
 
         temperature = default_temperature
         try:
@@ -691,16 +644,32 @@ class RealtimeChatService:
         max_tokens = max(128, min(2048, max_tokens))
 
         try:
+            generation_start = time.perf_counter()
             generated = self.event_bus.request(
                 REQUEST_MODEL_TEXT_GENERATION,
                 ModelTextGenerationRequest(prompt=prompt, temperature=temperature, top_p=top_p, max_tokens=max_tokens),
                 source_module="interaction.application.realtime",
             )
+            elapsed_ms = int((time.perf_counter() - generation_start) * 1000)
+            quality_flags["elapsed_ms"] = elapsed_ms
+            if timeout_enabled and elapsed_ms > scaled_deadline_ms:
+                quality_flags["timeout_hit"] = True
+                quality_flags["guard_triggered"] = True
+                quality_flags["fallback_used"] = True
+                return fallback_reply, quality_flags
             content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
-            sanitized = _sanitize_generated_reply(content)
+            if guard_enabled and content and looks_like_internal_reasoning(content):
+                quality_flags["leak_detected"] = True
+            max_chars_budget = 280 if policy.prefer_short else 1200
+            if len(content) > max_chars_budget:
+                quality_flags["response_too_long"] = True
+            sanitized = sanitize_generated_reply(content, prefer_short=policy.prefer_short) if sanitize_enabled else content
+            if guard_enabled and content and not sanitized:
+                quality_flags["guard_triggered"] = True
             if isinstance(generated, dict) and generated.get("ok") and sanitized:
-                return sanitized
+                return sanitized, quality_flags
         except Exception:
             pass
 
-        return fallback_reply
+        quality_flags["fallback_used"] = True
+        return fallback_reply, quality_flags

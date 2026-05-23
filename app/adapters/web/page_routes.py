@@ -33,11 +33,19 @@ def _base_context(request: Request) -> dict[str, Any]:
         "scripts": settings.web_frontend_scripts,
     }
     frontend["has_assets"] = bool(frontend["styles"] or frontend["scripts"])
+    conversation_governance = {
+        "guard_enabled": bool(getattr(settings, "conversation_guard_enabled", True)),
+        "sanitize_enabled": bool(getattr(settings, "conversation_sanitize_enabled", True)),
+        "timeout_enabled": bool(getattr(settings, "conversation_timeout_enabled", True)),
+        "telemetry_enabled": bool(getattr(settings, "conversation_telemetry_enabled", True)),
+        "deadline_scale_percent": int(getattr(settings, "conversation_deadline_scale_percent", 100) or 100),
+    }
     return {
         "app_name": settings.app_name,
         "app_description": settings.app_description,
         "app_version": settings.app_version,
         "frontend": frontend,
+        "conversation_governance": conversation_governance,
     }
 
 

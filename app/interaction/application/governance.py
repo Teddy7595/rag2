@@ -1,0 +1,231 @@
+from __future__ import annotations
+
+from dataclasses import dataclass
+import re
+
+
+@dataclass(frozen=True)
+class ConversationTurnPolicy:
+    intent: str
+    max_tokens: int
+    temperature: float
+    top_p: float
+    deadline_ms: int
+    prefer_short: bool = False
+
+
+def build_turn_policy(
+    user_text: str,
+    *,
+    has_custom_engram: bool,
+) -> ConversationTurnPolicy:
+    intent = classify_intent(user_text)
+
+    # Keep conservative budgets on default identity and allow larger budgets on custom engrams.
+    if intent == "greeting":
+        return ConversationTurnPolicy(
+            intent=intent,
+            max_tokens=96,
+            temperature=0.2,
+            top_p=0.9,
+            deadline_ms=1200,
+            prefer_short=True,
+        )
+    if intent == "identity":
+        return ConversationTurnPolicy(
+            intent=intent,
+            max_tokens=140,
+            temperature=0.2,
+            top_p=0.9,
+            deadline_ms=1400,
+            prefer_short=True,
+        )
+    if intent == "technical":
+        return ConversationTurnPolicy(
+            intent=intent,
+            max_tokens=768 if has_custom_engram else 512,
+            temperature=0.35 if has_custom_engram else 0.2,
+            top_p=1.0 if has_custom_engram else 0.9,
+            deadline_ms=3200,
+            prefer_short=False,
+        )
+    return ConversationTurnPolicy(
+        intent=intent,
+        max_tokens=420 if has_custom_engram else 320,
+        temperature=0.3 if has_custom_engram else 0.2,
+        top_p=1.0 if has_custom_engram else 0.9,
+        deadline_ms=2200,
+        prefer_short=False,
+    )
+
+
+def classify_intent(text: str) -> str:
+    if is_simple_greeting(text):
+        return "greeting"
+    if is_identity_question(text):
+        return "identity"
+
+    lowered = text.lower()
+    technical_markers = (
+        "error",
+        "trace",
+        "stack",
+        "api",
+        "endpoint",
+        "sql",
+        "db",
+        "websocket",
+        "ws",
+        "bug",
+        "fix",
+        "pytest",
+        "modelo",
+        "runtime",
+    )
+    if any(marker in lowered for marker in technical_markers):
+        return "technical"
+    return "mixed"
+
+
+def dedupe_rule_lines(raw: str, *, max_lines: int = 10) -> str:
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        normalized = re.sub(r"^[-*\d\s.()]+", "", stripped)
+        normalized = re.sub(r"\s+", " ", normalized).strip(" .:;,-").lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(stripped)
+        if len(cleaned) >= max_lines:
+            break
+    return "\n".join(cleaned).strip()
+
+
+def compact_context_for_prompt(raw: str, *, max_lines: int = 8) -> str:
+    kept: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lower = stripped.lower()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            continue
+        if lower.startswith("intent:") or lower.startswith("keywords:") or "score=" in lower:
+            continue
+        kept.append(stripped)
+        if len(kept) >= max_lines:
+            break
+    return "\n".join(kept).strip()
+
+
+def is_simple_greeting(text: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9\s]", " ", text.lower())
+    tokens = [token for token in normalized.split() if token]
+    if not tokens:
+        return False
+
+    greeting_tokens = {
+        "hola",
+        "holi",
+        "hello",
+        "hi",
+        "hey",
+        "buenas",
+        "buenos",
+        "dias",
+        "tardes",
+        "noches",
+        "que",
+        "tal",
+    }
+    if len(tokens) > 4:
+        return False
+    non_greeting = [token for token in tokens if token not in greeting_tokens]
+    return len(non_greeting) <= 1 and any(token in greeting_tokens for token in tokens)
+
+
+def is_identity_question(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
+    patterns = (
+        r"\bquien\s+eres\b",
+        r"\bsabes\s+quien\s+eres\b",
+        r"\bcual\s+es\s+tu\s+nombre\b",
+        r"\bcomo\s+te\s+llamas\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def looks_like_internal_reasoning(text: str) -> bool:
+    lower = text.lower()
+    markers = (
+        "analyze the request",
+        "drafting the response",
+        "specific instructions",
+        "specific rule",
+        "relevant engrams",
+        "relevant knowledge",
+        "context routing",
+        "idea principal",
+        "coincidencias relevantes",
+        "responde al usuario de forma directa",
+    )
+    if any(marker in lower for marker in markers):
+        return True
+    if re.search(r"\d+\.\s+\*\*", text):
+        return True
+    return False
+
+
+def sanitize_history_content(text: str, *, max_chars: int = 500) -> str:
+    content = text.strip()
+    if looks_like_internal_reasoning(content):
+        return "[respuesta interna omitida por seguridad]"
+    if len(content) > max_chars:
+        return content[:max_chars].rstrip() + "..."
+    return content
+
+
+def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars: int = 1200) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    if looks_like_internal_reasoning(cleaned):
+        return ""
+
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    filtered: list[str] = []
+    transcript_line_count = 0
+    for line in lines:
+        normalized = line.lstrip("\"'` ")
+        lower = normalized.lower()
+        if line.startswith("[") and line.endswith("]"):
+            continue
+        if lower.startswith(("intent:", "keywords:", "history:", "contexto recuperado:")):
+            continue
+        if "score=" in lower:
+            continue
+        if lower.startswith(("user:", "assistant:", "asistente:", "usuario:")):
+            transcript_line_count += 1
+            continue
+        if "coincidencias relevantes" in lower:
+            continue
+        filtered.append(normalized)
+
+    if transcript_line_count >= 2:
+        return ""
+
+    result = "\n".join(filtered).strip()
+    if not result:
+        return ""
+
+    if len(result) > max_chars:
+        result = result[:max_chars].rstrip() + "..."
+
+    if prefer_short and len(result) > 280:
+        result = result[:280].rstrip() + "..."
+
+    return result

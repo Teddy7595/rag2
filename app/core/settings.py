@@ -106,6 +106,11 @@ class AppSettings:
     rate_limit_window_seconds: int
     rate_limit_max_requests: int
     ban_list: tuple[str, ...]
+    conversation_guard_enabled: bool
+    conversation_sanitize_enabled: bool
+    conversation_timeout_enabled: bool
+    conversation_telemetry_enabled: bool
+    conversation_deadline_scale_percent: int
     ai_model_dir: Path
     web_frontend_dir: Path
     web_frontend_mount_path: str
@@ -141,6 +146,11 @@ def load_settings(project_root: Path) -> AppSettings:
         rate_limit_window_seconds=max(1, _read_int_env("APP_RATE_LIMIT_WINDOW_SECONDS", 60)),
         rate_limit_max_requests=max(1, _read_int_env("APP_RATE_LIMIT_MAX_REQUESTS", 120)),
         ban_list=_read_list_env("APP_BAN_LIST"),
+        conversation_guard_enabled=_read_bool_env("APP_CONVERSATION_GUARD_ENABLED", default=True),
+        conversation_sanitize_enabled=_read_bool_env("APP_CONVERSATION_SANITIZE_ENABLED", default=True),
+        conversation_timeout_enabled=_read_bool_env("APP_CONVERSATION_TIMEOUT_ENABLED", default=True),
+        conversation_telemetry_enabled=_read_bool_env("APP_CONVERSATION_TELEMETRY_ENABLED", default=True),
+        conversation_deadline_scale_percent=max(10, min(500, _read_int_env("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", 100))),
         ai_model_dir=ai_model_dir,
         web_frontend_dir=web_frontend_dir,
         web_frontend_mount_path=_resolve_mount_path(os.getenv("WEB_FRONTEND_MOUNT_PATH"), "/ui-assets"),

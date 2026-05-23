@@ -33,6 +33,60 @@
     color: #8b8b8b;
     letter-spacing: 0.12em;
   }
+
+  .flag-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .flag-item {
+    border: 1px solid rgba(130, 130, 130, 0.3);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.02);
+  }
+
+  .flag-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    margin-bottom: 6px;
+  }
+
+  .flag-key {
+    font-size: 0.8rem;
+    color: #9ca3af;
+    letter-spacing: 0.04em;
+  }
+
+  .flag-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    border-radius: 999px;
+    padding: 2px 8px;
+    border: 1px solid transparent;
+  }
+
+  .flag-on {
+    color: #9ae6b4;
+    border-color: rgba(72, 187, 120, 0.35);
+    background: rgba(72, 187, 120, 0.12);
+  }
+
+  .flag-off {
+    color: #fbb6ce;
+    border-color: rgba(245, 101, 101, 0.35);
+    background: rgba(245, 101, 101, 0.12);
+  }
+
+  .flag-copy {
+    color: #cbd5e1;
+    font-size: 0.83rem;
+    line-height: 1.35;
+  }
 </style>
 {% endblock %}
 
@@ -68,6 +122,11 @@
     <span class="stat-label">LlamaCpp</span>
     <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
     <span class="stat-copy">binding local para texto y vision</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Gobernanza</span>
+    <strong class="stat-value">{{ 'activa' if conversation_governance.guard_enabled else 'manual' }}</strong>
+    <span class="stat-copy">deadline x{{ '%.2f'|format((conversation_governance.deadline_scale_percent or 100) / 100) }}</span>
   </article>
 </section>
 
@@ -121,6 +180,50 @@
       </div>
     </div>
   </article>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Gobernanza conversacional (Fase 6)</h2>
+  <div class="panel-body">
+    <p>Estado operativo efectivo de la capa de control para chat WS/SSE y flujos conversacionales.</p>
+    <div class="flag-grid">
+      <article class="flag-item">
+        <div class="flag-head">
+          <span class="flag-key">APP_CONVERSATION_GUARD_ENABLED</span>
+          <span class="flag-badge {{ 'flag-on' if conversation_governance.guard_enabled else 'flag-off' }}">{{ 'ON' if conversation_governance.guard_enabled else 'OFF' }}</span>
+        </div>
+        <p class="flag-copy">Activa detección de leak y atajos de saludo/identidad.</p>
+      </article>
+      <article class="flag-item">
+        <div class="flag-head">
+          <span class="flag-key">APP_CONVERSATION_SANITIZE_ENABLED</span>
+          <span class="flag-badge {{ 'flag-on' if conversation_governance.sanitize_enabled else 'flag-off' }}">{{ 'ON' if conversation_governance.sanitize_enabled else 'OFF' }}</span>
+        </div>
+        <p class="flag-copy">Limpia la salida del modelo y evita transcriptos contaminados.</p>
+      </article>
+      <article class="flag-item">
+        <div class="flag-head">
+          <span class="flag-key">APP_CONVERSATION_TIMEOUT_ENABLED</span>
+          <span class="flag-badge {{ 'flag-on' if conversation_governance.timeout_enabled else 'flag-off' }}">{{ 'ON' if conversation_governance.timeout_enabled else 'OFF' }}</span>
+        </div>
+        <p class="flag-copy">Aplica deadline por turno y fallback corto cuando se excede.</p>
+      </article>
+      <article class="flag-item">
+        <div class="flag-head">
+          <span class="flag-key">APP_CONVERSATION_TELEMETRY_ENABLED</span>
+          <span class="flag-badge {{ 'flag-on' if conversation_governance.telemetry_enabled else 'flag-off' }}">{{ 'ON' if conversation_governance.telemetry_enabled else 'OFF' }}</span>
+        </div>
+        <p class="flag-copy">Publica quality_flags en métricas y context traces.</p>
+      </article>
+      <article class="flag-item">
+        <div class="flag-head">
+          <span class="flag-key">APP_CONVERSATION_DEADLINE_SCALE_PERCENT</span>
+          <span class="flag-badge flag-on">{{ conversation_governance.deadline_scale_percent }}%</span>
+        </div>
+        <p class="flag-copy">Escala el presupuesto temporal por turno sin tocar código.</p>
+      </article>
+    </div>
+  </div>
 </section>
 
 <section class="panel" style="margin-top: 18px;">

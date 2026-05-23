@@ -291,20 +291,34 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                 .limit(limit)
             )
             records = session.scalars(statement).all()
-            return [
-                {
-                    "turn_id": record.turn_id,
-                    "session_id": record.session_id,
-                    "user_input": record.user_input,
-                    "assistant_reply": record.assistant_reply,
-                    "primary_topic": record.primary_topic,
-                    "secondary_topics": list(record.secondary_topics or []),
-                    "coherence_score": float(record.coherence_score),
-                    "context_trace": dict(record.context_trace or {}),
-                    "created_at": record.created_at.isoformat() if record.created_at else None,
+            payload: list[dict[str, object]] = []
+            for record in reversed(records):
+                context_trace = dict(record.context_trace or {})
+                quality = dict(context_trace.get("quality") or {})
+                quality_flags = {
+                    "guard_triggered": bool(quality.get("guard_triggered")),
+                    "fallback_used": bool(quality.get("fallback_used")),
+                    "timeout_hit": bool(quality.get("timeout_hit")),
+                    "leak_detected": bool(quality.get("leak_detected")),
+                    "response_too_long": bool(quality.get("response_too_long")),
+                    "deadline_ms": int(quality.get("deadline_ms") or 0),
+                    "elapsed_ms": int(quality.get("elapsed_ms") or 0),
                 }
-                for record in reversed(records)
-            ]
+                payload.append(
+                    {
+                        "turn_id": record.turn_id,
+                        "session_id": record.session_id,
+                        "user_input": record.user_input,
+                        "assistant_reply": record.assistant_reply,
+                        "primary_topic": record.primary_topic,
+                        "secondary_topics": list(record.secondary_topics or []),
+                        "coherence_score": float(record.coherence_score),
+                        "context_trace": context_trace,
+                        "quality_flags": quality_flags,
+                        "created_at": record.created_at.isoformat() if record.created_at else None,
+                    }
+                )
+            return payload
 
     def list_context_traces(
         self,
@@ -335,6 +349,17 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
             if trigger_filter and trigger_filter not in intent.lower():
                 continue
 
+            quality = dict(context_trace.get("quality") or {})
+            quality_flags = {
+                "guard_triggered": bool(quality.get("guard_triggered")),
+                "fallback_used": bool(quality.get("fallback_used")),
+                "timeout_hit": bool(quality.get("timeout_hit")),
+                "leak_detected": bool(quality.get("leak_detected")),
+                "response_too_long": bool(quality.get("response_too_long")),
+                "deadline_ms": int(quality.get("deadline_ms") or 0),
+                "elapsed_ms": int(quality.get("elapsed_ms") or 0),
+            }
+
             rows.append(
                 {
                     "trace_id": record.turn_id,
@@ -345,6 +370,7 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                     "primary_topic": record.primary_topic,
                     "secondary_topics": list(record.secondary_topics or []),
                     "context_trace": context_trace,
+                    "quality_flags": quality_flags,
                     "created_at": record.created_at.isoformat() if record.created_at else None,
                 }
             )

@@ -70,6 +70,21 @@ def test_settings_prefers_ai_models_when_configured_ai_model_is_empty(tmp_path: 
     assert settings.ai_model_dir == ai_models_dir.resolve()
 
 
+def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) -> None:
+    monkeypatch.setenv("APP_CONVERSATION_GUARD_ENABLED", "false")
+    monkeypatch.setenv("APP_CONVERSATION_SANITIZE_ENABLED", "true")
+    monkeypatch.setenv("APP_CONVERSATION_TIMEOUT_ENABLED", "false")
+    monkeypatch.setenv("APP_CONVERSATION_TELEMETRY_ENABLED", "false")
+    monkeypatch.setenv("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", "175")
+
+    settings = load_settings(tmp_path)
+    assert settings.conversation_guard_enabled is False
+    assert settings.conversation_sanitize_enabled is True
+    assert settings.conversation_timeout_enabled is False
+    assert settings.conversation_telemetry_enabled is False
+    assert settings.conversation_deadline_scale_percent == 175
+
+
 def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatch, capsys) -> None:
     app = build_test_app(tmp_path, monkeypatch)
     captured = capsys.readouterr()
@@ -942,6 +957,11 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         metrics_payload = metrics_response.json()
         assert len(metrics_payload) >= 1
         assert any(metric["session_id"] == realtime_session_id for metric in metrics_payload)
+        metric_for_session = next(metric for metric in metrics_payload if metric["session_id"] == realtime_session_id)
+        assert "quality_flags" in metric_for_session
+        assert isinstance(metric_for_session["quality_flags"], dict)
+        assert "fallback_used" in metric_for_session["quality_flags"]
+        assert "timeout_hit" in metric_for_session["quality_flags"]
 
         traces_response = client.get(
             "/api/admin/context-traces",
@@ -951,6 +971,9 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         traces_payload = traces_response.json()
         assert isinstance(traces_payload, list)
         assert any(trace["session_id"] == realtime_session_id for trace in traces_payload)
+        trace_for_session = next(trace for trace in traces_payload if trace["session_id"] == realtime_session_id)
+        assert "quality_flags" in trace_for_session
+        assert isinstance(trace_for_session["quality_flags"], dict)
         assert any((metric.get("coherence_score") or 0) >= 0 for metric in metrics_payload)
 
         sse_response = client.post(
