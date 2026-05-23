@@ -517,10 +517,10 @@ class LocalInferenceService:
             return Llama(
                 model_path=str(self.catalog_service.models_dir / relative_model_path),
                 chat_handler=chat_handler,
-                n_ctx=8192,
-                n_gpu_layers=-1,
-                n_batch=1024,
-                flash_attn=True,
+                n_ctx=4096,
+                n_gpu_layers=0,
+                n_batch=256,
+                flash_attn=False,
                 use_mmap=True,
                 verbose=False,
             )
