@@ -16,6 +16,11 @@ class InteractionHistoryRequest:
 
 
 @dataclass(frozen=True)
+class InteractionSessionsRequest:
+    limit: int = 20
+
+
+@dataclass(frozen=True)
 class InteractionMessageRecordRequest:
     author: str
     content: str
@@ -78,6 +83,14 @@ REQUEST_INTERACTION_MESSAGES = EventSpec[InteractionHistoryRequest, list](
     kind=EventKind.REQUEST,
     channel=EventChannel.DOMAIN,
     input_type=InteractionHistoryRequest,
+    output_type=list,
+)
+
+REQUEST_INTERACTION_SESSIONS = EventSpec[InteractionSessionsRequest, list](
+    name="interaction.sessions.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionsRequest,
     output_type=list,
 )
 
@@ -214,6 +227,7 @@ __all__ = [
     "InteractionHistoryRequest",
     "InteractionContextTraceRequest",
     "InteractionMessageRecordRequest",
+    "InteractionSessionsRequest",
     "InteractionMessageActionRequest",
     "InteractionRealtimeInput",
     "InteractionSessionRewindRequest",
@@ -231,6 +245,7 @@ __all__ = [
     "REQUEST_INTERACTION_MESSAGE_MEMORIZE",
     "REQUEST_INTERACTION_MESSAGE_RECORD",
     "REQUEST_INTERACTION_MESSAGES",
+    "REQUEST_INTERACTION_SESSIONS",
     "REQUEST_INTERACTION_SESSION_CONDITIONS",
     "REQUEST_INTERACTION_SESSION_CONDITIONS_SET",
     "REQUEST_INTERACTION_SESSION_MEMORY",

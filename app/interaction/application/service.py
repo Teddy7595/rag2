@@ -7,6 +7,7 @@ from app.interaction.events import (
     InteractionHistoryRequest,
     InteractionMessageActionRequest,
     InteractionMessageRecordRequest,
+    InteractionSessionsRequest,
     InteractionSessionRewindRequest,
     InteractionSessionRequest,
     InteractionSessionConditionsRequest,
@@ -44,6 +45,9 @@ class InteractionService:
     def list_messages(self, request: InteractionHistoryRequest) -> list[dict[str, object]]:
         messages = self.repository.list_recent(request.limit)
         return [message.as_dict() for message in messages]
+
+    def list_sessions(self, request: InteractionSessionsRequest) -> list[dict[str, object]]:
+        return self.repository.list_sessions(limit=request.limit)
 
     def record_message(self, request: InteractionMessageRecordRequest) -> dict[str, object]:
         message = ConversationMessage(

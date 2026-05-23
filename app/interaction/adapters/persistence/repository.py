@@ -43,6 +43,53 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
             records = session.scalars(statement).all()
             return [record.to_domain() for record in reversed(records)]
 
+    def list_sessions(self, limit: int = 20) -> list[dict[str, object]]:
+        if limit <= 0:
+            return []
+
+        safe_limit = max(1, min(int(limit), 200))
+        with self.database.session_factory() as session:
+            summary_statement = (
+                select(
+                    ConversationMessageRecord.session_id,
+                    func.count().label("message_count"),
+                    func.max(ConversationMessageRecord.created_at).label("last_message_at"),
+                )
+                .where(ConversationMessageRecord.session_id.is_not(None))
+                .group_by(ConversationMessageRecord.session_id)
+                .order_by(func.max(ConversationMessageRecord.created_at).desc())
+                .limit(safe_limit)
+            )
+            summary_rows = session.execute(summary_statement).all()
+
+            result: list[dict[str, object]] = []
+            for row in summary_rows:
+                session_id = str(row.session_id or "").strip()
+                if not session_id:
+                    continue
+
+                last_message_statement = (
+                    select(ConversationMessageRecord)
+                    .where(ConversationMessageRecord.session_id == session_id)
+                    .order_by(ConversationMessageRecord.created_at.desc(), ConversationMessageRecord.id.desc())
+                    .limit(1)
+                )
+                last_record = session.scalar(last_message_statement)
+                last_content = str(last_record.content or "") if last_record else ""
+
+                result.append(
+                    {
+                        "session_id": session_id,
+                        "message_count": int(row.message_count or 0),
+                        "last_message_at": row.last_message_at.isoformat() if row.last_message_at else None,
+                        "last_author": str(last_record.author or "") if last_record else "",
+                        "last_channel": str(last_record.channel or "") if last_record else "",
+                        "last_excerpt": (last_content[:180] + "...") if len(last_content) > 180 else last_content,
+                    }
+                )
+
+            return result
+
     def hide_message(self, message_id: str) -> ConversationMessage | None:
         with self.database.session_scope() as session:
             record = session.get(ConversationMessageRecord, message_id)

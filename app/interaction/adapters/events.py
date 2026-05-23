@@ -9,6 +9,7 @@ from app.interaction.events import (
     REQUEST_INTERACTION_MESSAGE_MEMORIZE,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
+    REQUEST_INTERACTION_SESSIONS,
     REQUEST_INTERACTION_SESSION_REWIND,
     REQUEST_INTERACTION_SESSION_MEMORY,
     REQUEST_INTERACTION_SESSION_CONDITIONS,
@@ -30,6 +31,9 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
 
     def handle_list(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
         return service.list_messages(envelope.payload)
+
+    def handle_sessions(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
+        return service.list_sessions(envelope.payload)
 
     def handle_record(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.record_message(envelope.payload)
@@ -63,6 +67,7 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
 
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SUMMARY, handle_summary)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGES, handle_list)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSIONS, handle_sessions)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_RECORD, handle_record)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_HIDE, handle_hide)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_MEMORIZE, handle_memorize)

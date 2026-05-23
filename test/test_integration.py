@@ -96,6 +96,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/messages/{message_id}",
         "/api/interaction/messages/{message_id}/memorize",
         "/api/interaction/summary",
+        "/api/interaction/sessions",
         "/api/interaction/stream",
         "/api/interaction/sessions/{session_id}/rewind/{message_id}",
         "/api/interaction/sessions/{session_id}/memory",
@@ -185,6 +186,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         engrams_admin_response = client.get("/admin/engrams")
         assert engrams_admin_response.status_code == 200
         assert "Gestor de engramas" in engrams_admin_response.text
+
+        base_hints_response = client.get("/api/knowledge/identity/hints")
+        assert base_hints_response.status_code == 200
+        assert "@Asistente Base" in base_hints_response.json()
 
         frontend_response = client.get("/ui-assets/")
         assert frontend_response.status_code == 200
@@ -369,6 +374,11 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert rewind_response.status_code == 200
         assert rewind_response.json()["rewound"] is True
         assert rewind_response.json()["removed"] >= 1
+
+        sessions_response = client.get("/api/interaction/sessions", params={"limit": 20})
+        assert sessions_response.status_code == 200
+        sessions_payload = sessions_response.json()
+        assert any(item["session_id"] == "rewind-room" for item in sessions_payload)
 
         summary_response = client.get("/api/interaction/summary", params={"limit": 5})
         assert summary_response.status_code == 200

@@ -125,11 +125,12 @@ class KnowledgeService:
             return
 
         identities = self.engram_repository.list_all()
+        if not identities:
+            seeded_identity = self.engram_repository.save(self._build_base_assistant_identity())
+            identities = [seeded_identity]
+
         for identity in identities:
             self.directory.cache(identity)
-
-        if not identities:
-            self.directory.ensure_default_identity()
 
         self._engrams_loaded = True
 
@@ -405,6 +406,33 @@ class KnowledgeService:
         if not self.engram_repository:
             raise RuntimeError("Engram repository not configured")
         return self.engram_repository
+
+    def _build_base_assistant_identity(self) -> Identity:
+        return Identity(
+            name="Asistente Base",
+            avatar="",
+            color_hex="#00ff41",
+            intellectual_profile="Asistente operativo para RAG y tareas tecnicas",
+            behavior_prompt=(
+                "Responde en espanol claro, directo y accionable. Prioriza exactitud, "
+                "pasos concretos y contexto util para ejecutar tareas reales."
+            ),
+            meta_rule=(
+                "- Mantener coherencia con el contexto recuperado.\n"
+                "- Si falta informacion, explicitar supuestos breves.\n"
+                "- No inventar hechos externos al contexto."
+            ),
+            moral_threshold=0,
+            interaction_mode="Directo",
+            dialogue_examples=[
+                "Te doy un resumen operativo y luego los pasos exactos.",
+                "Confirmo estado actual y riesgos antes de proponer cambios.",
+            ],
+            backstory="Identidad base del sistema para inicializar nuevas sesiones.",
+            temperatura_base=0.45,
+            top_p_base=0.95,
+            max_tokens_respuesta=1024,
+        )
 
     def _apply_identity_updates(self, identity: Identity, request: EngramUpdateRequest) -> None:
         if request.name is not None:

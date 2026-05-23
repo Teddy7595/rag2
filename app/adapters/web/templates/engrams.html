@@ -1,5 +1,533 @@
 {% extends "base.html" %}
 
+{% block head_extra %}
+<style>
+  :root {
+    --eng-bg: #050505;
+    --eng-card-bg: #111;
+    --eng-input-bg: #0a0a0a;
+    --eng-accent: #00ff41;
+    --eng-danger: #ff0055;
+    --eng-text-main: #e0e0e0;
+    --eng-text-dim: #888;
+    --eng-font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --eng-font-mono: 'Consolas', 'Courier New', monospace;
+  }
+
+  body {
+    background-color: var(--eng-bg);
+    color: var(--eng-text-main);
+  }
+
+  .shell {
+    max-width: none;
+    margin: 0;
+    padding: 0;
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .hero {
+    padding: 14px 18px;
+    margin: 0;
+    border-bottom: 1px solid #1f1f1f;
+    background: rgba(10, 10, 10, 0.92);
+    backdrop-filter: blur(6px);
+    gap: 8px;
+  }
+
+  .eyebrow {
+    margin: 0;
+    font-size: 0.72rem;
+    letter-spacing: 0.18em;
+    color: var(--eng-accent);
+  }
+
+  .headline {
+    margin: 0;
+    max-width: 100%;
+    line-height: 1;
+    font-size: clamp(1.45rem, 4vw, 2.1rem);
+    font-family: var(--eng-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .description {
+    margin: 0;
+    max-width: 96ch;
+    font-size: 0.9rem;
+    color: var(--eng-text-dim);
+    line-height: 1.45;
+  }
+
+  #engram-status {
+    padding: 8px 18px 0;
+    margin: 0;
+    color: var(--eng-text-dim);
+    font-family: var(--eng-font-mono);
+    font-size: 0.78rem;
+  }
+
+  #engram-grid {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 12px;
+    align-content: start;
+  }
+
+  .engram-card {
+    background: var(--eng-card-bg);
+    border: 1px solid #232323;
+    border-radius: 12px;
+    padding: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    transition: transform 0.2s, border-color 0.2s;
+  }
+
+  .engram-card:hover {
+    border-color: #414141;
+    transform: translateY(-1px);
+  }
+
+  .card-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    border-bottom: 1px solid #222;
+    padding-bottom: 10px;
+  }
+
+  .card-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 8px;
+    object-fit: cover;
+    border: 1px solid #333;
+    background: #0b0b0b;
+  }
+
+  .card-info h3 {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.2;
+  }
+
+  .card-info span {
+    display: block;
+    margin-top: 2px;
+    font-size: 0.78rem;
+    color: var(--eng-text-dim);
+    font-family: var(--eng-font-mono);
+  }
+
+  .card-body {
+    font-size: 0.86rem;
+    color: #ccc;
+    line-height: 1.45;
+    min-height: 52px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+
+  .card-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    font-family: var(--eng-font-mono);
+    font-size: 0.72rem;
+    color: #9ca3af;
+  }
+
+  .pill {
+    border: 1px solid #333;
+    border-radius: 999px;
+    padding: 3px 8px;
+    background: #0b0b0b;
+  }
+
+  .card-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 2px;
+  }
+
+  .btn {
+    flex: 1;
+    border: 1px solid #333;
+    background: #080808;
+    color: #aaa;
+    border-radius: 8px;
+    min-height: 36px;
+    cursor: pointer;
+    font-family: var(--eng-font-mono);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    transition: 0.2s;
+  }
+
+  .btn:hover {
+    color: #fff;
+    border-color: #666;
+  }
+
+  .btn.primary {
+    border-color: var(--eng-accent);
+    color: var(--eng-accent);
+    background: rgba(0, 255, 65, 0.05);
+  }
+
+  .btn.primary:hover {
+    background: rgba(0, 255, 65, 0.12);
+  }
+
+  .btn.danger:hover {
+    color: var(--eng-danger);
+    border-color: var(--eng-danger);
+  }
+
+  .fab {
+    position: fixed;
+    right: 20px;
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+    width: 54px;
+    height: 54px;
+    border-radius: 999px;
+    border: 0;
+    background: var(--eng-accent);
+    color: #000;
+    box-shadow: 0 4px 15px rgba(0, 255, 65, 0.35);
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    z-index: 20;
+    transition: transform 0.2s;
+  }
+
+  .fab:hover {
+    transform: scale(1.06);
+  }
+
+  .fab svg {
+    width: 28px;
+    height: 28px;
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.82);
+    backdrop-filter: blur(3px);
+    z-index: 100;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    transition: opacity 0.24s;
+  }
+
+  .modal-overlay.active {
+    display: flex;
+    opacity: 1;
+  }
+
+  .modal-content {
+    background: #111;
+    width: min(940px, 94%);
+    max-height: 92dvh;
+    border: 1px solid #333;
+    border-radius: 12px;
+    display: flex;
+    flex-direction: column;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .modal-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid #222;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .modal-header h2 {
+    margin: 0;
+    font-size: 1rem;
+    font-family: var(--eng-font-mono);
+    letter-spacing: 0.05em;
+  }
+
+  .btn-icon {
+    background: transparent;
+    border: 1px solid #333;
+    color: #cbd5e1;
+    padding: 6px;
+    border-radius: 6px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .btn-icon:hover {
+    border-color: var(--eng-accent);
+    color: var(--eng-accent);
+  }
+
+  .modal-body {
+    padding: 16px;
+    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+  }
+
+  .row-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+
+  .form-group {
+    display: grid;
+    gap: 5px;
+  }
+
+  .form-group label {
+    font-size: 0.72rem;
+    color: var(--eng-text-dim);
+    font-family: var(--eng-font-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .form-group input,
+  .form-group textarea,
+  .form-group select {
+    background: var(--eng-input-bg);
+    border: 1px solid #333;
+    color: #fff;
+    padding: 10px;
+    border-radius: 8px;
+    font-family: var(--eng-font-main);
+    font-size: 0.94rem;
+    outline: none;
+  }
+
+  .form-group input:focus,
+  .form-group textarea:focus,
+  .form-group select:focus {
+    border-color: var(--eng-accent);
+  }
+
+  .form-group textarea {
+    resize: vertical;
+    min-height: 74px;
+    line-height: 1.4;
+  }
+
+  .modal-footer {
+    padding: 14px 16px;
+    border-top: 1px solid #222;
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    background: #0f0f0f;
+  }
+
+  #global-toast {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 200;
+    max-width: min(460px, 92vw);
+    border: 1px solid #2f2f2f;
+    background: rgba(12, 12, 12, 0.96);
+    color: #d1d5db;
+    border-radius: 10px;
+    padding: 10px 12px;
+    font-family: var(--eng-font-mono);
+    font-size: 0.76rem;
+    line-height: 1.35;
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    opacity: 0;
+    transform: translateY(-8px);
+    pointer-events: none;
+    transition: opacity 0.22s ease, transform 0.22s ease;
+  }
+
+  #global-toast.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  #global-toast.success {
+    border-color: #14532d;
+    background: rgba(20, 83, 45, 0.26);
+    color: #86efac;
+  }
+
+  #global-toast.error {
+    border-color: #7f1d1d;
+    background: rgba(127, 29, 29, 0.24);
+    color: #fecaca;
+  }
+
+  .editor-feedback {
+    margin: 0 16px;
+    border: 1px solid #2a2a2a;
+    background: #0d0d0d;
+    color: #9ca3af;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    font-family: var(--eng-font-mono);
+    min-height: 18px;
+  }
+
+  .editor-feedback.success {
+    border-color: #14532d;
+    background: rgba(20, 83, 45, 0.25);
+    color: #86efac;
+  }
+
+  .editor-feedback.error {
+    border-color: #7f1d1d;
+    background: rgba(127, 29, 29, 0.22);
+    color: #fca5a5;
+  }
+
+  .meta-rule-composer {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .meta-rule-add {
+    border: 1px solid var(--eng-accent);
+    background: rgba(0, 255, 65, 0.06);
+    color: var(--eng-accent);
+    border-radius: 8px;
+    font-family: var(--eng-font-mono);
+    font-size: 0.76rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 0 12px;
+    cursor: pointer;
+    min-height: 42px;
+  }
+
+  .meta-rule-add:hover {
+    background: rgba(0, 255, 65, 0.14);
+  }
+
+  .meta-rule-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 8px;
+  }
+
+  .meta-rule-item {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+    align-items: start;
+    border: 1px solid #2a2a2a;
+    background: #0d0d0d;
+    border-radius: 8px;
+    padding: 8px 10px;
+  }
+
+  .meta-rule-text {
+    margin: 0;
+    color: #d1d5db;
+    line-height: 1.35;
+    font-size: 0.86rem;
+  }
+
+  .meta-rule-remove {
+    border: 1px solid #3f3f46;
+    background: #111;
+    color: #94a3b8;
+    border-radius: 6px;
+    font-family: var(--eng-font-mono);
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    cursor: pointer;
+    padding: 4px 8px;
+  }
+
+  .meta-rule-remove:hover {
+    color: var(--eng-danger);
+    border-color: var(--eng-danger);
+  }
+
+  .meta-rule-empty {
+    border: 1px dashed #303030;
+    border-radius: 8px;
+    padding: 10px;
+    color: #6b7280;
+    font-size: 0.8rem;
+    font-family: var(--eng-font-mono);
+  }
+
+  @media (max-width: 740px) {
+    .hero {
+      padding: 12px 12px;
+    }
+
+    #engram-status {
+      padding: 8px 12px 0;
+    }
+
+    #engram-grid {
+      padding: 12px;
+      grid-template-columns: 1fr;
+    }
+
+    .modal-content {
+      width: 100%;
+      height: 100dvh;
+      max-height: 100dvh;
+      border-radius: 0;
+      border: none;
+    }
+
+    .row-2 {
+      grid-template-columns: 1fr;
+    }
+
+    .modal-footer {
+      justify-content: stretch;
+      gap: 10px;
+    }
+
+    .modal-footer .btn {
+      min-height: 42px;
+    }
+
+    #global-toast {
+      top: auto;
+      right: 12px;
+      left: 12px;
+      bottom: calc(12px + env(safe-area-inset-bottom, 0px));
+      max-width: none;
+    }
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="hero">
   <p class="eyebrow">{{ eyebrow }}</p>
@@ -7,161 +535,564 @@
   <p class="description">{{ description }}</p>
 </section>
 
-<section class="panel" style="margin-bottom: 16px;">
-  <h2 class="panel-title">Nuevo engrama</h2>
-  <div class="panel-body">
-    <form id="engram-form" style="display: grid; gap: 10px;">
-      <label class="control-label" for="engram-name">Nombre</label>
-      <input id="engram-name" class="control-input" type="text" placeholder="Atlas" required>
+<div id="global-toast" role="status" aria-live="polite"></div>
 
-      <label class="control-label" for="engram-color">Color</label>
-      <input id="engram-color" class="control-input" type="color" value="#00ff41">
+<p id="engram-status">Cargando engramas...</p>
+<main id="engram-grid"></main>
 
-      <label class="control-label" for="engram-avatar-file">Avatar (imagen)</label>
-      <input id="engram-avatar-file" class="control-input" type="file" accept="image/*">
+<button class="fab" id="open-create-engram" type="button" title="Crear Engrama">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <line x1="12" y1="5" x2="12" y2="19"></line>
+    <line x1="5" y1="12" x2="19" y2="12"></line>
+  </svg>
+</button>
 
-      <label class="control-label" for="engram-behavior">Comportamiento</label>
-      <textarea id="engram-behavior" class="control-input" style="min-height: 90px;" placeholder="Habla con claridad y foco operativo."></textarea>
+<div class="modal-overlay" id="editor-modal">
+  <div class="modal-content">
+    <div class="modal-header">
+      <h2 id="modal-title">Nuevo Engrama</h2>
+      <button class="btn-icon" type="button" id="close-modal-btn" aria-label="Cerrar editor">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="18" y1="6" x2="6" y2="18"></line>
+          <line x1="6" y1="6" x2="18" y2="18"></line>
+        </svg>
+      </button>
+    </div>
 
-      <label class="control-label" for="engram-meta">Meta-regla</label>
-      <textarea id="engram-meta" class="control-input" style="min-height: 90px;" placeholder="Nunca romper reglas del mundo activas."></textarea>
+    <div class="modal-body">
+      <input type="hidden" id="edit-id">
 
-      <button type="submit" class="save-button">Crear engrama</button>
-    </form>
-    <p class="small-note" id="engram-status">Sin cambios.</p>
+      <div class="row-2">
+        <div class="form-group">
+          <label for="inp-name">Nombre</label>
+          <input type="text" id="inp-name" placeholder="Ej: Atlas" required>
+        </div>
+        <div class="form-group">
+          <label for="inp-color">Color</label>
+          <input type="color" id="inp-color" value="#00ff41" style="height: 42px; width: 100%; padding: 2px;">
+        </div>
+      </div>
+
+      <div class="row-2">
+        <div class="form-group">
+          <label for="inp-avatar-file">Avatar (imagen)</label>
+          <input id="inp-avatar-file" type="file" accept="image/*">
+        </div>
+        <div class="form-group">
+          <label for="inp-avatar-url">Avatar URL (opcional)</label>
+          <input type="text" id="inp-avatar-url" placeholder="https://...">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="inp-profile">Arquetipo / Perfil</label>
+        <input type="text" id="inp-profile" placeholder="Ej: Estratega técnico, analista, etc.">
+      </div>
+
+      <div class="form-group">
+        <label for="inp-behavior">Prompt de comportamiento</label>
+        <textarea id="inp-behavior" rows="4" placeholder="Define quién es y cómo responde..."></textarea>
+      </div>
+
+      <div class="form-group">
+        <label for="inp-meta-rule">Meta reglas</label>
+        <div class="meta-rule-composer">
+          <input type="text" id="inp-meta-rule" placeholder="Escribe una regla y pulsa Agregar">
+          <button type="button" class="meta-rule-add" id="add-meta-rule-btn">Agregar</button>
+        </div>
+        <ul id="meta-rule-list" class="meta-rule-list"></ul>
+      </div>
+
+      <div class="form-group">
+        <label for="inp-backstory">Backstory</label>
+        <textarea id="inp-backstory" rows="3" placeholder="Origen y contexto de identidad..."></textarea>
+      </div>
+
+      <div class="row-2">
+        <div class="form-group">
+          <label for="inp-threshold">Moral threshold</label>
+          <input type="number" id="inp-threshold" min="0" max="100" step="1" value="0">
+        </div>
+        <div class="form-group">
+          <label for="inp-mode">Interaction mode</label>
+          <input type="text" id="inp-mode" value="Directo">
+        </div>
+      </div>
+
+      <div class="row-2">
+        <div class="form-group">
+          <label for="inp-temperature">Temperatura</label>
+          <input type="number" id="inp-temperature" min="0" max="2" step="0.05" value="0.8">
+        </div>
+        <div class="form-group">
+          <label for="inp-top-p">Top P</label>
+          <input type="number" id="inp-top-p" min="0" max="1" step="0.05" value="1.0">
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label for="inp-max-tokens">Max tokens</label>
+        <input type="number" id="inp-max-tokens" min="64" max="4096" step="64" value="2048">
+      </div>
+
+      <div class="form-group">
+        <label for="inp-dialogue">Ejemplos de diálogo (uno por línea)</label>
+        <textarea id="inp-dialogue" rows="4" placeholder="Hola Atlas\nAnalizando contexto...\nSiguiente paso..."></textarea>
+      </div>
+    </div>
+
+    <p id="editor-feedback" class="editor-feedback">Completa los campos y guarda los cambios.</p>
+
+    <div class="modal-footer">
+      <button class="btn" type="button" id="cancel-modal-btn">Cancelar</button>
+      <button class="btn primary" type="button" id="save-engram-btn">Guardar cambios</button>
+    </div>
   </div>
-</section>
-
-<section class="panel">
-  <h2 class="panel-title">Inventario de engramas</h2>
-  <div class="panel-body route-search" style="margin: 0;">
-    <div id="engram-list" class="route-rows"></div>
-  </div>
-</section>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (() => {
-  const form = document.getElementById('engram-form');
-  const statusText = document.getElementById('engram-status');
-  const list = document.getElementById('engram-list');
+  const API_URL = '/api/knowledge/engrams';
+  const STATUS = document.getElementById('engram-status');
+  const GRID = document.getElementById('engram-grid');
+  const MODAL = document.getElementById('editor-modal');
+  const MODAL_TITLE = document.getElementById('modal-title');
 
-  const fileInput = document.getElementById('engram-avatar-file');
-  const nameInput = document.getElementById('engram-name');
-  const colorInput = document.getElementById('engram-color');
-  const behaviorInput = document.getElementById('engram-behavior');
-  const metaInput = document.getElementById('engram-meta');
+  const OPEN_CREATE_BTN = document.getElementById('open-create-engram');
+  const CLOSE_MODAL_BTN = document.getElementById('close-modal-btn');
+  const CANCEL_MODAL_BTN = document.getElementById('cancel-modal-btn');
+  const SAVE_ENGRAM_BTN = document.getElementById('save-engram-btn');
+  const EDITOR_FEEDBACK = document.getElementById('editor-feedback');
+  const GLOBAL_TOAST = document.getElementById('global-toast');
 
-  const renderRows = (rows) => {
-    list.innerHTML = '';
-    if (!rows.length) {
-      list.innerHTML = '<div class="route-row"><p class="route-path">Sin engramas.</p></div>';
+  const INP_ID = document.getElementById('edit-id');
+  const INP_NAME = document.getElementById('inp-name');
+  const INP_COLOR = document.getElementById('inp-color');
+  const INP_AVATAR_FILE = document.getElementById('inp-avatar-file');
+  const INP_AVATAR_URL = document.getElementById('inp-avatar-url');
+  const INP_PROFILE = document.getElementById('inp-profile');
+  const INP_BEHAVIOR = document.getElementById('inp-behavior');
+  const INP_META_RULE = document.getElementById('inp-meta-rule');
+  const META_RULE_LIST = document.getElementById('meta-rule-list');
+  const ADD_META_RULE_BTN = document.getElementById('add-meta-rule-btn');
+  const INP_BACKSTORY = document.getElementById('inp-backstory');
+  const INP_THRESHOLD = document.getElementById('inp-threshold');
+  const INP_MODE = document.getElementById('inp-mode');
+  const INP_TEMPERATURE = document.getElementById('inp-temperature');
+  const INP_TOP_P = document.getElementById('inp-top-p');
+  const INP_MAX_TOKENS = document.getElementById('inp-max-tokens');
+  const INP_DIALOGUE = document.getElementById('inp-dialogue');
+
+  let currentEngrams = [];
+  let metaRules = [];
+  let toastTimer = null;
+
+  const DEFAULT_META_RULE = 'Stay consistent with the selected identity.';
+
+  function setStatus(text) {
+    STATUS.textContent = text;
+  }
+
+  function setEditorFeedback(text, level = 'neutral') {
+    EDITOR_FEEDBACK.textContent = text;
+    EDITOR_FEEDBACK.classList.remove('success', 'error');
+    if (level === 'success') {
+      EDITOR_FEEDBACK.classList.add('success');
+    } else if (level === 'error') {
+      EDITOR_FEEDBACK.classList.add('error');
+    }
+  }
+
+  function showToast(text, level = 'neutral') {
+    GLOBAL_TOAST.textContent = text;
+    GLOBAL_TOAST.classList.remove('success', 'error');
+    if (level === 'success') {
+      GLOBAL_TOAST.classList.add('success');
+    } else if (level === 'error') {
+      GLOBAL_TOAST.classList.add('error');
+    }
+
+    GLOBAL_TOAST.classList.add('visible');
+    if (toastTimer) {
+      window.clearTimeout(toastTimer);
+    }
+    toastTimer = window.setTimeout(() => {
+      GLOBAL_TOAST.classList.remove('visible');
+      toastTimer = null;
+    }, 3600);
+  }
+
+  function normalizeEngram(raw) {
+    return {
+      id: String(raw.id || ''),
+      name: String(raw.name || ''),
+      avatar: String(raw.avatar || ''),
+      color_hex: String(raw.color_hex || '#00ff41'),
+      intellectual_profile: String(raw.intellectual_profile || 'General'),
+      behavior_prompt: String(raw.behavior_prompt || ''),
+      meta_rule: String(raw.meta_rule || ''),
+      backstory: String(raw.backstory || ''),
+      moral_threshold: Number(raw.moral_threshold ?? 0),
+      interaction_mode: String(raw.interaction_mode || 'Directo'),
+      temperatura_base: Number(raw.temperatura_base ?? 0.8),
+      top_p_base: Number(raw.top_p_base ?? 1.0),
+      max_tokens_respuesta: Number(raw.max_tokens_respuesta ?? 2048),
+      dialogue_examples: Array.isArray(raw.dialogue_examples) ? raw.dialogue_examples : [],
+    };
+  }
+
+  function parseMetaRules(rawText) {
+    const text = String(rawText || '');
+    const lines = text
+      .split(/\r?\n|;/)
+      .map((line) => line.trim())
+      .map((line) => line.replace(/^[-*]\s+/, '').trim())
+      .filter(Boolean);
+
+    const unique = [];
+    for (const line of lines) {
+      if (!unique.includes(line)) {
+        unique.push(line);
+      }
+    }
+
+    return unique;
+  }
+
+  function serializeMetaRules(rules) {
+    const normalized = Array.isArray(rules)
+      ? rules.map((item) => String(item || '').trim()).filter(Boolean)
+      : [];
+
+    if (!normalized.length) {
+      return DEFAULT_META_RULE;
+    }
+
+    return normalized.map((item) => `- ${item}`).join('\n');
+  }
+
+  function renderMetaRules() {
+    META_RULE_LIST.innerHTML = '';
+    if (!metaRules.length) {
+      META_RULE_LIST.innerHTML = '<li class="meta-rule-empty">Sin reglas. Agrega al menos una meta regla.</li>';
       return;
     }
-    rows.forEach((engram) => {
-      const row = document.createElement('div');
-      row.className = 'route-row';
-      const avatar = engram.avatar ? `<img src="${engram.avatar}" alt="avatar" style="width:24px;height:24px;border-radius:6px;border:1px solid #333;">` : '';
-      row.innerHTML = `<p class="route-path">${avatar} ${engram.name}</p>` +
-        `<div class="route-meta">` +
-        `<span class="pill" data-uppercase="false" style="--pill-accent:${engram.color_hex || '#7dd3fc'}">${engram.color_hex || '#7dd3fc'}</span>` +
-        `<button type="button" class="bundle-button" data-action="edit" data-id="${engram.id}">Editar</button>` +
-        `<button type="button" class="bundle-button" data-action="delete" data-id="${engram.id}">Borrar</button>` +
-        `</div>`;
-      row.dataset.payload = JSON.stringify(engram);
-      list.appendChild(row);
-    });
-  };
 
-  const loadEngrams = async () => {
-    const response = await fetch('/api/knowledge/engrams?limit=100');
-    const payload = await response.json();
-    renderRows(Array.isArray(payload) ? payload : []);
-  };
-
-  const uploadAvatar = async () => {
-    const file = fileInput.files && fileInput.files[0];
-    if (!file) {
-      return '';
+    for (let index = 0; index < metaRules.length; index += 1) {
+      const text = metaRules[index];
+      const item = document.createElement('li');
+      item.className = 'meta-rule-item';
+      item.innerHTML = `
+        <p class="meta-rule-text">${String(text).replace(/</g, '&lt;')}</p>
+        <button type="button" class="meta-rule-remove" data-remove-index="${index}">Quitar</button>
+      `;
+      META_RULE_LIST.appendChild(item);
     }
+  }
+
+  function setMetaRulesFromText(rawText) {
+    metaRules = parseMetaRules(rawText);
+    if (!metaRules.length) {
+      metaRules = [DEFAULT_META_RULE];
+    }
+    renderMetaRules();
+  }
+
+  function addMetaRule() {
+    const nextRule = INP_META_RULE.value.trim();
+    if (!nextRule) {
+      return;
+    }
+    if (!metaRules.includes(nextRule)) {
+      metaRules.push(nextRule);
+      renderMetaRules();
+    }
+    INP_META_RULE.value = '';
+    INP_META_RULE.focus();
+  }
+
+  function renderGrid(engrams) {
+    GRID.innerHTML = '';
+    if (!engrams.length) {
+      GRID.innerHTML = '<div class="engram-card"><div class="card-body">Sin engramas todavía. Crea uno con el botón +.</div></div>';
+      return;
+    }
+
+    for (const engram of engrams) {
+      const avatar = engram.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(engram.name || '?')}&background=111&color=fff`;
+      const card = document.createElement('article');
+      card.className = 'engram-card';
+      card.style.borderColor = `${engram.color_hex}44`;
+      card.dataset.id = engram.id;
+
+      card.innerHTML = `
+        <div class="card-header">
+          <img src="${avatar}" class="card-avatar" alt="avatar" loading="lazy">
+          <div class="card-info">
+            <h3 style="color:${engram.color_hex}">${engram.name || 'Engrama'}</h3>
+            <span>${engram.intellectual_profile || 'General'}</span>
+          </div>
+        </div>
+        <div class="card-body">${(engram.behavior_prompt || 'Sin prompt de comportamiento.').replace(/</g, '&lt;')}</div>
+        <div class="card-meta">
+          <span class="pill">${engram.color_hex}</span>
+          <span class="pill">temp=${engram.temperatura_base}</span>
+          <span class="pill">top_p=${engram.top_p_base}</span>
+          <span class="pill">max=${engram.max_tokens_respuesta}</span>
+        </div>
+        <div class="card-actions">
+          <button class="btn" type="button" data-action="edit" data-id="${engram.id}">Editar</button>
+          <button class="btn danger" type="button" data-action="delete" data-id="${engram.id}">Eliminar</button>
+        </div>
+      `;
+
+      GRID.appendChild(card);
+    }
+  }
+
+  async function fetchEngrams() {
+    const response = await fetch(`${API_URL}?limit=200`);
+    if (!response.ok) {
+      throw new Error(await response.text());
+    }
+    const payload = await response.json();
+    return Array.isArray(payload) ? payload.map(normalizeEngram) : [];
+  }
+
+  async function loadEngrams() {
+    setStatus('Cargando engramas...');
+    try {
+      currentEngrams = await fetchEngrams();
+      renderGrid(currentEngrams);
+      setStatus(`Engramas cargados: ${currentEngrams.length}`);
+    } catch (error) {
+      setStatus(`Error cargando engramas: ${String(error)}`);
+      showToast(`Error cargando engramas: ${String(error)}`, 'error');
+      renderGrid([]);
+    }
+  }
+
+  function resetForm() {
+    INP_ID.value = '';
+    INP_NAME.value = '';
+    INP_COLOR.value = '#00ff41';
+    INP_AVATAR_FILE.value = '';
+    INP_AVATAR_URL.value = '';
+    INP_PROFILE.value = 'General';
+    INP_BEHAVIOR.value = '';
+    INP_META_RULE.value = '';
+    setMetaRulesFromText(DEFAULT_META_RULE);
+    INP_BACKSTORY.value = '';
+    INP_THRESHOLD.value = '0';
+    INP_MODE.value = 'Directo';
+    INP_TEMPERATURE.value = '0.8';
+    INP_TOP_P.value = '1.0';
+    INP_MAX_TOKENS.value = '2048';
+    INP_DIALOGUE.value = '';
+    setEditorFeedback('Completa los campos y guarda los cambios.');
+  }
+
+  function openModal(mode, id = '') {
+    if (mode === 'edit') {
+      const engram = currentEngrams.find((item) => item.id === id);
+      if (!engram) {
+        setStatus('No se encontró el engrama a editar.');
+        return;
+      }
+      MODAL_TITLE.textContent = 'Editar Engrama';
+      INP_ID.value = engram.id;
+      INP_NAME.value = engram.name;
+      INP_COLOR.value = engram.color_hex || '#00ff41';
+      INP_AVATAR_FILE.value = '';
+      INP_AVATAR_URL.value = engram.avatar || '';
+      INP_PROFILE.value = engram.intellectual_profile || 'General';
+      INP_BEHAVIOR.value = engram.behavior_prompt || '';
+      INP_META_RULE.value = '';
+      setMetaRulesFromText(engram.meta_rule || DEFAULT_META_RULE);
+      INP_BACKSTORY.value = engram.backstory || '';
+      INP_THRESHOLD.value = String(engram.moral_threshold ?? 0);
+      INP_MODE.value = engram.interaction_mode || 'Directo';
+      INP_TEMPERATURE.value = String(engram.temperatura_base ?? 0.8);
+      INP_TOP_P.value = String(engram.top_p_base ?? 1.0);
+      INP_MAX_TOKENS.value = String(engram.max_tokens_respuesta ?? 2048);
+      INP_DIALOGUE.value = (engram.dialogue_examples || []).join('\n');
+      setEditorFeedback('Editando engrama existente.');
+    } else {
+      MODAL_TITLE.textContent = 'Nuevo Engrama';
+      resetForm();
+      setEditorFeedback('Creando nuevo engrama.');
+    }
+
+    MODAL.classList.add('active');
+    INP_NAME.focus();
+  }
+
+  function closeModal() {
+    MODAL.classList.remove('active');
+  }
+
+  async function uploadAvatarIfNeeded() {
+    const file = INP_AVATAR_FILE.files && INP_AVATAR_FILE.files[0] ? INP_AVATAR_FILE.files[0] : null;
+    if (!file) {
+      return INP_AVATAR_URL.value.trim();
+    }
+
     const formData = new FormData();
     formData.append('file', file);
-    const response = await fetch('/api/storage/engrams/avatar', { method: 'POST', body: formData });
+    const response = await fetch('/api/storage/engrams/avatar', {
+      method: 'POST',
+      body: formData,
+    });
     if (!response.ok) {
-      throw new Error('No se pudo subir avatar');
+      throw new Error('No se pudo subir el avatar');
     }
     const payload = await response.json();
-    return String(payload.public_url || '');
-  };
+    return String(payload.public_url || INP_AVATAR_URL.value.trim());
+  }
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    statusText.textContent = 'Creando engrama...';
+  function buildPayload(avatarUrl) {
+    return {
+      name: INP_NAME.value.trim(),
+      avatar: avatarUrl,
+      color_hex: INP_COLOR.value || '#00ff41',
+      intellectual_profile: INP_PROFILE.value.trim() || 'General',
+      behavior_prompt: INP_BEHAVIOR.value.trim(),
+      meta_rule: serializeMetaRules(metaRules),
+      moral_threshold: Number.parseInt(INP_THRESHOLD.value || '0', 10) || 0,
+      interaction_mode: INP_MODE.value.trim() || 'Directo',
+      dialogue_examples: INP_DIALOGUE.value.split('\n').map((line) => line.trim()).filter(Boolean),
+      backstory: INP_BACKSTORY.value.trim(),
+      temperatura_base: Number.parseFloat(INP_TEMPERATURE.value || '0.8') || 0.8,
+      top_p_base: Number.parseFloat(INP_TOP_P.value || '1.0') || 1.0,
+      max_tokens_respuesta: Number.parseInt(INP_MAX_TOKENS.value || '2048', 10) || 2048,
+    };
+  }
+
+  async function saveEngram() {
+    if (!INP_NAME.value.trim()) {
+      setStatus('Nombre es obligatorio.');
+      setEditorFeedback('Nombre es obligatorio.', 'error');
+      return;
+    }
+
+    const editingId = INP_ID.value.trim();
+    const isEdit = Boolean(editingId);
+    setStatus(isEdit ? 'Actualizando engrama...' : 'Creando engrama...');
+    setEditorFeedback(isEdit ? 'Actualizando engrama...' : 'Creando engrama...');
+    SAVE_ENGRAM_BTN.disabled = true;
+
     try {
-      const avatarUrl = await uploadAvatar();
-      const payload = {
-        name: nameInput.value.trim(),
-        avatar: avatarUrl,
-        color_hex: colorInput.value,
-        behavior_prompt: behaviorInput.value.trim(),
-        meta_rule: metaInput.value.trim(),
-      };
-      const response = await fetch('/api/knowledge/engrams', {
-        method: 'POST',
+      const avatarUrl = await uploadAvatarIfNeeded();
+      const payload = buildPayload(avatarUrl);
+      const response = await fetch(isEdit ? `${API_URL}/${encodeURIComponent(editingId)}` : API_URL, {
+        method: isEdit ? 'PATCH' : 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        const detail = await response.text();
+        throw new Error(detail || 'Respuesta no exitosa del servidor.');
+      }
+
+      closeModal();
+      await loadEngrams();
+      setStatus(isEdit ? 'Engrama actualizado.' : 'Engrama creado.');
+      setEditorFeedback(isEdit ? 'Engrama actualizado correctamente.' : 'Engrama creado correctamente.', 'success');
+      showToast(isEdit ? 'Engrama actualizado correctamente.' : 'Engrama creado correctamente.', 'success');
+    } catch (error) {
+      setStatus(`Error guardando engrama: ${String(error)}`);
+      setEditorFeedback(`Error guardando engrama: ${String(error)}`, 'error');
+      showToast(`Error guardando engrama: ${String(error)}`, 'error');
+    } finally {
+      SAVE_ENGRAM_BTN.disabled = false;
+    }
+  }
+
+  async function deleteEngram(engramId) {
+    const confirmed = window.confirm('¿Seguro que quieres eliminar este engrama?');
+    if (!confirmed) {
+      return;
+    }
+    setStatus('Eliminando engrama...');
+    try {
+      const response = await fetch(`${API_URL}/${encodeURIComponent(engramId)}`, {
+        method: 'DELETE',
       });
       if (!response.ok) {
         throw new Error(await response.text());
       }
-      statusText.textContent = 'Engrama creado correctamente.';
-      form.reset();
-      colorInput.value = '#00ff41';
       await loadEngrams();
+      setStatus('Engrama eliminado.');
+      showToast('Engrama eliminado.', 'success');
     } catch (error) {
-      statusText.textContent = `Error creando engrama: ${String(error)}`;
+      setStatus(`Error eliminando engrama: ${String(error)}`);
+      showToast(`Error eliminando engrama: ${String(error)}`, 'error');
     }
-  });
+  }
 
-  list.addEventListener('click', async (event) => {
+  GRID.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) {
       return;
     }
-    const row = button.closest('.route-row');
-    if (!row || !row.dataset.payload) {
-      return;
-    }
-    const engram = JSON.parse(row.dataset.payload);
-    const action = button.dataset.action;
-
-    if (action === 'delete') {
-      const response = await fetch(`/api/knowledge/engrams/${encodeURIComponent(engram.id)}`, { method: 'DELETE' });
-      statusText.textContent = response.ok ? 'Engrama eliminado.' : 'No se pudo eliminar engrama.';
-      await loadEngrams();
+    const action = String(button.dataset.action || '');
+    const id = String(button.dataset.id || '');
+    if (!id) {
       return;
     }
 
     if (action === 'edit') {
-      const newBehavior = window.prompt('Nuevo behavior_prompt:', engram.behavior_prompt || '');
-      if (newBehavior === null) {
-        return;
-      }
-      const newColor = window.prompt('Nuevo color_hex:', engram.color_hex || '#00ff41');
-      if (newColor === null) {
-        return;
-      }
-      const response = await fetch(`/api/knowledge/engrams/${encodeURIComponent(engram.id)}`, {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ behavior_prompt: newBehavior, color_hex: newColor }),
-      });
-      statusText.textContent = response.ok ? 'Engrama actualizado.' : 'No se pudo actualizar engrama.';
-      await loadEngrams();
+      openModal('edit', id);
+      return;
+    }
+
+    if (action === 'delete') {
+      deleteEngram(id);
     }
   });
 
+  OPEN_CREATE_BTN.addEventListener('click', () => openModal('create'));
+  CLOSE_MODAL_BTN.addEventListener('click', closeModal);
+  CANCEL_MODAL_BTN.addEventListener('click', closeModal);
+  SAVE_ENGRAM_BTN.addEventListener('click', saveEngram);
+
+  ADD_META_RULE_BTN.addEventListener('click', addMetaRule);
+  INP_META_RULE.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      addMetaRule();
+    }
+  });
+
+  META_RULE_LIST.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-remove-index]');
+    if (!button) {
+      return;
+    }
+    const index = Number.parseInt(button.dataset.removeIndex || '-1', 10);
+    if (!Number.isInteger(index) || index < 0 || index >= metaRules.length) {
+      return;
+    }
+    metaRules.splice(index, 1);
+    renderMetaRules();
+  });
+
+  MODAL.addEventListener('click', (event) => {
+    if (event.target === MODAL) {
+      closeModal();
+    }
+  });
+
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && MODAL.classList.contains('active')) {
+      closeModal();
+    }
+  });
+
+  setMetaRulesFromText(DEFAULT_META_RULE);
   loadEngrams();
 })();
 </script>

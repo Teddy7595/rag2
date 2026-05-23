@@ -2,8 +2,34 @@
 
 {% block head_extra %}
 <style>
+  :root {
+    --chat-bg-color: #050505;
+    --chat-surface-0: #0a0a0a;
+    --chat-surface-1: #101010;
+    --chat-surface-2: #141414;
+    --chat-line-soft: #262626;
+    --chat-line-hard: #343434;
+    --chat-msg-bg-user: #191919;
+    --chat-msg-bg-ai: #0f0f0f;
+    --chat-accent-color: #00ff41;
+    --chat-accent-soft: rgba(0, 255, 65, 0.14);
+    --chat-danger: #ff0055;
+    --chat-text-main: #e5e7eb;
+    --chat-text-dim: #9ca3af;
+    --chat-suggestion-bg: #121212;
+    --chat-suggestion-hover: #1d1d1d;
+    --chat-font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --chat-font-mono: 'Consolas', 'Courier New', monospace;
+    --chat-input-safe-bottom: env(safe-area-inset-bottom, 0px);
+  }
+
   body {
     overflow: hidden;
+    background:
+      radial-gradient(1100px 540px at -5% -10%, rgba(0, 255, 65, 0.05), transparent 60%),
+      radial-gradient(1000px 500px at 100% 0%, rgba(20, 184, 166, 0.05), transparent 58%),
+      var(--chat-bg-color);
+    color: var(--chat-text-main);
   }
 
   .shell {
@@ -15,25 +41,15 @@
     flex-direction: column;
   }
 
-  :root {
-    --chat-bg-color: #050505;
-    --chat-msg-bg-user: #1a1a1a;
-    --chat-msg-bg-ai: #0f0f0f;
-    --chat-accent-color: #00ff41;
-    --chat-suggestion-bg: #111;
-    --chat-suggestion-hover: #222;
-    --chat-font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
-    --chat-font-mono: 'Consolas', 'Courier New', monospace;
-  }
-
   #header-bar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 15px;
-    background: rgba(10, 10, 10, 0.95);
-    border-bottom: 1px solid #222;
-    backdrop-filter: blur(5px);
+    gap: 10px;
+    padding: 11px 15px;
+    background: rgba(10, 10, 10, 0.92);
+    border-bottom: 1px solid var(--chat-line-soft);
+    backdrop-filter: blur(8px);
     z-index: 100;
   }
 
@@ -44,19 +60,19 @@
   }
 
   #status-dot {
-    width: 8px;
-    height: 8px;
+    width: 9px;
+    height: 9px;
     border-radius: 50%;
     background-color: var(--chat-accent-color);
-    box-shadow: 0 0 8px var(--chat-accent-color);
+    box-shadow: 0 0 10px var(--chat-accent-color);
     transition: background-color 0.5s ease;
   }
 
   #engram-name {
     font-family: var(--chat-font-mono);
-    font-size: 0.9rem;
-    color: #aaa;
-    letter-spacing: 1px;
+    font-size: 0.86rem;
+    color: #cbd5e1;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
   }
 
@@ -69,32 +85,35 @@
   }
 
   .header-btn {
-    background: transparent;
-    border: 1px solid #333;
-    color: #666;
-    padding: 5px 10px;
-    border-radius: 4px;
-    font-size: 0.75rem;
+    background: #0d0d0d;
+    border: 1px solid var(--chat-line-hard);
+    color: var(--chat-text-dim);
+    padding: 6px 10px;
+    border-radius: 999px;
+    font-size: 0.72rem;
     cursor: pointer;
     text-decoration: none;
     font-family: var(--chat-font-mono);
+    transition: all 0.2s;
   }
 
   .header-btn:hover {
     color: #fff;
-    border-color: #555;
+    border-color: var(--chat-accent-color);
+    background: rgba(255, 255, 255, 0.03);
   }
 
   .session-chip {
-    border: 1px solid #333;
-    border-radius: 4px;
-    padding: 5px 8px;
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 999px;
+    padding: 5px 10px;
     font-family: var(--chat-font-mono);
-    color: #9ca3af;
+    color: var(--chat-text-dim);
     font-size: 0.72rem;
     display: inline-flex;
     gap: 6px;
     align-items: center;
+    background: #0c0c0c;
   }
 
   .session-chip.warn {
@@ -121,18 +140,18 @@
     display: flex;
     gap: 8px;
     overflow-x: auto;
-    padding: 10px 15px;
-    background: #080808;
-    border-bottom: 1px solid #222;
+    padding: 10px 15px 9px;
+    background: rgba(8, 8, 8, 0.86);
+    border-bottom: 1px solid var(--chat-line-soft);
   }
 
   .chip {
     background: var(--chat-suggestion-bg);
-    border: 1px solid #333;
-    color: #aaa;
-    padding: 6px 12px;
-    border-radius: 15px;
-    font-size: 0.8rem;
+    border: 1px solid var(--chat-line-hard);
+    color: #d1d5db;
+    padding: 7px 12px;
+    border-radius: 999px;
+    font-size: 0.77rem;
     cursor: pointer;
     white-space: nowrap;
     transition: all 0.2s;
@@ -143,23 +162,26 @@
     background: var(--chat-suggestion-hover);
     color: #fff;
     border-color: var(--chat-accent-color);
+    transform: translateY(-1px);
   }
 
   #chat-container {
     flex: 1;
     overflow-y: auto;
-    padding: 20px;
+    padding: 18px 14px 28px;
     display: flex;
     flex-direction: column;
-    gap: 25px;
+    gap: 20px;
     scroll-behavior: smooth;
-    background: var(--chat-bg-color);
+    background:
+      linear-gradient(180deg, rgba(255, 255, 255, 0.015) 0%, rgba(255, 255, 255, 0) 20%),
+      var(--chat-bg-color);
   }
 
   .message-row {
     display: flex;
-    gap: 12px;
-    max-width: 95%;
+    gap: 10px;
+    max-width: min(760px, 96%);
     animation: fadeIn 0.2s ease-out;
     position: relative;
     margin-bottom: 5px;
@@ -176,59 +198,80 @@
   }
 
   .avatar {
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
+    width: 34px;
+    height: 34px;
+    border-radius: 8px;
     object-fit: cover;
-    border: 1px solid #333;
+    border: 1px solid var(--chat-line-hard);
     flex-shrink: 0;
+    background: #0a0a0a;
   }
 
   .bubble {
-    padding: 12px 16px;
-    border-radius: 8px;
+    padding: 13px 16px;
+    border-radius: 16px;
     font-size: 0.95rem;
     line-height: 1.5;
     word-wrap: break-word;
     position: relative;
     min-width: 60px;
     font-family: var(--chat-font-main);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.24);
   }
 
   .message-row.user .bubble {
     background-color: var(--chat-msg-bg-user);
-    border: 1px solid #333;
+    border: 1px solid var(--chat-line-hard);
     color: #fff;
-    border-bottom-right-radius: 2px;
+    border-bottom-right-radius: 6px;
   }
 
   .message-row.ai .bubble,
   .message-row.system .bubble {
     background-color: var(--chat-msg-bg-ai);
+    border: 1px solid var(--chat-line-soft);
     border-left: 2px solid var(--chat-accent-color);
     color: #ddd;
-    border-bottom-left-radius: 2px;
+    border-bottom-left-radius: 6px;
   }
+
+  .typing-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+  }
+
+  .typing-dots span {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: #9ca3af;
+    opacity: 0.4;
+    animation: typingDot 1.2s infinite;
+  }
+
+  .typing-dots span:nth-child(2) { animation-delay: 0.15s; }
+  .typing-dots span:nth-child(3) { animation-delay: 0.3s; }
 
   .meta {
     margin-top: 6px;
     font-size: 0.72rem;
-    color: #666;
+    color: #6b7280;
     font-family: var(--chat-font-mono);
   }
 
   .msg-controls {
     position: absolute;
-    bottom: -35px;
+    bottom: -34px;
     right: 0;
     display: flex;
     gap: 8px;
     opacity: 0;
     pointer-events: none;
     transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
-    background: #222;
-    border: 1px solid #444;
-    border-radius: 6px;
+    background: #151515;
+    border: 1px solid #3a3a3a;
+    border-radius: 8px;
     padding: 4px 8px;
     z-index: 20;
     box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
@@ -248,7 +291,7 @@
   .ctrl-btn {
     background: transparent;
     border: none;
-    color: #888;
+    color: #9ca3af;
     cursor: pointer;
     padding: 6px;
     display: flex;
@@ -275,8 +318,8 @@
   }
 
   .input-wrapper.editing {
-    border-color: #ffaa00;
-    background: #1a1500;
+    border-color: #f59e0b;
+    background: #1d1708;
   }
 
   #cancel-edit-btn {
@@ -285,16 +328,21 @@
   }
 
   #input-area {
-    padding: 15px;
-    background: #0a0a0a;
-    border-top: 1px solid #222;
+    padding: 10px 12px calc(12px + var(--chat-input-safe-bottom));
+    background: rgba(10, 10, 10, 0.95);
+    border-top: 1px solid var(--chat-line-soft);
     position: relative;
+    backdrop-filter: blur(8px);
+  }
+
+  #mobile-quick-actions {
+    display: none;
   }
 
   #status-bar {
     font-family: var(--chat-font-mono);
     font-size: 0.75rem;
-    color: #888;
+    color: var(--chat-text-dim);
     margin-bottom: 8px;
     padding-left: 5px;
     min-height: 15px;
@@ -308,9 +356,9 @@
     margin: 0 5px 8px;
     font-family: var(--chat-font-mono);
     font-size: 0.75rem;
-    color: #8ab4f8;
-    border: 1px dashed #334155;
-    border-radius: 6px;
+    color: #93c5fd;
+    border: 1px dashed #374151;
+    border-radius: 10px;
     padding: 6px 8px;
     background: #111827;
   }
@@ -337,15 +385,16 @@
     display: flex;
     gap: 10px;
     align-items: flex-end;
-    background: #111;
-    border: 1px solid #333;
-    border-radius: 6px;
-    padding: 8px 12px;
-    transition: border-color 0.2s;
+    background: linear-gradient(180deg, #131313 0%, #101010 100%);
+    border: 1px solid #303030;
+    border-radius: 20px;
+    padding: 10px 12px;
+    transition: border-color 0.2s, box-shadow 0.2s;
   }
 
   .input-wrapper:focus-within {
     border-color: var(--chat-accent-color);
+    box-shadow: 0 0 0 3px var(--chat-accent-soft);
   }
 
   #message-input {
@@ -367,23 +416,264 @@
   .icon-btn {
     background: transparent;
     border: none;
-    color: #666;
+    color: #9ca3af;
     cursor: pointer;
     padding: 5px;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: color 0.2s;
-    height: 24px;
+    height: 30px;
+    min-width: 30px;
+    border-radius: 10px;
   }
 
   .icon-btn:hover {
     color: var(--chat-accent-color);
+    background: rgba(255, 255, 255, 0.07);
+  }
+
+  .icon-btn:disabled {
+    opacity: 0.45;
+    cursor: default;
+    background: transparent;
   }
 
   .icon-btn svg {
     width: 20px;
     height: 20px;
+  }
+
+  #scroll-bottom-btn {
+    position: fixed;
+    right: 14px;
+    bottom: calc(94px + var(--chat-input-safe-bottom));
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    border: 1px solid var(--chat-line-hard);
+    background: rgba(14, 14, 14, 0.95);
+    color: #e5e7eb;
+    font-size: 16px;
+    line-height: 1;
+    z-index: 120;
+    opacity: 0;
+    pointer-events: none;
+    transform: translateY(8px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+  }
+
+  #scroll-bottom-btn.visible {
+    opacity: 1;
+    pointer-events: auto;
+    transform: translateY(0);
+  }
+
+  #chat-hud-toggle {
+    position: fixed;
+    left: 14px;
+    bottom: calc(94px + var(--chat-input-safe-bottom));
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    border: 1px solid var(--chat-line-hard);
+    background: rgba(14, 14, 14, 0.95);
+    color: #e5e7eb;
+    z-index: 120;
+    cursor: pointer;
+    font-family: var(--chat-font-mono);
+    font-size: 0.82rem;
+  }
+
+  #chat-hud-toggle:hover {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
+
+  #chat-hud {
+    position: fixed;
+    left: 14px;
+    bottom: calc(140px + var(--chat-input-safe-bottom));
+    width: min(430px, calc(100vw - 28px));
+    max-height: min(66dvh, 560px);
+    z-index: 130;
+    border: 1px solid var(--chat-line-hard);
+    background: rgba(10, 10, 10, 0.96);
+    border-radius: 12px;
+    box-shadow: 0 18px 40px rgba(0, 0, 0, 0.45);
+    backdrop-filter: blur(8px);
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  #chat-hud.visible {
+    display: flex;
+  }
+
+  .hud-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--chat-line-soft);
+    font-family: var(--chat-font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: #d1d5db;
+  }
+
+  .hud-close {
+    border: 1px solid var(--chat-line-hard);
+    background: transparent;
+    color: #9ca3af;
+    border-radius: 6px;
+    width: 26px;
+    height: 26px;
+    cursor: pointer;
+  }
+
+  .hud-close:hover {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
+
+  .hud-body {
+    overflow-y: auto;
+    padding: 10px 12px 12px;
+    display: grid;
+    gap: 10px;
+  }
+
+  .hud-block {
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 10px;
+    background: #0f0f0f;
+    padding: 10px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .hud-title {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.68rem;
+    font-family: var(--chat-font-mono);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .hud-line {
+    margin: 0;
+    color: #d1d5db;
+    font-family: var(--chat-font-mono);
+    font-size: 0.76rem;
+    line-height: 1.35;
+    word-break: break-word;
+  }
+
+  .hud-rule-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 8px;
+  }
+
+  .hud-input {
+    width: 100%;
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 8px;
+    background: #121212;
+    color: #fff;
+    padding: 8px 9px;
+    font-size: 0.84rem;
+    font-family: var(--chat-font-main);
+  }
+
+  .hud-btn {
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 8px;
+    background: #121212;
+    color: #d1d5db;
+    cursor: pointer;
+    font-family: var(--chat-font-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 8px 10px;
+  }
+
+  .hud-btn:hover {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
+
+  .hud-btn.primary {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+    background: rgba(0, 255, 65, 0.07);
+  }
+
+  .hud-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 6px;
+  }
+
+  .hud-list-empty {
+    color: #6b7280;
+    font-size: 0.74rem;
+    font-family: var(--chat-font-mono);
+    border: 1px dashed var(--chat-line-soft);
+    border-radius: 8px;
+    padding: 8px;
+  }
+
+  .hud-rule-item,
+  .hud-session-item {
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 8px;
+    background: #111;
+    padding: 8px;
+    display: grid;
+    gap: 6px;
+  }
+
+  .hud-rule-main,
+  .hud-session-main {
+    margin: 0;
+    color: #e5e7eb;
+    font-size: 0.82rem;
+    line-height: 1.35;
+  }
+
+  .hud-rule-meta,
+  .hud-session-meta {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.71rem;
+    font-family: var(--chat-font-mono);
+    line-height: 1.3;
+  }
+
+  .hud-row-actions {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .hud-link {
+    color: #93c5fd;
+    text-decoration: none;
+    font-size: 0.73rem;
+    font-family: var(--chat-font-mono);
+  }
+
+  .hud-link:hover {
+    color: var(--chat-accent-color);
   }
 
   .input-wrapper.vision-muted {
@@ -400,9 +690,9 @@
     left: 15px;
     right: 15px;
     background-color: #111;
-    border: 1px solid #333;
+    border: 1px solid var(--chat-line-hard);
     border-bottom: none;
-    border-radius: 6px 6px 0 0;
+    border-radius: 10px 10px 0 0;
     max-height: 200px;
     overflow-y: auto;
     display: none;
@@ -413,16 +703,16 @@
   .autocomplete-item {
     padding: 10px 15px;
     cursor: pointer;
-    border-bottom: 1px solid #222;
+    border-bottom: 1px solid var(--chat-line-soft);
     font-family: var(--chat-font-mono);
     font-size: 0.9rem;
-    color: #ccc;
+    color: #d1d5db;
     display: flex;
     justify-content: space-between;
   }
 
   .autocomplete-item:hover {
-    background-color: #222;
+    background-color: #1d1d1d;
     color: var(--chat-accent-color);
   }
 
@@ -462,7 +752,7 @@
   }
 
   ::-webkit-scrollbar-thumb {
-    background: #333;
+    background: #2f2f2f;
     border-radius: 3px;
   }
 
@@ -471,6 +761,14 @@
   }
 
   @media (max-width: 760px) {
+    body {
+      overflow: hidden;
+    }
+
+    .shell {
+      height: 100dvh;
+    }
+
     .header-actions {
       justify-content: flex-start;
     }
@@ -478,11 +776,75 @@
     #header-bar {
       flex-direction: column;
       align-items: flex-start;
-      gap: 8px;
+      gap: 7px;
+      padding: 10px 10px 8px;
+    }
+
+    #header-bar .header-btn,
+    #header-bar .session-chip:not(#chat-limits-chip):not(#chat-model-chip) {
+      display: none;
+    }
+
+    #suggestions {
+      padding: 8px 10px;
+      gap: 6px;
+    }
+
+    .chip {
+      padding: 7px 10px;
+      border-radius: 999px;
+      font-size: 0.73rem;
+    }
+
+    #chat-container {
+      padding: 14px 10px 20px;
+      gap: 13px;
     }
 
     .message-row {
       max-width: 100%;
+      gap: 8px;
+    }
+
+    .message-row .avatar {
+      display: none;
+    }
+
+    .message-row.user {
+      margin-left: 36px;
+    }
+
+    .message-row.ai,
+    .message-row.system {
+      margin-right: 36px;
+    }
+
+    .meta {
+      font-size: 0.67rem;
+      margin-top: 4px;
+    }
+
+    #mobile-quick-actions {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 0 2px 8px;
+    }
+
+    #mobile-quick-actions .quick-btn {
+      border: 1px solid var(--chat-line-hard);
+      background: #101010;
+      color: #d1d5db;
+      border-radius: 999px;
+      padding: 7px 12px;
+      white-space: nowrap;
+      font-family: var(--chat-font-mono);
+      font-size: 0.73rem;
+      cursor: pointer;
+    }
+
+    #mobile-quick-actions .quick-btn:active {
+      background: #1b1b1b;
     }
 
     .msg-controls.mobile-active {
@@ -490,8 +852,41 @@
       pointer-events: auto;
       transform: scale(1.1);
       bottom: -40px;
-      background: rgba(0, 0, 0, 0.95);
+      background: rgba(12, 12, 12, 0.98);
       border-color: var(--chat-accent-color);
+    }
+
+    #message-input {
+      font-size: 1rem;
+      line-height: 1.45;
+    }
+
+    #status-bar {
+      margin-bottom: 6px;
+      font-size: 0.7rem;
+    }
+
+    #attached-file {
+      margin: 0 2px 8px;
+      border-radius: 12px;
+    }
+
+    #scroll-bottom-btn {
+      right: 12px;
+      bottom: calc(124px + var(--chat-input-safe-bottom));
+    }
+
+    #chat-hud-toggle {
+      left: 12px;
+      bottom: calc(124px + var(--chat-input-safe-bottom));
+    }
+
+    #chat-hud {
+      left: 12px;
+      right: 12px;
+      width: auto;
+      bottom: calc(170px + var(--chat-input-safe-bottom));
+      max-height: min(58dvh, 520px);
     }
   }
 
@@ -502,6 +897,11 @@
       transform: scale(1);
       bottom: -28px;
     }
+  }
+
+  @keyframes typingDot {
+    0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
+    40% { opacity: 1; transform: translateY(-2px); }
   }
 </style>
 {% endblock %}
@@ -538,12 +938,55 @@
   </div>
 </div>
 
+<button id="scroll-bottom-btn" type="button" aria-label="Bajar al final">↓</button>
+<button id="chat-hud-toggle" type="button" aria-label="Abrir panel de chat">Info</button>
+
+<aside id="chat-hud" aria-label="Panel de información de chat">
+  <div class="hud-header">
+    <span>Panel de chat</span>
+    <button type="button" class="hud-close" id="chat-hud-close" aria-label="Cerrar panel">×</button>
+  </div>
+  <div class="hud-body">
+    <section class="hud-block">
+      <p class="hud-title">Estado actual</p>
+      <p class="hud-line" id="hud-session-line">Sesion: pendiente</p>
+      <p class="hud-line" id="hud-model-line">Modelo: pendiente</p>
+      <p class="hud-line" id="hud-limits-line">Limites: ctx=5 · hist=20</p>
+    </section>
+
+    <section class="hud-block">
+      <p class="hud-title">Reglas de sesion (capa extra)</p>
+      <div class="hud-rule-row">
+        <input id="hud-rule-input" class="hud-input" type="text" placeholder="Agregar regla para esta sesion">
+        <button id="hud-rule-add" class="hud-btn" type="button">Agregar</button>
+      </div>
+      <ul id="hud-rules-list" class="hud-list"></ul>
+      <div class="hud-row-actions">
+        <button id="hud-rules-save" class="hud-btn primary" type="button">Guardar reglas</button>
+        <button id="hud-rules-clear" class="hud-btn" type="button">Limpiar</button>
+      </div>
+    </section>
+
+    <section class="hud-block">
+      <p class="hud-title">Chats en el sistema</p>
+      <ul id="hud-sessions-list" class="hud-list"></ul>
+    </section>
+  </div>
+</aside>
+
 <div id="input-area">
   <div id="autocomplete-list"></div>
   <div id="status-bar">Sesion realtime iniciando...</div>
   <div id="attached-file">
     <span id="attached-file-label"></span>
     <button id="clear-file-btn" type="button">limpiar</button>
+  </div>
+  <div id="mobile-quick-actions" aria-label="Acciones rápidas">
+    <button type="button" class="quick-btn" data-quick-action="help">Ayuda</button>
+    <button type="button" class="quick-btn" data-quick-action="attach">Adjuntar</button>
+    <button type="button" class="quick-btn" data-quick-action="vision">Vision</button>
+    <button type="button" class="quick-btn" data-quick-action="models">Modelos</button>
+    <button type="button" class="quick-btn" data-quick-action="rules">Reglas</button>
   </div>
   <div class="input-wrapper" id="input-box">
     <input type="file" id="file-upload" style="display:none;" accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx">
@@ -592,6 +1035,20 @@
   const modelChip = document.getElementById('chat-model-chip');
   const sessionCopyButton = document.getElementById('chat-session-copy');
   const sessionIntelLink = document.getElementById('chat-session-intel-link');
+  const quickActionButtons = Array.from(document.querySelectorAll('#mobile-quick-actions .quick-btn'));
+  const scrollBottomBtn = document.getElementById('scroll-bottom-btn');
+  const chatHudToggle = document.getElementById('chat-hud-toggle');
+  const chatHudClose = document.getElementById('chat-hud-close');
+  const chatHud = document.getElementById('chat-hud');
+  const hudSessionLine = document.getElementById('hud-session-line');
+  const hudModelLine = document.getElementById('hud-model-line');
+  const hudLimitsLine = document.getElementById('hud-limits-line');
+  const hudRuleInput = document.getElementById('hud-rule-input');
+  const hudRuleAdd = document.getElementById('hud-rule-add');
+  const hudRulesList = document.getElementById('hud-rules-list');
+  const hudRulesSave = document.getElementById('hud-rules-save');
+  const hudRulesClear = document.getElementById('hud-rules-clear');
+  const hudSessionsList = document.getElementById('hud-sessions-list');
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
@@ -620,6 +1077,7 @@
   let runtimeState = null;
   let visionEnabled = false;
   let visionForcedOff = false;
+  let worldRuleItems = [];
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
@@ -628,6 +1086,39 @@
     '/model text <bundle_id>', '/model vision <bundle_id|off>',
     '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
+
+  function updateSendButtonState() {
+    const hasText = Boolean(inputField.value.trim());
+    const socketReady = socket && socket.readyState === WebSocket.OPEN;
+    sendBtn.disabled = isProcessing || !hasText || !socketReady;
+  }
+
+  function renderThinkingBubble() {
+    return '<span class="typing-dots" aria-label="Pensando"><span></span><span></span><span></span></span>';
+  }
+
+  function handleQuickAction(action) {
+    if (action === 'attach') {
+      openAttachPicker();
+      return;
+    }
+    if (action === 'vision') {
+      runVisionCommand('Describe la imagen con enfoque práctico y contexto útil.');
+      return;
+    }
+    if (action === 'models') {
+      handleSlashCommand('/models');
+      return;
+    }
+    if (action === 'rules') {
+      inputField.value = '/rules show';
+      adjustHeight(inputField);
+      updateSendButtonState();
+      inputField.focus();
+      return;
+    }
+    handleSlashCommand('/help');
+  }
 
   function setStatus(text, blinking = false) {
     statusBar.innerText = text;
@@ -640,6 +1131,7 @@
       return;
     }
     limitsChip.textContent = `ctx=${contextLimit} · hist=${historyLimit}`;
+    renderHudSummary();
   }
 
   function renderModelChip() {
@@ -657,6 +1149,111 @@
     modelChip.textContent = `txt=${textSelection} · vis=${visionSelection}`;
     modelChip.classList.toggle('warn', !visionEnabled);
     inputBox.classList.toggle('vision-muted', !visionEnabled);
+    renderHudSummary();
+  }
+
+  function parseWorldRuleItems(rawRules) {
+    return String(rawRules || '')
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .map((line) => line.replace(/^[-*]\s+/, '').trim())
+      .filter(Boolean);
+  }
+
+  function serializeWorldRuleItems(items) {
+    const normalized = (items || []).map((item) => String(item || '').trim()).filter(Boolean);
+    return normalized.map((item) => `- ${item}`).join('\n');
+  }
+
+  function renderHudSummary() {
+    if (!hudSessionLine || !hudModelLine || !hudLimitsLine) {
+      return;
+    }
+
+    hudSessionLine.textContent = `Sesion: ${activeSessionId || 'pendiente'}`;
+    const textSelection = catalogState && catalogState.selection
+      ? (catalogState.selection.text_bundle_id || catalogState.selection.text_model_name || 'pendiente')
+      : 'pendiente';
+    const visionSelection = visionForcedOff
+      ? 'off'
+      : (catalogState && catalogState.selection
+      ? (catalogState.selection.vision_bundle_id || catalogState.selection.vision_model_name || 'off')
+      : 'off');
+    hudModelLine.textContent = `Modelo: txt=${textSelection} · vis=${visionSelection}`;
+    hudLimitsLine.textContent = `Limites: ctx=${contextLimit} · hist=${historyLimit}`;
+  }
+
+  function renderWorldRulesHud() {
+    hudRulesList.innerHTML = '';
+    if (!worldRuleItems.length) {
+      hudRulesList.innerHTML = '<li class="hud-list-empty">Sin reglas de sesion extra.</li>';
+      return;
+    }
+
+    for (let index = 0; index < worldRuleItems.length; index += 1) {
+      const item = worldRuleItems[index];
+      const row = document.createElement('li');
+      row.className = 'hud-rule-item';
+      row.innerHTML = `
+        <p class="hud-rule-main">${String(item).replace(/</g, '&lt;')}</p>
+        <div class="hud-row-actions">
+          <button type="button" class="hud-btn" data-rule-remove="${index}">Quitar</button>
+        </div>
+      `;
+      hudRulesList.appendChild(row);
+    }
+  }
+
+  async function loadSessionList() {
+    try {
+      const response = await fetch('/api/interaction/sessions?limit=40');
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      const payload = await response.json();
+      renderSessionList(Array.isArray(payload) ? payload : []);
+    } catch (error) {
+      hudSessionsList.innerHTML = `<li class="hud-list-empty">No se pudo cargar chats: ${String(error)}</li>`;
+    }
+  }
+
+  function renderSessionList(sessions) {
+    hudSessionsList.innerHTML = '';
+    if (!sessions.length) {
+      hudSessionsList.innerHTML = '<li class="hud-list-empty">No hay chats guardados todavia.</li>';
+      return;
+    }
+
+    for (const row of sessions) {
+      const sessionId = String(row.session_id || '');
+      const rowNode = document.createElement('li');
+      rowNode.className = 'hud-session-item';
+      rowNode.innerHTML = `
+        <p class="hud-session-main">${sessionId}</p>
+        <p class="hud-session-meta">mensajes=${Number(row.message_count || 0)} · autor=${String(row.last_author || '-')}</p>
+        <p class="hud-session-meta">${String(row.last_excerpt || '').replace(/</g, '&lt;')}</p>
+        <div class="hud-row-actions">
+          <a class="hud-link" href="/admin/session-intel?session_id=${encodeURIComponent(sessionId)}" target="_blank" rel="noopener noreferrer">Abrir Session Intel</a>
+        </div>
+      `;
+      hudSessionsList.appendChild(rowNode);
+    }
+  }
+
+  function openHud() {
+    chatHud.classList.add('visible');
+  }
+
+  function closeHud() {
+    chatHud.classList.remove('visible');
+  }
+
+  function toggleHud() {
+    if (chatHud.classList.contains('visible')) {
+      closeHud();
+      return;
+    }
+    openHud();
   }
 
   async function refreshModelState({ announce = false } = {}) {
@@ -773,6 +1370,11 @@
     const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight <= threshold;
     if (force || isNearBottom) {
       chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    if (scrollBottomBtn) {
+      const needsScroll = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight > 140;
+      scrollBottomBtn.classList.toggle('visible', needsScroll);
     }
   }
 
@@ -988,6 +1590,8 @@
     }
     loadLimitsForSession(sessionId);
     persistLimits(sessionId);
+    renderHudSummary();
+    loadSessionList();
   }
 
   async function loadWorldRules(sessionId) {
@@ -997,6 +1601,8 @@
     const localRules = window.localStorage.getItem(`${WORLD_RULES_PREFIX}${sessionId}`);
     if (localRules !== null) {
       worldRules = localRules;
+      worldRuleItems = parseWorldRuleItems(worldRules);
+      renderWorldRulesHud();
       return;
     }
     try {
@@ -1004,8 +1610,12 @@
       const payload = await response.json();
       worldRules = String(payload.world_rules || '');
       window.localStorage.setItem(`${WORLD_RULES_PREFIX}${sessionId}`, worldRules);
+      worldRuleItems = parseWorldRuleItems(worldRules);
+      renderWorldRulesHud();
     } catch (_) {
       worldRules = '';
+      worldRuleItems = [];
+      renderWorldRulesHud();
     }
   }
 
@@ -1302,6 +1912,8 @@
         return true;
       }
       worldRules = args;
+      worldRuleItems = parseWorldRuleItems(worldRules);
+      renderWorldRulesHud();
       await saveWorldRules();
       appendMessage('World rules actualizadas para esta sesion.', false, currentEngramAvatar, true, null, 'system', 'system');
       return true;
@@ -1394,6 +2006,7 @@
     inputField.addEventListener('input', () => {
       adjustHeight(inputField);
       checkAutocomplete(inputField.value);
+      updateSendButtonState();
     });
 
     inputField.addEventListener('keydown', async (event) => {
@@ -1415,6 +2028,22 @@
         document.querySelectorAll('.msg-controls.mobile-active').forEach((element) => element.classList.remove('mobile-active'));
       }
     });
+
+    chatBox.addEventListener('scroll', () => {
+      scrollToBottom(false);
+    }, { passive: true });
+
+    if (scrollBottomBtn) {
+      scrollBottomBtn.addEventListener('click', () => {
+        scrollToBottom(true);
+      });
+    }
+
+    quickActionButtons.forEach((button) => {
+      button.addEventListener('click', () => {
+        handleQuickAction(String(button.dataset.quickAction || 'help'));
+      });
+    });
   }
 
   async function sendMessage() {
@@ -1428,6 +2057,7 @@
       if (handled) {
         inputField.value = '';
         adjustHeight(inputField);
+        updateSendButtonState();
         inputField.focus();
         return;
       }
@@ -1459,6 +2089,7 @@
     appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat');
     inputField.value = '';
     adjustHeight(inputField);
+    updateSendButtonState();
     currentAiBubble = null;
     startProcessingFeedback();
 
@@ -1475,6 +2106,7 @@
     statusDot.style.backgroundColor = currentEngramColor;
     engramName.innerText = 'ONLINE';
     setStatus('Conectado. Usa /help para comandos.', false);
+    updateSendButtonState();
   });
 
   socket.addEventListener('close', () => {
@@ -1508,8 +2140,8 @@
       }
       case 'turn_started':
         startProcessingFeedback();
-        currentAiBubble = appendMessage('pensando...', false, currentEngramAvatar, true, null, 'assistant', 'assistant');
-        sendBtn.disabled = true;
+        currentAiBubble = appendMessage(renderThinkingBubble(), false, currentEngramAvatar, true, null, 'assistant', 'assistant');
+        updateSendButtonState();
         return;
       case 'assistant_token':
         if (!currentAiBubble) {
@@ -1532,7 +2164,7 @@
       }
       case 'turn_complete':
         stopProcessingFeedback();
-        sendBtn.disabled = false;
+        updateSendButtonState();
         if (packet.session_id) {
           persistSessionId(String(packet.session_id));
         }
@@ -1540,7 +2172,7 @@
         return;
       case 'error':
         stopProcessingFeedback();
-        sendBtn.disabled = false;
+        updateSendButtonState();
         setStatus(packet.detail || 'Error en realtime.', false);
         return;
       default:
@@ -1587,13 +2219,79 @@
     cancelEdit();
   });
 
+  chatHudToggle.addEventListener('click', () => {
+    toggleHud();
+  });
+
+  chatHudClose.addEventListener('click', () => {
+    closeHud();
+  });
+
+  hudRuleAdd.addEventListener('click', () => {
+    const value = hudRuleInput.value.trim();
+    if (!value) {
+      return;
+    }
+    if (!worldRuleItems.includes(value)) {
+      worldRuleItems.push(value);
+      renderWorldRulesHud();
+    }
+    hudRuleInput.value = '';
+    hudRuleInput.focus();
+  });
+
+  hudRuleInput.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter') {
+      event.preventDefault();
+      hudRuleAdd.click();
+    }
+  });
+
+  hudRulesList.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-rule-remove]');
+    if (!button) {
+      return;
+    }
+    const index = Number.parseInt(button.dataset.ruleRemove || '-1', 10);
+    if (!Number.isInteger(index) || index < 0 || index >= worldRuleItems.length) {
+      return;
+    }
+    worldRuleItems.splice(index, 1);
+    renderWorldRulesHud();
+  });
+
+  hudRulesSave.addEventListener('click', async () => {
+    if (!activeSessionId) {
+      setStatus('No hay sesion activa para guardar reglas.', false);
+      return;
+    }
+    worldRules = serializeWorldRuleItems(worldRuleItems);
+    await saveWorldRules();
+    setStatus('Reglas de sesion guardadas.', false);
+  });
+
+  hudRulesClear.addEventListener('click', async () => {
+    worldRuleItems = [];
+    renderWorldRulesHud();
+    worldRules = '';
+    if (activeSessionId) {
+      await saveWorldRules();
+    }
+    setStatus('Reglas de sesion limpiadas.', false);
+  });
+
   preloadSession();
   loadLimitsForSession(activeSessionId || null);
   renderLimitsChip();
+  renderHudSummary();
+  renderWorldRulesHud();
+  loadSessionList();
   refreshModelState({ announce: true });
   setupInputListeners();
   loadHints();
   document.querySelectorAll('.message-row').forEach((row) => setupMessageInteractions(row));
+  updateSendButtonState();
+  scrollToBottom(false);
   inputField.focus();
 })();
 </script>
