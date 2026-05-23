@@ -64,4 +64,15 @@ def test_dedupe_rule_lines_removes_repeated_lines() -> None:
 
 
 def test_classify_intent_defaults_to_mixed_for_non_technical_content() -> None:
-    assert classify_intent("Cuentame sobre ti") == "mixed"
+    assert classify_intent("Me gustan los domingos por la tarde") == "mixed"
+
+
+def test_classify_intent_detects_conversational_queries() -> None:
+    assert classify_intent("Que opinas del contenido para adultos?") == "conversational"
+
+
+def test_build_turn_policy_for_conversational_queries() -> None:
+    policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
+    assert policy.intent == "conversational"
+    assert policy.max_tokens >= 200
+    assert policy.deadline_ms >= 2400

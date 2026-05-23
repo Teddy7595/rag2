@@ -40,6 +40,15 @@ def build_turn_policy(
             deadline_ms=1400,
             prefer_short=True,
         )
+    if intent == "conversational":
+        return ConversationTurnPolicy(
+            intent=intent,
+            max_tokens=260 if has_custom_engram else 220,
+            temperature=0.35 if has_custom_engram else 0.25,
+            top_p=0.95,
+            deadline_ms=2600,
+            prefer_short=False,
+        )
     if intent == "technical":
         return ConversationTurnPolicy(
             intent=intent,
@@ -64,6 +73,8 @@ def classify_intent(text: str) -> str:
         return "greeting"
     if is_identity_question(text):
         return "identity"
+    if is_conversational_query(text):
+        return "conversational"
 
     lowered = text.lower()
     technical_markers = (
@@ -85,6 +96,26 @@ def classify_intent(text: str) -> str:
     if any(marker in lowered for marker in technical_markers):
         return "technical"
     return "mixed"
+
+
+def is_conversational_query(text: str) -> bool:
+    lowered = re.sub(r"\s+", " ", text.lower()).strip()
+    markers = (
+        "que piensas",
+        "que opinas",
+        "opinion",
+        "opinión",
+        "sobre ti",
+        "cuentame sobre ti",
+        "cuéntame sobre ti",
+        "contenido para adultos",
+        "adultos",
+        "como te sientes",
+        "cómo te sientes",
+        "charlar",
+        "conversar",
+    )
+    return any(marker in lowered for marker in markers)
 
 
 def dedupe_rule_lines(raw: str, *, max_lines: int = 10) -> str:

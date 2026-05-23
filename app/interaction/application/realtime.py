@@ -63,6 +63,24 @@ def _unique(items: list[str]) -> list[str]:
     return ordered
 
 
+def _normalize_reply_for_compare(text: str) -> str:
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9áéíóúñ\s]", "", text.lower())).strip()
+
+
+def _recent_assistant_replies(messages: list[dict[str, object]], *, limit: int = 4) -> list[str]:
+    replies: list[str] = []
+    for message in reversed(messages):
+        channel = str(message.get("channel") or "")
+        author = str(message.get("author") or "")
+        if channel == "assistant" or author.lower() != "user":
+            content = str(message.get("content") or "").strip()
+            if content:
+                replies.append(content)
+            if len(replies) >= limit:
+                break
+    return replies
+
+
 def _incremental_summary(previous: str, user_text: str, assistant_text: str, *, max_chars: int = 1400) -> str:
     blocks = [
         part.strip()
@@ -211,6 +229,61 @@ class RealtimeChatService:
             "deadline_scale_percent": int(getattr(settings, "conversation_deadline_scale_percent", 100) or 100),
         }
 
+    def _compute_adaptive_deadline_ms(self, session_id: str, base_deadline_ms: int) -> int:
+        try:
+            metrics = self.interaction_service.repository.list_turn_metrics(session_id, limit=12)
+        except Exception:
+            return base_deadline_ms
+
+        elapsed_samples: list[int] = []
+        for metric in metrics:
+            quality = dict(metric.get("quality_flags") or {}) if isinstance(metric, dict) else {}
+            elapsed = int(quality.get("elapsed_ms") or 0)
+            if elapsed <= 0 and isinstance(metric, dict):
+                trace_quality = dict((dict(metric.get("context_trace") or {})).get("quality") or {})
+                elapsed = int(trace_quality.get("elapsed_ms") or 0)
+            if elapsed > 0:
+                elapsed_samples.append(elapsed)
+
+        if not elapsed_samples:
+            return base_deadline_ms
+
+        elapsed_samples.sort()
+        p75_index = int((len(elapsed_samples) - 1) * 0.75)
+        p75 = elapsed_samples[p75_index]
+        adaptive = int(max(base_deadline_ms, p75 * 1.35))
+        return max(600, min(45000, adaptive))
+
+    def _avoid_repetitive_fallback(
+        self,
+        fallback_reply: str,
+        *,
+        identity_name: str,
+        user_input: str,
+        main_idea: str,
+        conversational_mode: bool,
+        history_messages: list[dict[str, object]],
+    ) -> str:
+        normalized_fallback = _normalize_reply_for_compare(fallback_reply)
+        if not normalized_fallback:
+            return fallback_reply
+
+        recent = _recent_assistant_replies(history_messages, limit=4)
+        repeated = any(_normalize_reply_for_compare(reply) == normalized_fallback for reply in recent)
+        if not repeated:
+            return fallback_reply
+
+        if conversational_mode:
+            return (
+                f"Buena pregunta. Soy {identity_name}. Sobre '{user_input.strip()[:80]}', te doy una respuesta directa: "
+                "puedo orientarte con criterio practico y ejemplos, sin vueltas. Si quieres, empezamos por un caso real en 3 pasos."
+            )
+
+        return (
+            f"Vamos a aterrizarlo mejor. Soy {identity_name}. En vez de repetir contexto, te propongo un caso concreto sobre '{main_idea}': "
+            "1) objetivo, 2) accion recomendada, 3) resultado esperado."
+        )
+
     def open_session(self, session_id: str | None = None, *, history_limit: int = 20) -> RealtimeSessionSnapshot:
         session_id = session_id or str(uuid4())
         identity = self._current_identity()
@@ -312,7 +385,13 @@ class RealtimeChatService:
             metadata={"session_id": session_id, "turn_id": turn_id, "author": user_message.get("author")},
         )
 
-        assistant_reply, quality_flags = self._compose_reply(input_data, context_preview, world_rules=world_rules)
+        assistant_reply, quality_flags = self._compose_reply(
+            input_data,
+            context_preview,
+            world_rules=world_rules,
+            history_messages=history_messages,
+            session_id=session_id,
+        )
         assistant_author = str(identity.get("name") or "assistant")
         assistant_message = self.interaction_service.record_message(
             InteractionMessageRecordRequest(
@@ -502,7 +581,10 @@ class RealtimeChatService:
         context_preview: dict[str, object],
         *,
         world_rules: str = "",
+        history_messages: list[dict[str, object]] | None = None,
+        session_id: str = "",
     ) -> tuple[str, dict[str, object]]:
+        history_messages = history_messages or []
         identity = context_preview.get("identity", {})
         identity_name = str(identity.get("name") or "assistant")
         behavior_prompt = dedupe_rule_lines(str(identity.get("behavior_prompt") or ""), max_lines=8)
@@ -516,6 +598,23 @@ class RealtimeChatService:
         world_rules = dedupe_rule_lines(world_rules, max_lines=10)
         route_payload = context_pack.get("route", {}) if isinstance(context_pack, dict) else {}
         route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
+
+        identity_id = str(identity.get("id") or "").strip().upper()
+        has_custom_engram = identity_id not in {"", "DEFAULT", "SETUP", "ERR"}
+        rollout = self._rollout_flags()
+        guard_enabled = bool(rollout["guard_enabled"])
+        sanitize_enabled = bool(rollout["sanitize_enabled"])
+        timeout_enabled = bool(rollout["timeout_enabled"])
+        telemetry_enabled = bool(rollout["telemetry_enabled"])
+        deadline_scale = max(10, min(500, int(rollout["deadline_scale_percent"])))
+        policy = build_turn_policy(input_data.content, has_custom_engram=has_custom_engram)
+        conversational_mode = policy.intent == "conversational"
+
+        if conversational_mode:
+            knowledge_matches = []
+            engram_matches = []
+            context_text = ""
+            compact_context_text = ""
 
         main_idea = ""
         secondary_ideas: list[str] = []
@@ -589,16 +688,9 @@ class RealtimeChatService:
         prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
 
-        identity_id = str(identity.get("id") or "").strip().upper()
-        has_custom_engram = identity_id not in {"", "DEFAULT", "SETUP", "ERR"}
-        rollout = self._rollout_flags()
-        guard_enabled = bool(rollout["guard_enabled"])
-        sanitize_enabled = bool(rollout["sanitize_enabled"])
-        timeout_enabled = bool(rollout["timeout_enabled"])
-        telemetry_enabled = bool(rollout["telemetry_enabled"])
-        deadline_scale = max(10, min(500, int(rollout["deadline_scale_percent"])))
-        policy = build_turn_policy(input_data.content, has_custom_engram=has_custom_engram)
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
+        if timeout_enabled and session_id.strip():
+            scaled_deadline_ms = self._compute_adaptive_deadline_ms(session_id.strip(), scaled_deadline_ms)
         quality_flags: dict[str, object] = {
             "guard_triggered": False,
             "fallback_used": False,
@@ -656,7 +748,17 @@ class RealtimeChatService:
                 quality_flags["timeout_hit"] = True
                 quality_flags["guard_triggered"] = True
                 quality_flags["fallback_used"] = True
-                return fallback_reply, quality_flags
+                return (
+                    self._avoid_repetitive_fallback(
+                        fallback_reply,
+                        identity_name=identity_name,
+                        user_input=input_data.content,
+                        main_idea=main_idea,
+                        conversational_mode=conversational_mode,
+                        history_messages=history_messages,
+                    ),
+                    quality_flags,
+                )
             content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
             if guard_enabled and content and looks_like_internal_reasoning(content):
                 quality_flags["leak_detected"] = True
@@ -672,4 +774,14 @@ class RealtimeChatService:
             pass
 
         quality_flags["fallback_used"] = True
-        return fallback_reply, quality_flags
+        return (
+            self._avoid_repetitive_fallback(
+                fallback_reply,
+                identity_name=identity_name,
+                user_input=input_data.content,
+                main_idea=main_idea,
+                conversational_mode=conversational_mode,
+                history_messages=history_messages,
+            ),
+            quality_flags,
+        )
