@@ -10,6 +10,7 @@ from app.core.database import build_database_manager
 from app.core.events import EventBus, init_event_bus
 from app.core.module_registry import include_registered_routers
 from app.core.settings import ensure_runtime_directories, load_settings
+from app.adapters.web.web_module import register_web_module
 from app.knowledge.knowledge_module import register_knowledge_module
 from app.interaction.interaction_module import register_interaction_module
 from app.models.models_module import register_models_module
@@ -51,6 +52,7 @@ def create_app() -> FastAPI:
     register_platform_module(app)
     register_storage_module(app)
     register_models_module(app)
+    register_web_module(app)
     register_knowledge_module(app)
     register_interaction_module(app)
     register_operations_module(app)

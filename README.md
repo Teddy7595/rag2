@@ -48,13 +48,18 @@ The interaction module also exposes message routes at:
 /api/interaction/summary
 ```
 
-The storage slice adds a landing page, a local admin panel, and storage endpoints at:
+The HTML views are centralized in `app/adapters/web`, while storage and models keep the API surface. The web module exposes the landing page, the local admin panel, the route visualizer, and the model catalog at:
 
 ```text
 /
 /admin
 /admin/routes
 /admin/models
+```
+
+The storage slice keeps the storage endpoints at:
+
+```text
 /api/storage/overview
 /public
 /uploads
