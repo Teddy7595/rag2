@@ -8,5 +8,8 @@ wheels/
 
 # Virtual environments
 .venv
-.vault
-ai_models
+
+# Local runtime files
+.env
+.vault/
+ai_models/
