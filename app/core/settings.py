@@ -35,10 +35,34 @@ def _read_list_env(name: str) -> tuple[str, ...]:
     return tuple(values)
 
 
+def _read_csv_env(name: str) -> tuple[str, ...]:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return ()
+
+    values: list[str] = []
+    for item in raw_value.split(","):
+        value = item.strip()
+        if value and value not in values:
+            values.append(value)
+    return tuple(values)
+
+
 def _resolve_path(value: str | None, default: Path) -> Path:
     if not value:
         return default
     return Path(value).expanduser().resolve()
+
+
+def _resolve_mount_path(value: str | None, default: str) -> str:
+    mount_path = (value or default).strip()
+    if not mount_path:
+        mount_path = default
+    if not mount_path.startswith("/"):
+        mount_path = f"/{mount_path}"
+    if mount_path != "/" and mount_path.endswith("/"):
+        mount_path = mount_path.rstrip("/")
+    return mount_path
 
 
 @dataclass(frozen=True)
@@ -56,6 +80,13 @@ class AppSettings:
     rate_limit_max_requests: int
     ban_list: tuple[str, ...]
     ai_model_dir: Path
+    web_frontend_dir: Path
+    web_frontend_mount_path: str
+    web_frontend_root_tag: str
+    web_frontend_root_id: str
+    web_frontend_script_type: str
+    web_frontend_styles: tuple[str, ...]
+    web_frontend_scripts: tuple[str, ...]
     vault_dir: Path
     database_url: str | None
 
@@ -67,6 +98,7 @@ def load_settings(project_root: Path) -> AppSettings:
         os.getenv("AI_MODELS_DIR") or os.getenv("AI_MODEL_DIR"),
         project_root / "ai_models",
     )
+    web_frontend_dir = _resolve_path(os.getenv("WEB_FRONTEND_DIR"), project_root / "frontend" / "dist")
     vault_dir = _resolve_path(os.getenv("VAULT_DIR"), project_root / ".vault")
 
     return AppSettings(
@@ -86,6 +118,13 @@ def load_settings(project_root: Path) -> AppSettings:
         rate_limit_max_requests=max(1, _read_int_env("APP_RATE_LIMIT_MAX_REQUESTS", 120)),
         ban_list=_read_list_env("APP_BAN_LIST"),
         ai_model_dir=ai_model_dir,
+        web_frontend_dir=web_frontend_dir,
+        web_frontend_mount_path=_resolve_mount_path(os.getenv("WEB_FRONTEND_MOUNT_PATH"), "/ui-assets"),
+        web_frontend_root_tag=os.getenv("WEB_FRONTEND_ROOT_TAG", "div").strip() or "div",
+        web_frontend_root_id=os.getenv("WEB_FRONTEND_ROOT_ID", "app").strip() or "app",
+        web_frontend_script_type=os.getenv("WEB_FRONTEND_SCRIPT_TYPE", "module").strip() or "module",
+        web_frontend_styles=_read_csv_env("WEB_FRONTEND_STYLES"),
+        web_frontend_scripts=_read_csv_env("WEB_FRONTEND_SCRIPTS"),
         vault_dir=vault_dir,
         database_url=os.getenv("DATABASE_URL") or None,
     )

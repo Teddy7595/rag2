@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Módulos</span>
+    <strong class="stat-value">{{ inventory.summary.group_count }}</strong>
+    <span class="stat-copy">grupos registrados</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Rutas</span>
+    <strong class="stat-value" id="visible-route-count">{{ inventory.summary.route_count }}</strong>
+    <span class="stat-copy">HTTP, websocket y mounts</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">HTTP</span>
+    <strong class="stat-value">{{ inventory.summary.http_count }}</strong>
+    <span class="stat-copy">endpoints REST</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">WebSocket</span>
+    <strong class="stat-value">{{ inventory.summary.websocket_count }}</strong>
+    <span class="stat-copy">canales en tiempo real</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Mounts</span>
+    <strong class="stat-value">{{ inventory.summary.mount_count }}</strong>
+    <span class="stat-copy">archivos estáticos y runtime</span>
+  </article>
+</section>
+
+<section class="route-search">
+  <label class="search-label" for="route-filter">Filtrar por módulo, ruta, método o endpoint</label>
+  <input id="route-filter" class="search-input" type="search" placeholder="Ej. /api/operations/sagas, GET, websocket, storage" autocomplete="off">
+</section>
+
+<section class="route-list">
+  {% for section in inventory.sections %}
+  <details class="route-section" data-route-section open>
+    <summary>
+      <div class="route-summary">
+        <p class="route-kicker">{{ 'Infra' if section.name == 'runtime' else 'Módulo' }}</p>
+        <h2 class="route-module">{{ section.display_name }}</h2>
+        <div class="route-tags">
+          {% for module_name in section.module_names %}
+          <span class="pill" data-uppercase="false" style="--pill-accent: #7dd3fc;">{{ module_name }}</span>
+          {% endfor %}
+          {% if not section.module_names %}
+          <span class="pill" data-uppercase="false" style="--pill-accent: #94a3b8;">runtime</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="route-count">{{ section.route_count }} rutas</div>
+    </summary>
+    <div class="route-rows">
+      {% for route in section.routes %}
+      <div class="route-row" data-route-row data-search="{{ route.search }}">
+        <p class="route-path">{{ route.path }}</p>
+        <div class="route-meta">
+          {% for method in route.methods %}
+          <span class="pill" data-uppercase="false" style="--pill-accent: #f59e0b;">{{ method }}</span>
+          {% endfor %}
+          {% if not route.methods %}
+          <span class="pill" data-uppercase="false" style="--pill-accent: #f59e0b;">ANY</span>
+          {% endif %}
+          <span class="pill" data-uppercase="false" style="--pill-accent: #7dd3fc;">{{ route.kind }}</span>
+          <span>{{ route.name }}</span>
+          <span>· {{ route.module }}</span>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+  </details>
+  {% endfor %}
+</section>
+
+<p id="route-empty-state" class="empty-state" hidden>No hay rutas que coincidan con ese filtro.</p>
+<p class="footnote">Inventario generado en {{ inventory.generated_at }} UTC.</p>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const input = document.getElementById('route-filter');
+  const sections = Array.from(document.querySelectorAll('[data-route-section]'));
+  const visibleCount = document.getElementById('visible-route-count');
+  const emptyState = document.getElementById('route-empty-state');
+  const normalize = (value) => value.trim().toLowerCase();
+  const update = () => {
+    const query = normalize(input.value);
+    let visible = 0;
+    sections.forEach((section) => {
+      let sectionVisible = false;
+      section.querySelectorAll('[data-route-row]').forEach((row) => {
+        const match = !query || row.dataset.search.includes(query);
+        row.hidden = !match;
+        if (match) {
+          visible += 1;
+          sectionVisible = true;
+        }
+      });
+      section.hidden = !sectionVisible;
+      if (query && sectionVisible) {
+        section.open = true;
+      }
+    });
+    visibleCount.textContent = String(visible);
+    emptyState.hidden = visible !== 0;
+  };
+  input.addEventListener('input', update);
+  update();
+})();
+</script>
+{% endblock %}

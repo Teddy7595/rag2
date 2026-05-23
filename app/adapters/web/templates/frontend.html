@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Mount</span>
+    <strong class="stat-value">{{ frontend.mount_path }}</strong>
+    <span class="stat-copy">ruta pública para el build</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Root</span>
+    <strong class="stat-value">&lt;{{ frontend.root_tag }}&gt;</strong>
+    <span class="stat-copy">elemento raíz esperado</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Scripts</span>
+    <strong class="stat-value">{{ frontend.scripts | length }}</strong>
+    <span class="stat-copy">assets de ejecución configurados</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Styles</span>
+    <strong class="stat-value">{{ frontend.styles | length }}</strong>
+    <span class="stat-copy">hojas de estilo configuradas</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <h2 class="panel-title">Cómo usarlo</h2>
+    <div class="panel-body">
+      <p>Apunta <code>WEB_FRONTEND_DIR</code> al build compilado y deja los assets servidos en <code>{{ frontend.mount_path }}</code>.</p>
+      <p>Para Angular, Vite o frontend vanilla moderno, ajusta la base del build para que apunte a ese mount y usa <code>type="{{ frontend.script_type }}"</code> en los scripts que inyectes.</p>
+      <p class="small-note">Si solo quieres una vista de plantilla, esta página también funciona como shell sin scripts externos.</p>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Preview shell</h2>
+    <div class="frontend-frame">
+      <{{ frontend.root_tag }}{% if frontend.root_id %} id="{{ frontend.root_id }}"{% endif %} class="frontend-root" data-frontend-root="{{ frontend.root_tag }}" data-frontend-mount="{{ frontend.mount_path }}">
+        <div>
+          <strong>Frontend shell</strong>
+          <div class="small-note">Punto de anclaje para Angular, Vite o vanilla compilado.</div>
+        </div>
+      </{{ frontend.root_tag }}>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Assets configurados</h2>
+    <div class="panel-body">
+      {% if frontend.styles %}
+      <p>Styles</p>
+      <ul class="asset-list">
+        {% for stylesheet in frontend.styles %}
+        <li>{{ stylesheet }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="small-note">No hay estilos configurados.</p>
+      {% endif %}
+
+      {% if frontend.scripts %}
+      <p style="margin-top: 14px;">Scripts</p>
+      <ul class="asset-list">
+        {% for script in frontend.scripts %}
+        <li>{{ script }}</li>
+        {% endfor %}
+      </ul>
+      {% else %}
+      <p class="small-note">No hay scripts configurados. Puedes servir un build compilado desde el mount estático o inyectar URLs desde el entorno.</p>
+      {% endif %}
+    </div>
+  </article>
+</section>
+{% endblock %}
+
+{% block head_extra %}
+{% if frontend.styles %}
+{% for stylesheet in frontend.styles %}
+<link rel="stylesheet" href="{{ stylesheet }}">
+{% endfor %}
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+{% if frontend.scripts %}
+{% for script in frontend.scripts %}
+<script src="{{ script }}" type="{{ frontend.script_type }}"></script>
+{% endfor %}
+{% endif %}
+{% endblock %}

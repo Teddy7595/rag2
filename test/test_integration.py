@@ -120,6 +120,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert models_response.status_code == 200
         assert "Modelos y proveedores" in models_response.text
 
+        frontend_response = client.get("/ui-assets/")
+        assert frontend_response.status_code == 200
+        assert "RAG2 Control Plane" in frontend_response.text
+
         routes_response = client.get("/admin/routes")
         assert routes_response.status_code == 200
         assert "Visualizador de rutas" in routes_response.text

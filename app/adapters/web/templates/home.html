@@ -1,0 +1,65 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Públicos</span>
+    <strong class="stat-value">{{ overview.public_file_count }}</strong>
+    <span class="stat-copy">archivos en /public</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Uploads</span>
+    <strong class="stat-value">{{ overview.upload_file_count }}</strong>
+    <span class="stat-copy">archivos en /uploads</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Vault</span>
+    <strong class="stat-value">{{ overview.vault_dir }}</strong>
+    <span class="stat-copy">raíz local del storage</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Frontend</span>
+    <strong class="stat-value">{{ frontend.mount_path }}</strong>
+    <span class="stat-copy">mount para builds compilados</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="card" style="--pill-accent: #86efac;">
+    <p class="card-label">Panel de almacenamiento</p>
+    <div class="card-body">
+      <p>Explora los uploads, la raíz pública y el estado general del almacén local.</p>
+    </div>
+  </article>
+  <article class="card" style="--pill-accent: #f59e0b;">
+    <p class="card-label">Panel de administración</p>
+    <div class="card-body">
+      <p>Revisa seguridad, modelos locales, el mapa de rutas y el shell de frontend.</p>
+    </div>
+  </article>
+  <article class="card" style="--pill-accent: #7dd3fc;">
+    <p class="card-label">Accesos rápidos</p>
+    <div class="card-body">
+      <div class="card-actions">
+        <a class="link-button" href="/admin">Abrir admin</a>
+        <a class="link-button" href="/admin/routes">Ver rutas</a>
+        <a class="link-button" href="/admin/models">Ver modelos</a>
+        <a class="link-button" href="/ui">Abrir frontend</a>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Estado del runtime</h2>
+  <div class="panel-body">
+    Servicio activo: <strong>{{ app_name }}</strong>. La interfaz de vistas está centralizada en plantillas Jinja y el build frontend puede montarse en <code>{{ frontend.mount_path }}</code>.
+  </div>
+</section>
+{% endblock %}

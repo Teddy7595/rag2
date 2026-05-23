@@ -55,7 +55,13 @@ The HTML views are centralized in `app/adapters/web`, while storage and models k
 /admin
 /admin/routes
 /admin/models
+/ui
+/ui-assets
 ```
+
+The minimal vanilla reference bundle lives in `frontend/dist` and is served directly from `/ui-assets/`.
+Compiled frontend builds can be mounted under `WEB_FRONTEND_MOUNT_PATH` and served from `WEB_FRONTEND_DIR`.
+The shell page at `/ui` can be used as the landing point for Angular, Vite, or vanilla frontend bundles and can inject extra assets through `WEB_FRONTEND_STYLES` and `WEB_FRONTEND_SCRIPTS`.
 
 The storage slice keeps the storage endpoints at:
 

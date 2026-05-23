@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Públicos</span>
+    <strong class="stat-value">{{ overview.public_file_count }}</strong>
+    <span class="stat-copy">archivos visibles públicamente</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Uploads</span>
+    <strong class="stat-value">{{ overview.upload_file_count }}</strong>
+    <span class="stat-copy">cargas registradas</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Rutas</span>
+    <strong class="stat-value">{{ module_count }}</strong>
+    <span class="stat-copy">grupos de módulos registrados</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Frontend</span>
+    <strong class="stat-value">{{ frontend.mount_path }}</strong>
+    <span class="stat-copy">shell y assets compilados</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="card" style="--pill-accent: #86efac;">
+    <p class="card-label">Seguridad local</p>
+    <div class="card-body">
+      <p>El acceso al panel se mantiene restringido a la red local, con rate limiting y ban list activados.</p>
+    </div>
+  </article>
+  <article class="card" style="--pill-accent: #7dd3fc;">
+    <p class="card-label">Catálogo de modelos</p>
+    <div class="card-body">
+      <p>Administra los bundles locales y la selección activa de texto o visión.</p>
+      <div class="card-actions">
+        <a class="link-button" href="/admin/models">Abrir catálogo</a>
+      </div>
+    </div>
+  </article>
+  <article class="card" style="--pill-accent: #f59e0b;">
+    <p class="card-label">Visualizador de rutas</p>
+    <div class="card-body">
+      <p>Inspecciona todas las rutas HTTP, websockets y mounts registradas en el arranque.</p>
+      <div class="card-actions">
+        <a class="link-button" href="/admin/routes">Abrir visualizador</a>
+      </div>
+    </div>
+  </article>
+  <article class="card" style="--pill-accent: #c084fc;">
+    <p class="card-label">Shell frontend</p>
+    <div class="card-body">
+      <p>Abre una vista Jinja que puede apuntar a un build compilado de Angular, Vite o vanilla.</p>
+      <div class="card-actions">
+        <a class="link-button" href="/ui">Abrir shell</a>
+        <a class="link-button" href="{{ frontend.mount_path }}">Abrir assets</a>
+      </div>
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Rutas de storage</h2>
+  <div class="panel-body">
+    La API de storage expone <code>/api/storage/overview</code>, <code>/api/storage/public</code> y <code>/api/storage/uploads</code>. La vista raíz, el panel y el frontend shell se centralizan en el módulo web dedicado.
+  </div>
+</section>
+{% endblock %}

@@ -1,0 +1,200 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Bundles</span>
+    <strong class="stat-value">{{ catalog.summary.bundle_count }}</strong>
+    <span class="stat-copy">bundles bajo ai_models</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Seleccionables</span>
+    <strong class="stat-value">{{ catalog.summary.selectable_bundle_count }}</strong>
+    <span class="stat-copy">locales para texto o visión</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Texto</span>
+    <strong class="stat-value">{{ catalog.summary.text_bundle_count }}</strong>
+    <span class="stat-copy">con inferencia de texto</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Visión</span>
+    <strong class="stat-value">{{ catalog.summary.vision_bundle_count }}</strong>
+    <span class="stat-copy">con mmproj local</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="card" style="--pill-accent: #86efac;">
+    <p class="card-label">Estado actual</p>
+    <div class="card-body">
+      <p style="margin-top: 0;">Texto: <strong>{{ catalog.resolved.text.provider }}</strong> · <strong>{{ catalog.resolved.text.bundle_id or catalog.resolved.text.model_name or 'sin selección' }}</strong></p>
+      <p>Visión: <strong>{{ catalog.resolved.vision.provider }}</strong> · <strong>{{ catalog.resolved.vision.bundle_id or catalog.resolved.vision.model_name or 'sin selección' }}</strong></p>
+      <p>LM Studio texto: <code>{{ catalog.providers.text.lmstudio_base_url }}</code></p>
+      <p>Ollama visión: <code>{{ catalog.providers.vision.ollama_base_url }}</code></p>
+      <p>LM Studio visión: <code>{{ catalog.providers.vision.lmstudio_base_url }}</code></p>
+    </div>
+  </article>
+
+  <article class="card" style="--pill-accent: #f59e0b;">
+    <p class="card-label">Cambiar modelos</p>
+    <div class="card-body">
+      <form id="model-selection-form">
+        <div class="control-grid">
+          <section class="control-card">
+            <h3 class="control-title">Texto</h3>
+            <div class="control-row">
+              <label class="control-label" for="text-provider">Proveedor</label>
+              <select id="text-provider" class="control-select">
+                <option value="local" {% if catalog.selection.text_provider == 'local' %}selected{% endif %}>local</option>
+                <option value="lmstudio" {% if catalog.selection.text_provider == 'lmstudio' %}selected{% endif %}>lmstudio</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label class="control-label" for="text-bundle-id">Bundle local</label>
+              <select id="text-bundle-id" class="control-select">
+                <option value="">Sin bundle local</option>
+                {% for bundle in catalog.bundles if bundle.supports_text and not bundle.is_embedding_cache %}
+                <option value="{{ bundle.bundle_id }}" {% if catalog.selection.text_bundle_id == bundle.bundle_id %}selected{% endif %}>{{ bundle.bundle_id }} · {{ bundle.display_name }}{% if bundle.is_embedding_cache %} · cache{% elif bundle.supports_vision %} · visión{% else %} · texto{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="control-row">
+              <label class="control-label" for="text-model-name">Modelo LM Studio</label>
+              <input id="text-model-name" class="control-input" type="text" value="{{ catalog.selection.text_model_name or '' }}" placeholder="Modelo expuesto por LM Studio">
+            </div>
+            <p class="secondary-note">Selección actual: {{ catalog.selection.text_provider }} · {{ catalog.selection.text_bundle_id or catalog.selection.text_model_name or 'sin selección' }}</p>
+          </section>
+
+          <section class="control-card">
+            <h3 class="control-title">Visión</h3>
+            <div class="control-row">
+              <label class="control-label" for="vision-provider">Proveedor</label>
+              <select id="vision-provider" class="control-select">
+                <option value="local" {% if catalog.selection.vision_provider == 'local' %}selected{% endif %}>local</option>
+                <option value="ollama" {% if catalog.selection.vision_provider == 'ollama' %}selected{% endif %}>ollama</option>
+                <option value="lmstudio" {% if catalog.selection.vision_provider == 'lmstudio' %}selected{% endif %}>lmstudio</option>
+              </select>
+            </div>
+            <div class="control-row">
+              <label class="control-label" for="vision-bundle-id">Bundle local</label>
+              <select id="vision-bundle-id" class="control-select">
+                <option value="">Sin bundle local</option>
+                {% for bundle in catalog.bundles if bundle.supports_vision and not bundle.is_embedding_cache %}
+                <option value="{{ bundle.bundle_id }}" {% if catalog.selection.vision_bundle_id == bundle.bundle_id %}selected{% endif %}>{{ bundle.bundle_id }} · {{ bundle.display_name }}{% if bundle.is_embedding_cache %} · cache{% elif bundle.supports_vision and bundle.supports_text %} · texto + visión{% elif bundle.supports_vision %} · visión{% else %} · texto{% endif %}</option>
+                {% endfor %}
+              </select>
+            </div>
+            <div class="control-row">
+              <label class="control-label" for="vision-model-name">Modelo remoto</label>
+              <input id="vision-model-name" class="control-input" type="text" value="{{ catalog.selection.vision_model_name or '' }}" placeholder="Modelo de Ollama o LM Studio">
+            </div>
+            <p class="secondary-note">Selección actual: {{ catalog.selection.vision_provider }} · {{ catalog.selection.vision_bundle_id or catalog.selection.vision_model_name or 'sin selección' }}</p>
+          </section>
+        </div>
+        <button type="submit" class="save-button">Guardar selección</button>
+      </form>
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Bundles locales</h2>
+  {% if catalog.bundles %}
+  <div class="bundle-grid">
+    {% for bundle in catalog.bundles %}
+    <article class="bundle-card">
+      <div class="bundle-title-row">
+        <h3 class="bundle-title">{{ bundle.display_name }}</h3>
+        <span class="pill" style="--pill-accent: #86efac;">{{ bundle.bundle_id }}</span>
+      </div>
+      <p class="bundle-description">
+        {% if bundle.is_embedding_cache %}
+        embedding cache
+        {% elif bundle.supports_text and bundle.supports_vision %}
+        texto + visión
+        {% elif bundle.supports_vision %}
+        visión
+        {% elif bundle.supports_text %}
+        texto
+        {% else %}
+        sin capacidades
+        {% endif %}
+      </p>
+      <div class="bundle-meta">
+        <span>{{ bundle.relative_path }}</span>
+        <span>·</span>
+        <span>{{ bundle.artifact_count }} archivos</span>
+      </div>
+      <ul class="asset-list">
+        {% for artifact in bundle.artifacts %}
+        <li>{{ artifact.file_name }} · {{ artifact.kind }} · {{ artifact.size_label }}</li>
+        {% endfor %}
+      </ul>
+      <div class="action-row">
+        {% if bundle.supports_text and not bundle.is_embedding_cache %}
+        <button type="button" class="bundle-button" data-select-text-bundle="{{ bundle.bundle_id }}">Usar para texto</button>
+        {% endif %}
+        {% if bundle.supports_vision and not bundle.is_embedding_cache %}
+        <button type="button" class="bundle-button" data-select-vision-bundle="{{ bundle.bundle_id }}">Usar para visión</button>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+  {% else %}
+  <p class="empty-state">No hay bundles GGUF en ai_models todavía.</p>
+  {% endif %}
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById('model-selection-form');
+  const setBundle = (fieldId, bundleId) => {
+    const field = document.getElementById(fieldId);
+    if (field) {
+      field.value = bundleId || '';
+    }
+  };
+  document.querySelectorAll('[data-select-text-bundle]').forEach((button) => {
+    button.addEventListener('click', () => setBundle('text-bundle-id', button.dataset.selectTextBundle));
+  });
+  document.querySelectorAll('[data-select-vision-bundle]').forEach((button) => {
+    button.addEventListener('click', () => setBundle('vision-bundle-id', button.dataset.selectVisionBundle));
+  });
+  if (!form) {
+    return;
+  }
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const payload = {
+      text_provider: document.getElementById('text-provider').value,
+      text_bundle_id: document.getElementById('text-bundle-id').value || null,
+      text_model_name: document.getElementById('text-model-name').value.trim() || null,
+      vision_provider: document.getElementById('vision-provider').value,
+      vision_bundle_id: document.getElementById('vision-bundle-id').value || null,
+      vision_model_name: document.getElementById('vision-model-name').value.trim() || null,
+    };
+    const response = await fetch('/api/models/selection', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) {
+      const text = await response.text();
+      alert(`No se pudo guardar la selección: ${text}`);
+      return;
+    }
+    window.location.reload();
+  });
+})();
+</script>
+{% endblock %}

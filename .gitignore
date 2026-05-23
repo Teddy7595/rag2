@@ -13,3 +13,5 @@ wheels/
 .env
 .vault/
 ai_models/
+!frontend/dist/
+!frontend/dist/**

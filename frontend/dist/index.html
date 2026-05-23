@@ -1,0 +1,123 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#050816">
+  <meta name="description" content="RAG2 frontend demo served from /ui-assets">
+  <title>RAG2 Control Plane</title>
+  <link rel="stylesheet" href="/ui-assets/assets/app.css">
+  <script defer src="/ui-assets/assets/app.js"></script>
+</head>
+<body>
+  <div class="orb orb-a"></div>
+  <div class="orb orb-b"></div>
+  <div class="orb orb-c"></div>
+
+  <main class="app-shell">
+    <section class="hero">
+      <div class="hero-copy panel reveal">
+        <p class="eyebrow">Compiled frontend bundle</p>
+        <h1>RAG2 Control Plane</h1>
+        <p class="lede">
+          Minimal static frontend ready to be swapped for a Vite or Angular build.
+          It is served from <strong>/ui-assets</strong> and talks directly to the backend APIs.
+        </p>
+        <div class="action-row">
+          <a class="primary-action" href="/ui">Open Jinja shell</a>
+          <a class="secondary-action" href="/admin">Open admin</a>
+          <a class="secondary-action" href="/admin/routes">Route map</a>
+          <a class="secondary-action" href="/api/platform/health">Health API</a>
+        </div>
+      </div>
+
+      <aside class="hero-side panel reveal delay-1">
+        <div class="hero-side-top">
+          <div>
+            <p class="eyebrow">Runtime status</p>
+            <h2>Live backend signals</h2>
+          </div>
+          <span class="status-badge" data-runtime-status>Loading</span>
+        </div>
+
+        <p class="side-note" data-runtime-note>
+          Fetching platform, storage, model and knowledge metrics from the API layer.
+        </p>
+
+        <dl class="metric-grid">
+          <div class="metric-card">
+            <dt>Platform</dt>
+            <dd data-metric="health">checking</dd>
+            <small data-note="health">polling /api/platform/health</small>
+          </div>
+          <div class="metric-card">
+            <dt>Storage</dt>
+            <dd data-metric="storage">checking</dd>
+            <small data-note="storage">polling /api/storage/overview</small>
+          </div>
+          <div class="metric-card">
+            <dt>Models</dt>
+            <dd data-metric="models">checking</dd>
+            <small data-note="models">polling /api/models/catalog</small>
+          </div>
+          <div class="metric-card">
+            <dt>Knowledge</dt>
+            <dd data-metric="knowledge">checking</dd>
+            <small data-note="knowledge">polling /api/knowledge/overview</small>
+          </div>
+        </dl>
+      </aside>
+    </section>
+
+    <section class="panel-grid">
+      <article class="panel feature-card reveal delay-2">
+        <p class="eyebrow">Navigation</p>
+        <h3>Direct routes</h3>
+        <p>
+          The app shell can coexist with a compiled SPA while the backend still serves the Jinja views and admin routes.
+        </p>
+        <div class="chip-row">
+          <a class="chip" href="/">Home</a>
+          <a class="chip" href="/admin">Admin</a>
+          <a class="chip" href="/admin/models">Models</a>
+          <a class="chip" href="/admin/routes">Routes</a>
+        </div>
+      </article>
+
+      <article class="panel feature-card reveal delay-3">
+        <p class="eyebrow">Build target</p>
+        <h3>Frontend friendly paths</h3>
+        <p>
+          Use this bundle as a reference output for Vite, Angular or plain HTML. Point the build base to <strong>/ui-assets/</strong> and keep assets relative to that mount.
+        </p>
+        <div class="callout">
+          <span>Base path</span>
+          <strong>/ui-assets/</strong>
+        </div>
+        <div class="callout">
+          <span>Entry shell</span>
+          <strong>/ui</strong>
+        </div>
+      </article>
+
+      <article class="panel console-card reveal delay-4">
+        <p class="eyebrow">Fetch log</p>
+        <h3>Backend snapshot</h3>
+        <div class="console" data-console>
+          <div class="console-line muted">Waiting for API responses...</div>
+        </div>
+      </article>
+    </section>
+
+    <section class="footer-panel reveal delay-4">
+      <div>
+        <p class="eyebrow">Serving mode</p>
+        <h3>Compiled assets live in frontend/dist</h3>
+      </div>
+      <p>
+        This example is intentionally vanilla so you can replace it with a generated Angular or Vite build without changing the Python side.
+      </p>
+    </section>
+  </main>
+</body>
+</html>
