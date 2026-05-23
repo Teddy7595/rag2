@@ -54,6 +54,11 @@ async def models_catalog(request: Request) -> dict[str, object]:
     return _get_model_service(request).catalog()
 
 
+@router.get("/api/models/catalog/validation")
+async def models_catalog_validation(request: Request) -> dict[str, object]:
+    return _get_model_service(request).validation_report()
+
+
 @router.get("/api/models/selection")
 async def models_selection(request: Request) -> dict[str, object]:
     return _get_model_service(request).current_selection()

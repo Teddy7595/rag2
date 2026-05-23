@@ -64,6 +64,15 @@
       <pre id="runtime-vision-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Esperando imagen...</pre>
     </div>
   </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Validador de bundles GGUF</h2>
+    <div class="panel-body">
+      <p>Valida tamaño, cabecera GGUF y par modelo+mmproj antes de intentar inferencia.</p>
+      <button id="runtime-validation-refresh" type="button" class="save-button">Revalidar bundles</button>
+      <pre id="runtime-validation-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Cargando validación...</pre>
+    </div>
+  </article>
 </section>
 {% endblock %}
 
@@ -77,9 +86,56 @@
   const visionPrompt = document.getElementById('runtime-vision-prompt');
   const visionFile = document.getElementById('runtime-vision-file');
   const visionResult = document.getElementById('runtime-vision-result');
+  const validationResult = document.getElementById('runtime-validation-result');
+  const validationRefresh = document.getElementById('runtime-validation-refresh');
 
   const showResult = (target, payload) => {
     target.textContent = JSON.stringify(payload, null, 2);
+  };
+
+  const renderValidation = (payload) => {
+    if (!payload || typeof payload !== 'object') {
+      validationResult.textContent = 'Sin datos de validación.';
+      return;
+    }
+
+    const bundles = Array.isArray(payload.bundles) ? payload.bundles : [];
+    const lines = [
+      `models_dir: ${payload.models_dir || 'n/a'}`,
+      `bundles totales: ${payload.total_bundles || 0}`,
+      `texto listo: ${payload.ready_text_bundle_count || 0}`,
+      `vision lista: ${payload.ready_vision_bundle_count || 0}`,
+      `invalidos: ${payload.invalid_bundle_count || 0}`,
+      '',
+    ];
+
+    for (const bundle of bundles) {
+      const status = bundle.valid ? 'OK' : 'INVALIDO';
+      const issueText = Array.isArray(bundle.issues) && bundle.issues.length ? bundle.issues.join(', ') : 'sin issues';
+      lines.push(`[${status}] ${bundle.bundle_id}`);
+      lines.push(`  text_ready=${bundle.text_ready ? 'si' : 'no'} | vision_ready=${bundle.vision_ready ? 'si' : 'no'}`);
+      lines.push(`  issues: ${issueText}`);
+      if (bundle.text_artifact) {
+        lines.push(`  text: ${bundle.text_artifact.relative_path} (${bundle.text_artifact.size_label}) header=${bundle.text_artifact.header_magic || '-'} ok=${bundle.text_artifact.ok ? 'si' : 'no'}`);
+      }
+      if (bundle.projector_artifact) {
+        lines.push(`  mmproj: ${bundle.projector_artifact.relative_path} (${bundle.projector_artifact.size_label}) header=${bundle.projector_artifact.header_magic || '-'} ok=${bundle.projector_artifact.ok ? 'si' : 'no'}`);
+      }
+      lines.push('');
+    }
+
+    validationResult.textContent = lines.join('\n').trim();
+  };
+
+  const refreshValidation = async () => {
+    validationResult.textContent = 'Validando bundles...';
+    try {
+      const response = await fetch('/api/models/catalog/validation');
+      const payload = await response.json();
+      renderValidation(payload);
+    } catch (error) {
+      validationResult.textContent = `Fallo validación: ${String(error)}`;
+    }
   };
 
   textForm.addEventListener('submit', async (event) => {
@@ -111,6 +167,12 @@
     const payload = await response.json();
     showResult(visionResult, payload);
   });
+
+  validationRefresh.addEventListener('click', async () => {
+    await refreshValidation();
+  });
+
+  refreshValidation();
 })();
 </script>
 {% endblock %}

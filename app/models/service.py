@@ -101,6 +101,8 @@ class ModelBundle:
 
 
 class ModelCatalogService:
+    _MIN_VALID_GGUF_BYTES = 1024 * 1024
+
     def __init__(self, settings: AppSettings) -> None:
         self.settings = settings
         self.models_dir = settings.ai_model_dir
@@ -111,6 +113,7 @@ class ModelCatalogService:
         bundles = self.discover_bundles()
         selection = self.load_selection(bundles)
         resolved = self._resolve_selection(selection, bundles)
+        validation = self.validation_report(bundles)
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "models_dir": str(self.models_dir),
@@ -119,7 +122,26 @@ class ModelCatalogService:
             "selection": selection,
             "resolved": resolved,
             "runtime": self._build_runtime_status(selection, resolved, bundles),
+            "validation": validation,
             "bundles": [bundle.as_dict() for bundle in bundles],
+        }
+
+    def validation_report(self, bundles: tuple[ModelBundle, ...] | None = None) -> dict[str, object]:
+        bundles = bundles if bundles is not None else self.discover_bundles()
+        report_entries = [self._validate_bundle(bundle) for bundle in bundles if not bundle.is_embedding_cache]
+
+        ready_text = sum(1 for entry in report_entries if bool(entry.get("text_ready")))
+        ready_vision = sum(1 for entry in report_entries if bool(entry.get("vision_ready")))
+        invalid = sum(1 for entry in report_entries if not bool(entry.get("valid")))
+
+        return {
+            "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+            "models_dir": str(self.models_dir),
+            "total_bundles": len(report_entries),
+            "ready_text_bundle_count": ready_text,
+            "ready_vision_bundle_count": ready_vision,
+            "invalid_bundle_count": invalid,
+            "bundles": report_entries,
         }
 
     def current_selection(self) -> dict[str, object]:
@@ -419,3 +441,82 @@ class ModelCatalogService:
     def _is_projector_file(self, file_name: str) -> bool:
         lowered = file_name.lower()
         return any(marker in lowered for marker in ("mmproj", "mm-proj", "projector"))
+
+    def _validate_bundle(self, bundle: ModelBundle) -> dict[str, object]:
+        issues: list[str] = []
+
+        text_artifact = bundle.primary_text_artifact
+        projector_artifact = bundle.primary_projector_artifact
+
+        text_validation = self._validate_artifact(text_artifact, label="modelo_texto") if text_artifact else None
+        projector_validation = self._validate_artifact(projector_artifact, label="mmproj") if projector_artifact else None
+
+        if text_artifact is None:
+            issues.append("missing_text_model")
+        elif text_validation and not bool(text_validation.get("ok")):
+            issues.extend([f"text:{item}" for item in list(text_validation.get("issues") or [])])
+
+        if bundle.supports_vision:
+            if projector_artifact is None:
+                issues.append("missing_mmproj")
+            elif projector_validation and not bool(projector_validation.get("ok")):
+                issues.extend([f"mmproj:{item}" for item in list(projector_validation.get("issues") or [])])
+
+        text_ready = bool(text_validation and text_validation.get("ok"))
+        vision_ready = bool(text_ready and projector_validation and projector_validation.get("ok"))
+
+        return {
+            "bundle_id": bundle.bundle_id,
+            "display_name": bundle.display_name,
+            "valid": not issues,
+            "text_ready": text_ready,
+            "vision_ready": vision_ready,
+            "issues": issues,
+            "text_artifact": text_validation,
+            "projector_artifact": projector_validation,
+        }
+
+    def _validate_artifact(self, artifact: ModelArtifact | None, *, label: str) -> dict[str, object] | None:
+        if artifact is None:
+            return None
+
+        full_path = self.models_dir / artifact.relative_path
+        issues: list[str] = []
+        size_bytes = 0
+        exists = full_path.exists()
+        is_file = full_path.is_file() if exists else False
+        header_magic = ""
+
+        if not exists:
+            issues.append("missing_file")
+        elif not is_file:
+            issues.append("not_a_file")
+        else:
+            try:
+                size_bytes = full_path.stat().st_size
+            except OSError:
+                issues.append("stat_error")
+
+            if size_bytes < self._MIN_VALID_GGUF_BYTES:
+                issues.append("too_small")
+
+            try:
+                with full_path.open("rb") as handle:
+                    header = handle.read(4)
+                header_magic = header.decode("ascii", errors="ignore")
+                if header != b"GGUF":
+                    issues.append("invalid_gguf_header")
+            except OSError:
+                issues.append("header_read_error")
+
+        return {
+            "label": label,
+            "relative_path": artifact.relative_path,
+            "size_bytes": size_bytes,
+            "size_label": _human_size(size_bytes),
+            "exists": exists,
+            "is_file": is_file,
+            "header_magic": header_magic,
+            "ok": not issues,
+            "issues": issues,
+        }

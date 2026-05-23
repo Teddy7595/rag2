@@ -261,12 +261,23 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert catalog_payload["summary"]["bundle_count"] >= 1
         assert catalog_payload["runtime"]["runtime_adapter_status"] == "wired"
         assert catalog_payload["runtime"]["flat_file_support"] is True
+        assert catalog_payload["validation"]["invalid_bundle_count"] >= 1
         bundle_payload = next(bundle for bundle in catalog_payload["bundles"] if bundle["bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive")
         assert bundle_payload["supports_text"] is True
         assert bundle_payload["supports_vision"] is True
         flat_bundle_payload = next(bundle for bundle in catalog_payload["bundles"] if bundle["bundle_id"] == "Phi-plain-root")
         assert flat_bundle_payload["supports_text"] is True
         assert flat_bundle_payload["supports_vision"] is False
+
+        validation_response = client.get("/api/models/catalog/validation")
+        assert validation_response.status_code == 200
+        validation_payload = validation_response.json()
+        assert validation_payload["total_bundles"] >= 1
+        assert validation_payload["invalid_bundle_count"] >= 1
+        gemma_validation = next(item for item in validation_payload["bundles"] if item["bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive")
+        assert gemma_validation["valid"] is False
+        assert "text:too_small" in gemma_validation["issues"]
+        assert "text:invalid_gguf_header" in gemma_validation["issues"]
 
         runtime_status_response = client.get("/api/models/runtime/status")
         assert runtime_status_response.status_code == 200
