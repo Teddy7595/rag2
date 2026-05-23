@@ -69,6 +69,12 @@ class EngramDeleteRequest:
 
 
 @dataclass(frozen=True)
+class EngramImportCsvRequest:
+    csv_content: str
+    overwrite_existing: bool = True
+
+
+@dataclass(frozen=True)
 class CurrentIdentityRequest:
     pass
 
@@ -180,6 +186,14 @@ REQUEST_KNOWLEDGE_ENGRAM_DELETE = EventSpec[EngramDeleteRequest, dict](
     kind=EventKind.REQUEST,
     channel=EventChannel.DOMAIN,
     input_type=EngramDeleteRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV = EventSpec[EngramImportCsvRequest, dict](
+    name="knowledge.engram.import_csv.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramImportCsvRequest,
     output_type=dict,
 )
 

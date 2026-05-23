@@ -37,6 +37,28 @@
     gap: 8px;
   }
 
+  .hero-actions {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    margin-top: 6px;
+  }
+
+  .hero-actions .btn {
+    flex: 0 0 auto;
+    min-width: 180px;
+  }
+
+  .hero-actions label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--eng-text-dim);
+    font-family: var(--eng-font-mono);
+    font-size: 0.76rem;
+  }
+
   .eyebrow {
     margin: 0;
     font-size: 0.72rem;
@@ -533,6 +555,14 @@
   <p class="eyebrow">{{ eyebrow }}</p>
   <h1 class="headline">{{ headline }}</h1>
   <p class="description">{{ description }}</p>
+  <div class="hero-actions">
+    <button class="btn" id="open-import-csv" type="button">Importar CSV</button>
+    <label>
+      <input id="overwrite-import-csv" type="checkbox" checked>
+      Sobrescribir existentes por nombre/id
+    </label>
+    <input id="import-csv-file" type="file" accept=".csv,text/csv" style="display:none">
+  </div>
 </section>
 
 <div id="global-toast" role="status" aria-live="polite"></div>
@@ -666,6 +696,9 @@
   const SAVE_ENGRAM_BTN = document.getElementById('save-engram-btn');
   const EDITOR_FEEDBACK = document.getElementById('editor-feedback');
   const GLOBAL_TOAST = document.getElementById('global-toast');
+  const OPEN_IMPORT_CSV = document.getElementById('open-import-csv');
+  const OVERWRITE_IMPORT_CSV = document.getElementById('overwrite-import-csv');
+  const IMPORT_CSV_FILE = document.getElementById('import-csv-file');
 
   const INP_ID = document.getElementById('edit-id');
   const INP_NAME = document.getElementById('inp-name');
@@ -1033,6 +1066,33 @@
     }
   }
 
+  async function importEngramsCsv(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('overwrite_existing', OVERWRITE_IMPORT_CSV.checked ? 'true' : 'false');
+
+    setStatus('Importando CSV de engramas...');
+    try {
+      const response = await fetch('/api/knowledge/engrams/import/csv', {
+        method: 'POST',
+        body: formData,
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+
+      const payload = await response.json();
+      await loadEngrams();
+      const errors = Array.isArray(payload.errors) ? payload.errors : [];
+      const summary = `Importados=${payload.imported || 0}, creados=${payload.created || 0}, actualizados=${payload.updated || 0}, omitidos=${payload.skipped || 0}`;
+      setStatus(errors.length ? `${summary}. Con advertencias.` : summary);
+      showToast(errors.length ? `${summary}. Revisa estado para detalles.` : summary, errors.length ? 'error' : 'success');
+    } catch (error) {
+      setStatus(`Error importando CSV: ${String(error)}`);
+      showToast(`Error importando CSV: ${String(error)}`, 'error');
+    }
+  }
+
   GRID.addEventListener('click', (event) => {
     const button = event.target.closest('button[data-action]');
     if (!button) {
@@ -1055,9 +1115,19 @@
   });
 
   OPEN_CREATE_BTN.addEventListener('click', () => openModal('create'));
+  OPEN_IMPORT_CSV.addEventListener('click', () => IMPORT_CSV_FILE.click());
   CLOSE_MODAL_BTN.addEventListener('click', closeModal);
   CANCEL_MODAL_BTN.addEventListener('click', closeModal);
   SAVE_ENGRAM_BTN.addEventListener('click', saveEngram);
+
+  IMPORT_CSV_FILE.addEventListener('change', async () => {
+    const file = IMPORT_CSV_FILE.files && IMPORT_CSV_FILE.files[0] ? IMPORT_CSV_FILE.files[0] : null;
+    if (!file) {
+      return;
+    }
+    await importEngramsCsv(file);
+    IMPORT_CSV_FILE.value = '';
+  });
 
   ADD_META_RULE_BTN.addEventListener('click', addMetaRule);
   INP_META_RULE.addEventListener('keydown', (event) => {

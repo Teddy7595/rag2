@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import base64
+import csv
+import io
 from pathlib import Path
+import re
 from tempfile import TemporaryDirectory
 
 from app.core.events import EventBus
@@ -25,6 +28,7 @@ from app.knowledge.events import (
     DocumentOverviewRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
+    EngramImportCsvRequest,
     EngramHintsRequest,
     EngramListRequest,
     EngramUpdateRequest,
@@ -45,6 +49,55 @@ from app.models.events import ModelVisionAnalysisRequest, REQUEST_MODEL_VISION_A
 
 
 class KnowledgeService:
+    _ENGRAM_IMPORT_FIELD_ALIASES: dict[str, tuple[str, ...]] = {
+        "id": ("id", "engram_id", "identity_id"),
+        "name": ("name", "nombre", "engrama", "identidad", "character", "persona"),
+        "avatar": ("avatar", "avatar_url", "image", "imagen", "foto", "photo"),
+        "color_hex": ("color_hex", "color", "hex", "accent_color", "color_principal"),
+        "intellectual_profile": (
+            "intellectual_profile",
+            "profile",
+            "perfil",
+            "arquetipo",
+            "archetype",
+        ),
+        "behavior_prompt": (
+            "behavior_prompt",
+            "prompt",
+            "system_prompt",
+            "base_prompt",
+            "rol_prompt",
+        ),
+        "meta_rule": (
+            "meta_rule",
+            "meta_rules",
+            "rule",
+            "rules",
+            "regla",
+            "reglas",
+            "room_rules",
+        ),
+        "moral_threshold": ("moral_threshold", "moral", "threshold", "umbral", "umbral_moral"),
+        "interaction_mode": ("interaction_mode", "mode", "modo"),
+        "dialogue_examples": (
+            "dialogue_examples",
+            "examples",
+            "example_dialogue",
+            "dialogos",
+            "ejemplos",
+        ),
+        "backstory": ("backstory", "historia", "trasfondo", "bio", "contexto"),
+        "temperatura_base": ("temperatura_base", "temperatura", "temperature", "temp"),
+        "top_p_base": ("top_p_base", "top_p", "topp"),
+        "max_tokens_respuesta": (
+            "max_tokens_respuesta",
+            "max_tokens",
+            "max_tokens_response",
+            "token_limit",
+            "tokens",
+        ),
+    }
+
     def __init__(
         self,
         repository: KnowledgeRepositoryPort,
@@ -231,6 +284,101 @@ class KnowledgeService:
                 metadata={"action": "deleted", "engram_id": request.engram_id},
             )
         return {"deleted": deleted, "engram_id": request.engram_id}
+
+    def import_engrams_csv(self, request: EngramImportCsvRequest) -> dict[str, object]:
+        engram_repository = self._require_engram_repository()
+        self._ensure_engrams_loaded()
+
+        raw_csv = (request.csv_content or "").strip()
+        if not raw_csv:
+            return {
+                "imported": 0,
+                "created": 0,
+                "updated": 0,
+                "skipped": 0,
+                "errors": ["CSV vacio."],
+                "mapped_columns": {},
+            }
+
+        reader = csv.DictReader(io.StringIO(raw_csv))
+        if not reader.fieldnames:
+            return {
+                "imported": 0,
+                "created": 0,
+                "updated": 0,
+                "skipped": 0,
+                "errors": ["CSV sin encabezados."],
+                "mapped_columns": {},
+            }
+
+        mapped_columns = self._resolve_import_column_map(reader.fieldnames)
+        existing_identities = engram_repository.list_all()
+        by_id = {identity.id: identity for identity in existing_identities}
+        by_name = {self._normalize_identity_name(identity.name): identity for identity in existing_identities if identity.name.strip()}
+
+        created = 0
+        updated = 0
+        skipped = 0
+        errors: list[str] = []
+
+        for row_index, row in enumerate(reader, start=2):
+            mapped = self._map_import_row(row, mapped_columns)
+            name = mapped.get("name", "").strip()
+            if not name:
+                skipped += 1
+                errors.append(f"Fila {row_index}: nombre vacio, se omite.")
+                continue
+
+            target_identity: Identity | None = None
+            provided_id = mapped.get("id", "").strip()
+            if provided_id:
+                target_identity = by_id.get(provided_id)
+
+            if target_identity is None:
+                target_identity = by_name.get(self._normalize_identity_name(name))
+
+            if target_identity is None:
+                created_identity = Identity(name=name)
+                self._apply_import_payload(created_identity, mapped)
+                saved_identity = engram_repository.save(created_identity)
+                self.directory.cache(saved_identity)
+                by_id[saved_identity.id] = saved_identity
+                by_name[self._normalize_identity_name(saved_identity.name)] = saved_identity
+                created += 1
+                self.event_bus.publish(
+                    PUBLISH_KNOWLEDGE_ENGRAM_CHANGED,
+                    {"action": "created", "engram": saved_identity.as_dict()},
+                    source_module="knowledge.application.service",
+                    metadata={"action": "created", "engram_id": saved_identity.id, "name": saved_identity.name},
+                )
+                continue
+
+            if not request.overwrite_existing:
+                skipped += 1
+                continue
+
+            self._apply_import_payload(target_identity, mapped)
+            target_identity.touch()
+            saved_identity = engram_repository.save(target_identity)
+            self.directory.replace(saved_identity)
+            by_id[saved_identity.id] = saved_identity
+            by_name[self._normalize_identity_name(saved_identity.name)] = saved_identity
+            updated += 1
+            self.event_bus.publish(
+                PUBLISH_KNOWLEDGE_ENGRAM_CHANGED,
+                {"action": "updated", "engram": saved_identity.as_dict()},
+                source_module="knowledge.application.service",
+                metadata={"action": "updated", "engram_id": saved_identity.id, "name": saved_identity.name},
+            )
+
+        return {
+            "imported": created + updated,
+            "created": created,
+            "updated": updated,
+            "skipped": skipped,
+            "errors": errors,
+            "mapped_columns": mapped_columns,
+        }
 
     def route_context(self, request: ContextRouteRequest) -> dict[str, object]:
         route = self.context_pipeline.route_query(request.raw_text, limit=request.limit)
@@ -464,6 +612,116 @@ class KnowledgeService:
         if request.max_tokens_respuesta is not None:
             identity.max_tokens_respuesta = request.max_tokens_respuesta
 
+    def _resolve_import_column_map(self, fieldnames: list[str]) -> dict[str, str]:
+        normalized_headers = {self._normalize_import_column(name): name for name in fieldnames}
+        mapping: dict[str, str] = {}
+        for target_field, aliases in self._ENGRAM_IMPORT_FIELD_ALIASES.items():
+            for alias in aliases:
+                resolved = normalized_headers.get(self._normalize_import_column(alias))
+                if resolved:
+                    mapping[target_field] = resolved
+                    break
+        return mapping
+
+    def _map_import_row(self, row: dict[str, str | None], mapping: dict[str, str]) -> dict[str, str]:
+        payload: dict[str, str] = {}
+        for target_field, source_column in mapping.items():
+            raw_value = row.get(source_column)
+            payload[target_field] = str(raw_value or "").strip()
+        return payload
+
+    @staticmethod
+    def _normalize_import_column(value: str) -> str:
+        lowered = value.strip().lower()
+        lowered = re.sub(r"\s+", "_", lowered)
+        lowered = re.sub(r"[^a-z0-9_]+", "", lowered)
+        return lowered
+
+    @staticmethod
+    def _normalize_identity_name(value: str) -> str:
+        return re.sub(r"\s+", " ", value.strip().lower())
+
+    def _apply_import_payload(self, identity: Identity, payload: dict[str, str]) -> None:
+        if payload.get("name"):
+            identity.name = payload["name"]
+        if payload.get("avatar"):
+            identity.avatar = payload["avatar"]
+        if payload.get("color_hex"):
+            identity.color_hex = payload["color_hex"]
+        if payload.get("intellectual_profile"):
+            identity.intellectual_profile = payload["intellectual_profile"]
+        if payload.get("behavior_prompt"):
+            identity.behavior_prompt = payload["behavior_prompt"]
+        if payload.get("meta_rule"):
+            identity.meta_rule = self._normalize_meta_rule(payload["meta_rule"])
+        if payload.get("interaction_mode"):
+            identity.interaction_mode = payload["interaction_mode"]
+        if payload.get("backstory"):
+            identity.backstory = payload["backstory"]
+
+        threshold = self._parse_int(payload.get("moral_threshold", ""), minimum=0, maximum=100)
+        if threshold is not None:
+            identity.moral_threshold = threshold
+
+        temperature = self._parse_float(payload.get("temperatura_base", ""), minimum=0.0, maximum=2.0)
+        if temperature is not None:
+            identity.temperatura_base = temperature
+
+        top_p = self._parse_float(payload.get("top_p_base", ""), minimum=0.0, maximum=1.0)
+        if top_p is not None:
+            identity.top_p_base = top_p
+
+        max_tokens = self._parse_int(payload.get("max_tokens_respuesta", ""), minimum=64, maximum=4096)
+        if max_tokens is not None:
+            identity.max_tokens_respuesta = max_tokens
+
+        dialogue_examples = self._parse_dialogue_examples(payload.get("dialogue_examples", ""))
+        if dialogue_examples:
+            identity.dialogue_examples = dialogue_examples
+
+    @staticmethod
+    def _normalize_meta_rule(raw: str) -> str:
+        text = raw.strip()
+        if not text:
+            return text
+        parts = [item.strip() for item in re.split(r"\r?\n|;|\|", text) if item.strip()]
+        if len(parts) <= 1:
+            return text
+        return "\n".join(f"- {item.lstrip('-* ').strip()}" for item in parts)
+
+    @staticmethod
+    def _parse_dialogue_examples(raw: str) -> list[str]:
+        if not raw.strip():
+            return []
+        parts = [item.strip() for item in re.split(r"\r?\n|;|\|", raw) if item.strip()]
+        unique: list[str] = []
+        for item in parts:
+            if item not in unique:
+                unique.append(item)
+        return unique
+
+    @staticmethod
+    def _parse_int(raw: str, *, minimum: int, maximum: int) -> int | None:
+        text = raw.strip()
+        if not text:
+            return None
+        try:
+            value = int(float(text))
+        except ValueError:
+            return None
+        return max(minimum, min(maximum, value))
+
+    @staticmethod
+    def _parse_float(raw: str, *, minimum: float, maximum: float) -> float | None:
+        text = raw.strip().replace(",", ".")
+        if not text:
+            return None
+        try:
+            value = float(text)
+        except ValueError:
+            return None
+        return max(minimum, min(maximum, value))
+
     def _enrich_pdf_images_with_vision(
         self,
         payload: dict[str, object],
@@ -537,7 +795,7 @@ class KnowledgeService:
                     chunk_index=image_index,
                     chunk_count=None,
                     source_chars=len(cleaned_summary),
-                    embedding=_embedding_from_tokens(_tokenize(cleaned_summary)),
+                    embedding=self.embedding_runtime.embed_text(cleaned_summary),
                 )
                 saved = self.repository.save(vision_entry)
                 row = saved.as_dict()

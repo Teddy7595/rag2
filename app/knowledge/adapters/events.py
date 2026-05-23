@@ -13,6 +13,7 @@ from app.knowledge.events import (
     DocumentOverviewRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
+    EngramImportCsvRequest,
     EngramHintsRequest,
     EngramListRequest,
     EngramUpdateRequest,
@@ -30,6 +31,7 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_DOCUMENTS,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
+    REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
     REQUEST_KNOWLEDGE_ENGRAMS,
     REQUEST_KNOWLEDGE_IDENTITY_HINTS,
@@ -76,6 +78,9 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     def handle_delete_engram(envelope: EventEnvelope[EngramDeleteRequest]) -> dict[str, object]:
         return service.delete_engram(envelope.payload)
 
+    def handle_import_engrams_csv(envelope: EventEnvelope[EngramImportCsvRequest]) -> dict[str, object]:
+        return service.import_engrams_csv(envelope.payload)
+
     def handle_context_route(envelope: EventEnvelope[ContextRouteRequest]) -> dict[str, object]:
         return service.route_context(envelope.payload)
 
@@ -107,6 +112,7 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_CREATE, handle_create_engram)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_UPDATE, handle_update_engram)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_DELETE, handle_delete_engram)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV, handle_import_engrams_csv)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_ROUTE, handle_context_route)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_PACK, handle_context_pack)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_PROMPT, handle_context_prompt)

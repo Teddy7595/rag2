@@ -147,6 +147,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/knowledge/documents/ingest",
         "/api/knowledge/engrams",
         "/api/knowledge/engrams/{engram_id}",
+        "/api/knowledge/engrams/import/csv",
         "/api/knowledge/overview",
         "/api/knowledge/identity/current",
         "/api/knowledge/identity/hints",
@@ -430,6 +431,32 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         )
         assert update_response.status_code == 200
         assert update_response.json()["backstory"] == "Base de identidad persistente"
+
+        csv_payload = (
+            "nombre,prompt,reglas,temperatura,top_p,max_tokens,ejemplos\n"
+            "Atlas,Actualizado por CSV,regla uno|regla dos,0.55,0.9,1536,Hola|Seguimos\n"
+            "Nyx,Perfil de analisis,coherencia|precision,0.65,0.92,1408,Analizo|Resumen\n"
+        ).encode("utf-8")
+        import_response = client.post(
+            "/api/knowledge/engrams/import/csv",
+            data={"overwrite_existing": "true"},
+            files={"file": ("engrams.csv", csv_payload, "text/csv")},
+        )
+        assert import_response.status_code == 200
+        import_payload = import_response.json()
+        assert import_payload["imported"] == 2
+        assert import_payload["created"] == 1
+        assert import_payload["updated"] == 1
+
+        imported_engrams_response = client.get("/api/knowledge/engrams", params={"limit": 20})
+        assert imported_engrams_response.status_code == 200
+        imported_engrams = imported_engrams_response.json()
+        assert any(item["name"] == "Nyx" for item in imported_engrams)
+        atlas_after_import = next((item for item in imported_engrams if item["name"] == "Atlas"), None)
+        assert atlas_after_import is not None
+        assert atlas_after_import["behavior_prompt"] == "Actualizado por CSV"
+        assert "regla uno" in atlas_after_import["meta_rule"].lower()
+        assert atlas_after_import["max_tokens_respuesta"] == 1536
 
         resolve_response = client.post(
             "/api/knowledge/identity/resolve",

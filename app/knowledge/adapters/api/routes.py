@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi import HTTPException, status
 from pydantic import BaseModel, Field
 
@@ -13,6 +13,7 @@ from app.knowledge.events import (
     DocumentOverviewRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
+    EngramImportCsvRequest,
     EngramHintsRequest,
     EngramListRequest,
     EngramUpdateRequest,
@@ -30,6 +31,7 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_DOCUMENTS,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
+    REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
     REQUEST_KNOWLEDGE_ENGRAMS,
     REQUEST_KNOWLEDGE_IDENTITY_HINTS,
@@ -333,3 +335,30 @@ async def delete_engram(request: Request, engram_id: str) -> dict[str, object]:
     if not result["deleted"]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Engram not found")
     return result
+
+
+@router.post("/engrams/import/csv")
+async def import_engrams_csv(
+    request: Request,
+    file: UploadFile = File(...),
+    overwrite_existing: bool = Form(True),
+) -> dict[str, object]:
+    filename = (file.filename or "").lower()
+    if not filename.endswith(".csv"):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="El archivo debe ser .csv")
+
+    raw_bytes = await file.read()
+    if not raw_bytes:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="CSV vacio")
+
+    try:
+        csv_content = raw_bytes.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        csv_content = raw_bytes.decode("latin-1")
+
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV,
+        EngramImportCsvRequest(csv_content=csv_content, overwrite_existing=overwrite_existing),
+        source_module="knowledge.adapters.api.routes",
+    )
