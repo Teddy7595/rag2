@@ -68,6 +68,8 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
     expected_paths = {
         "/",
         "/admin",
+        "/admin/runtime-ai",
+        "/admin/context-graph",
         "/chat",
         "/admin/routes",
         "/admin/models",
@@ -78,12 +80,14 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/operations/sagas",
         "/api/operations/sagas/{saga_id}",
         "/api/operations/sagas/{saga_id}/commands",
+        "/api/operations/sagas/{saga_id}/debate",
         "/api/storage/overview",
         "/api/storage/public",
         "/api/storage/uploads",
         "/api/knowledge/items",
         "/api/knowledge/context/pack",
         "/api/knowledge/context/prompt",
+        "/api/knowledge/context/graph",
         "/api/knowledge/context/route",
         "/api/knowledge/documents",
         "/api/knowledge/documents/overview",
@@ -98,6 +102,9 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/operations/status",
         "/api/models/catalog",
         "/api/models/selection",
+        "/api/models/runtime/status",
+        "/api/models/runtime/text",
+        "/api/models/runtime/vision",
         "/public",
         "/uploads",
         "/ws/chat",
@@ -124,6 +131,14 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         models_response = client.get("/admin/models")
         assert models_response.status_code == 200
         assert "Modelos y proveedores" in models_response.text
+
+        runtime_admin_response = client.get("/admin/runtime-ai")
+        assert runtime_admin_response.status_code == 200
+        assert "Runtime AI" in runtime_admin_response.text
+
+        context_graph_admin_response = client.get("/admin/context-graph")
+        assert context_graph_admin_response.status_code == 200
+        assert "Laboratorio de coherencia" in context_graph_admin_response.text
 
         frontend_response = client.get("/ui-assets/")
         assert frontend_response.status_code == 200
@@ -183,12 +198,44 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert flat_bundle_payload["supports_text"] is True
         assert flat_bundle_payload["supports_vision"] is False
 
+        runtime_status_response = client.get("/api/models/runtime/status")
+        assert runtime_status_response.status_code == 200
+        runtime_status = runtime_status_response.json()
+        assert runtime_status["runtime_adapter_status"] == "wired"
+        assert "binding_version" in runtime_status
+
         selection_response = client.patch(
             "/api/models/selection",
             json={"text_provider": "local", "text_bundle_id": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"},
         )
         assert selection_response.status_code == 200
         assert selection_response.json()["selection"]["text_bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"
+
+        vision_selection_response = client.patch(
+            "/api/models/selection",
+            json={"vision_provider": "local", "vision_bundle_id": "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"},
+        )
+        assert vision_selection_response.status_code == 200
+        assert vision_selection_response.json()["selection"]["vision_bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"
+
+        runtime_text_response = client.post(
+            "/api/models/runtime/text",
+            json={"prompt": "Resume el runtime local seleccionado."},
+        )
+        assert runtime_text_response.status_code == 200
+        runtime_text_payload = runtime_text_response.json()
+        assert runtime_text_payload["provider"] == "local"
+        assert runtime_text_payload["ok"] is False
+
+        runtime_vision_response = client.post(
+            "/api/models/runtime/vision",
+            data={"prompt": "Describe la imagen."},
+            files={"image": ("sample.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        )
+        assert runtime_vision_response.status_code == 200
+        runtime_vision_payload = runtime_vision_response.json()
+        assert runtime_vision_payload["provider"] == "local"
+        assert runtime_vision_payload["ok"] is False
 
         health_response = client.get("/api/platform/health")
         assert health_response.status_code == 200
@@ -285,6 +332,23 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert prompt_payload["identity"]["name"] == "Atlas"
         assert "Primer conocimiento" in prompt_payload["prompt"]
         assert "Atlas" in prompt_payload["prompt"]
+
+        graph_response = client.post(
+            "/api/knowledge/context/graph",
+            json={
+                "raw_text": "@Atlas resume el conocimiento base y el documento",
+                "limit": 6,
+                "identity_id": None,
+                "history": "user: necesito panorama completo",
+            },
+        )
+        assert graph_response.status_code == 200
+        graph_payload = graph_response.json()
+        assert graph_payload["intent"] in {"mixed", "knowledge", "identity"}
+        assert "graph" in graph_payload
+        assert len(graph_payload["graph"]["nodes"]) >= 2
+        assert len(graph_payload["graph"]["edges"]) >= 1
+        assert "primary_topic" in graph_payload
 
         pdf_path = tmp_path / "documento_base.pdf"
         pdf_text = (
@@ -399,12 +463,30 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_append_payload["appended"] is True
         assert saga_append_payload["saga"]["command_count"] == 2
 
+        saga_debate_response = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/debate",
+            json={
+                "topic": "Debatir el conflicto principal y alternativas del antagonista",
+                "note": "usar tono epico y consistente",
+                "identity_name": "Atlas",
+                "persist_memory": True,
+            },
+        )
+        assert saga_debate_response.status_code == 200
+        saga_debate_payload = saga_debate_response.json()
+        assert saga_debate_payload["debated"] is True
+        assert saga_debate_payload["saga"]["command_count"] >= 3
+        assert saga_debate_payload["memory"]["title"].startswith("Debate saga")
+
         saga_detail_response = client.get(f"/api/operations/sagas/{saga_payload['id']}")
         assert saga_detail_response.status_code == 200
         saga_detail = saga_detail_response.json()
         assert saga_detail["title"] == "Saga Atlas"
-        assert saga_detail["command_count"] == 2
-        assert saga_detail["last_command"] == "avanza al siguiente acto"
+        assert saga_detail["command_count"] >= 3
+        assert saga_detail["last_command"] in {
+            "avanza al siguiente acto",
+            "Debatir el conflicto principal y alternativas del antagonista",
+        }
 
         saga_update_response = client.patch(
             f"/api/operations/sagas/{saga_payload['id']}",
@@ -419,6 +501,28 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_update_payload["updated"] is True
         assert saga_update_payload["saga"]["title"] == "Saga Atlas Renacida"
         assert saga_update_payload["saga"]["status"] == "paused"
+
+        saga_complete_response = client.patch(
+            f"/api/operations/sagas/{saga_payload['id']}",
+            json={"status": "completed"},
+        )
+        assert saga_complete_response.status_code == 200
+        assert saga_complete_response.json()["saga"]["status"] == "completed"
+
+        completed_list_response = client.get(
+            "/api/operations/sagas",
+            params={"limit": 10, "statuses": "completed"},
+        )
+        assert completed_list_response.status_code == 200
+        completed_list = completed_list_response.json()
+        assert any(item["id"] == saga_payload["id"] for item in completed_list)
+
+        append_after_complete_response = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/commands",
+            json={"command": "epilogo extendido tras cierre", "note": "post-completion extension"},
+        )
+        assert append_after_complete_response.status_code == 200
+        assert append_after_complete_response.json()["appended"] is True
 
         temp_saga_response = client.post(
             "/api/operations/sagas",
@@ -450,6 +554,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert status_after_saga["event_counts"]["operations.saga.command.appended"] >= 1
         assert status_after_saga["event_counts"]["operations.saga.updated"] >= 1
         assert status_after_saga["event_counts"]["operations.saga.deleted"] >= 1
+        assert status_after_saga["event_counts"]["operations.saga.debated"] >= 1
 
     app_again = build_test_app(tmp_path, monkeypatch)
 
@@ -490,6 +595,18 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert "Documento base" in prompt_again_payload["prompt"]
         assert "chunking del sistema" in prompt_again_payload["prompt"]
 
+        graph_again = client_again.post(
+            "/api/knowledge/context/graph",
+            json={
+                "raw_text": "Atlas conecta saga y documento base",
+                "limit": 6,
+                "identity_id": None,
+                "history": "user: quiero mapa completo",
+            },
+        )
+        assert graph_again.status_code == 200
+        assert "graph" in graph_again.json()
+
         current_identity_again = client_again.get("/api/knowledge/identity/current")
         assert current_identity_again.status_code == 200
         assert current_identity_again.json()["name"] == "Atlas"
@@ -507,7 +624,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert saga_detail_again.status_code == 200
         saga_detail_again_payload = saga_detail_again.json()
         assert saga_detail_again_payload["title"] == "Saga Atlas Renacida"
-        assert saga_detail_again_payload["command_count"] == 2
+        assert saga_detail_again_payload["command_count"] >= 4
 
         interaction_messages_response = client_again.get("/api/interaction/messages", params={"limit": 10})
         assert interaction_messages_response.status_code == 200
@@ -524,6 +641,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert any(entry["event_name"] == "knowledge.document.ingested" for entry in audit_log_payload)
         assert any(entry["event_name"] == "operations.saga.started" for entry in audit_log_payload)
         assert any(entry["event_name"] == "operations.saga.command.appended" for entry in audit_log_payload)
+        assert any(entry["event_name"] == "operations.saga.debated" for entry in audit_log_payload)
         assert any(entry["event_name"] == "operations.saga.updated" for entry in audit_log_payload)
         assert any(entry["event_name"] == "operations.saga.deleted" for entry in audit_log_payload)
 

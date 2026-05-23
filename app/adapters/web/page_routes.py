@@ -200,6 +200,11 @@ def _model_catalog_context(request: Request) -> dict[str, Any]:
     return {"catalog": catalog}
 
 
+def _runtime_context(request: Request) -> dict[str, Any]:
+    catalog_context = _model_catalog_context(request)
+    return {"runtime": catalog_context["catalog"]["runtime"], "catalog": catalog_context["catalog"]}
+
+
 @router.get("/")
 async def landing_page(request: Request) -> HTMLResponse:
     storage = _get_storage(request)
@@ -246,6 +251,39 @@ async def chat_page(request: Request) -> HTMLResponse:
         headline="Chat realtime",
         description="Interfaz mobile-first conectada al websocket del modulo interaction, lista para enchufar el motor local cuando el runtime de inferencia quede cableado.",
         runtime=catalog_context["catalog"]["runtime"],
+    )
+
+
+@router.get("/admin/runtime-ai")
+async def runtime_ai_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    runtime_context = _runtime_context(request)
+    return _render(
+        request,
+        "runtime_ai.html",
+        title=f"{context.settings.app_name} | Runtime AI",
+        eyebrow="Runtime AI",
+        headline="Diagnostico de inferencia local",
+        description="Inspecciona el binding de llama.cpp, verifica la seleccion local activa y ejecuta smoke tests de texto y vision desde el portal admin.",
+        **runtime_context,
+    )
+
+
+@router.get("/admin/context-graph")
+async def context_graph_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    runtime_context = _runtime_context(request)
+    return _render(
+        request,
+        "context_graph.html",
+        title=f"{context.settings.app_name} | Context Graph",
+        eyebrow="Context Graph",
+        headline="Laboratorio de coherencia",
+        description=(
+            "Construye el grafo de contexto del RAG, analiza tema principal/secundarios y "
+            "debate elementos de saga para generar memoria inspiracional reutilizable por engrama."
+        ),
+        **runtime_context,
     )
 
 

@@ -33,6 +33,28 @@ The app also runs with:
 python main.py
 ```
 
+## AMD ROCm Setup (Arch)
+
+For an AMD-only machine, use the project installer:
+
+```bash
+./installer.sh
+```
+
+What it does:
+
+- Installs ROCm and build toolchain packages via `pacman`.
+- Detects `AMD_GPU_TARGET` using `rocminfo` (or respects your exported value).
+- Persists ROCm environment variables for `bash` and `fish`.
+- Rebuilds `llama-cpp-python` with HIP flags (`-DGGML_HIP=ON -DGPU_TARGETS=...`).
+- Verifies whether the resulting binding supports GPU offload.
+
+If you need to override defaults:
+
+```bash
+AMD_GPU_TARGET=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 ./installer.sh
+```
+
 ## First Endpoint
 
 The initial module exposes a health check at:
@@ -55,6 +77,7 @@ The HTML views are centralized in `app/adapters/web`, while storage and models k
 /admin
 /admin/routes
 /admin/models
+/admin/runtime-ai
 /ui
 /ui-assets
 ```
@@ -62,6 +85,10 @@ The HTML views are centralized in `app/adapters/web`, while storage and models k
 The minimal vanilla reference bundle lives in `frontend/dist` and is served directly from `/ui-assets/`.
 Compiled frontend builds can be mounted under `WEB_FRONTEND_MOUNT_PATH` and served from `WEB_FRONTEND_DIR`.
 The shell page at `/ui` can be used as the landing point for Angular, Vite, or vanilla frontend bundles and can inject extra assets through `WEB_FRONTEND_STYLES` and `WEB_FRONTEND_SCRIPTS`.
+
+The admin portal now includes an AI runtime diagnostics page at `/admin/runtime-ai` with local text and vision smoke tests, and the `/chat` page can upload an image to exercise the local vision runtime.
+
+Local inference uses `llama-cpp-python` when available in the runtime environment. The models module keeps the local runtime optional and reports its binding/version state through `/api/models/runtime/status`.
 
 The storage slice keeps the storage endpoints at:
 
@@ -84,6 +111,14 @@ The knowledge and operations modules expose their own module routes under:
 /api/operations/*
 /api/models/*
 ```
+
+Additional coherence endpoints now available:
+
+- `POST /api/knowledge/context/graph`: builds a context graph (query, identity, engram and knowledge nodes/edges) with primary and secondary topics.
+- `GET /api/operations/sagas?statuses=completed,active`: filters sagas by status.
+- `POST /api/operations/sagas/{saga_id}/debate`: records debate iterations and can persist inspirational memory items tagged by saga and engram.
+
+This allows closed or active sagas to remain editable and extensible while feeding retrieval memory for future prompts under the same engram persona.
 
 ## Database
 

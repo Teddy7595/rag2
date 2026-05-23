@@ -48,6 +48,7 @@
       <p>Administra los bundles locales y la selección activa de texto o visión.</p>
       <div class="card-actions">
         <a class="link-button" href="/admin/models">Abrir catálogo</a>
+        <a class="link-button" href="/admin/runtime-ai">Runtime AI</a>
       </div>
     </div>
   </article>
@@ -57,6 +58,7 @@
       <p>Inspecciona todas las rutas HTTP, websockets y mounts registradas en el arranque.</p>
       <div class="card-actions">
         <a class="link-button" href="/admin/routes">Abrir visualizador</a>
+        <a class="link-button" href="/admin/context-graph">Context graph</a>
       </div>
     </div>
   </article>
@@ -96,6 +98,9 @@
     <p><strong>Texto local:</strong> {{ 'listo' if runtime.local_text_ready else 'pendiente' }} · <code>{{ runtime.selected_text_model_path or 'sin seleccion local' }}</code></p>
     <p><strong>Vision local:</strong> {{ 'lista' if runtime.local_vision_ready else 'pendiente' }} · <code>{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</code></p>
     <p><strong>Integracion del adaptador:</strong> {{ runtime.runtime_adapter_status }}. {{ runtime.runtime_adapter_note }}</p>
+    <div class="card-actions">
+      <a class="link-button" href="/admin/runtime-ai">Abrir diagnostico AI</a>
+    </div>
   </div>
 </section>
 {% endblock %}

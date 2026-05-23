@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field
 from app.core.app_context import get_app_context_from_request
 from app.knowledge.events import (
     ContextBuildRequest,
+    ContextGraphRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
     DocumentIngestRequest,
@@ -21,6 +22,7 @@ from app.knowledge.events import (
     KnowledgeOverviewRequest,
     REQUEST_KNOWLEDGE_CURRENT_IDENTITY,
     REQUEST_KNOWLEDGE_CONTEXT_PACK,
+    REQUEST_KNOWLEDGE_CONTEXT_GRAPH,
     REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
     REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
     REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
@@ -206,6 +208,21 @@ async def build_prompt(request: Request, payload: KnowledgeContextInput) -> dict
     return context.event_bus.request(
         REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
         ContextBuildRequest(
+            raw_text=payload.raw_text,
+            limit=payload.limit,
+            identity_id=payload.identity_id,
+            history=payload.history,
+        ),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.post("/context/graph")
+async def build_context_graph(request: Request, payload: KnowledgeContextInput) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_CONTEXT_GRAPH,
+        ContextGraphRequest(
             raw_text=payload.raw_text,
             limit=payload.limit,
             identity_id=payload.identity_id,

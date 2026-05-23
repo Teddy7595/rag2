@@ -14,8 +14,9 @@ class OperationsAuditRequest:
 
 
 class OperationsSagaListRequest:
-    def __init__(self, limit: int = 20) -> None:
+    def __init__(self, limit: int = 20, statuses: tuple[str, ...] | None = None) -> None:
         self.limit = limit
+        self.statuses = statuses
 
 
 class OperationsSagaDetailRequest:
@@ -67,6 +68,22 @@ class OperationsSagaUpdateRequest:
 class OperationsSagaDeleteRequest:
     def __init__(self, saga_id: str) -> None:
         self.saga_id = saga_id
+
+
+class OperationsSagaDebateRequest:
+    def __init__(
+        self,
+        saga_id: str,
+        topic: str,
+        note: str = "",
+        identity_name: str = "System",
+        persist_memory: bool = True,
+    ) -> None:
+        self.saga_id = saga_id
+        self.topic = topic
+        self.note = note
+        self.identity_name = identity_name
+        self.persist_memory = persist_memory
 
 
 REQUEST_OPERATIONS_STATUS = EventSpec[OperationsStatusRequest, dict](
@@ -133,6 +150,14 @@ REQUEST_OPERATIONS_SAGA_DELETE = EventSpec[OperationsSagaDeleteRequest, dict](
     output_type=dict,
 )
 
+REQUEST_OPERATIONS_SAGA_DEBATE = EventSpec[OperationsSagaDebateRequest, dict](
+    name="operations.saga.debate.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=OperationsSagaDebateRequest,
+    output_type=dict,
+)
+
 PUBLISH_OPERATIONS_SAGA_STARTED = EventSpec[dict, dict](
     name="operations.saga.started",
     kind=EventKind.PUBLISH,
@@ -165,22 +190,33 @@ PUBLISH_OPERATIONS_SAGA_DELETED = EventSpec[dict, dict](
     output_type=dict,
 )
 
+PUBLISH_OPERATIONS_SAGA_DEBATED = EventSpec[dict, dict](
+    name="operations.saga.debated",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
 
 __all__ = [
     "OperationsAuditRequest",
     "OperationsStatusRequest",
     "OperationsSagaCommandAppendRequest",
     "OperationsSagaDeleteRequest",
+    "OperationsSagaDebateRequest",
     "OperationsSagaDetailRequest",
     "OperationsSagaListRequest",
     "OperationsSagaStartRequest",
     "OperationsSagaUpdateRequest",
     "PUBLISH_OPERATIONS_SAGA_COMMAND_APPENDED",
     "PUBLISH_OPERATIONS_SAGA_DELETED",
+    "PUBLISH_OPERATIONS_SAGA_DEBATED",
     "PUBLISH_OPERATIONS_SAGA_STARTED",
     "PUBLISH_OPERATIONS_SAGA_UPDATED",
     "REQUEST_OPERATIONS_AUDIT_LOG",
     "REQUEST_OPERATIONS_SAGA_COMMAND_APPEND",
+    "REQUEST_OPERATIONS_SAGA_DEBATE",
     "REQUEST_OPERATIONS_SAGA_DELETE",
     "REQUEST_OPERATIONS_SAGA_DETAIL",
     "REQUEST_OPERATIONS_SAGA_LIST",

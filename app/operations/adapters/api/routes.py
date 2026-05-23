@@ -19,6 +19,13 @@ class OperationsSagaCommandInput(BaseModel):
     note: str = ""
 
 
+class OperationsSagaDebateInput(BaseModel):
+    topic: str
+    note: str = ""
+    identity_name: str = "System"
+    persist_memory: bool = True
+
+
 class OperationsSagaUpdateInput(BaseModel):
     title: str | None = None
     premise: str | None = None
@@ -57,14 +64,19 @@ async def audit_log(request: Request, limit: int = 50) -> list[dict[str, object]
 
 
 @router.get("/sagas")
-async def list_sagas(request: Request, limit: int = 20) -> list[dict[str, object]]:
+async def list_sagas(request: Request, limit: int = 20, statuses: str | None = None) -> list[dict[str, object]]:
     context = get_app_context_from_request(request)
     from app.operations.events import OperationsSagaListRequest
     from app.operations.events import REQUEST_OPERATIONS_SAGA_LIST
 
+    status_filters: tuple[str, ...] | None = None
+    if statuses:
+        parsed = [item.strip().lower() for item in statuses.split(",") if item.strip()]
+        status_filters = tuple(dict.fromkeys(parsed)) if parsed else None
+
     return context.event_bus.request(
         REQUEST_OPERATIONS_SAGA_LIST,
-        OperationsSagaListRequest(limit=limit),
+        OperationsSagaListRequest(limit=limit, statuses=status_filters),
         source_module="operations.adapters.api.routes",
     )
 
@@ -114,6 +126,29 @@ async def append_saga_command(
     return context.event_bus.request(
         REQUEST_OPERATIONS_SAGA_COMMAND_APPEND,
         OperationsSagaCommandAppendRequest(saga_id=saga_id, command=payload.command, note=payload.note),
+        source_module="operations.adapters.api.routes",
+    )
+
+
+@router.post("/sagas/{saga_id}/debate")
+async def debate_saga(
+    request: Request,
+    saga_id: str,
+    payload: OperationsSagaDebateInput,
+) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    from app.operations.events import OperationsSagaDebateRequest
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_DEBATE
+
+    return context.event_bus.request(
+        REQUEST_OPERATIONS_SAGA_DEBATE,
+        OperationsSagaDebateRequest(
+            saga_id=saga_id,
+            topic=payload.topic,
+            note=payload.note,
+            identity_name=payload.identity_name,
+            persist_memory=payload.persist_memory,
+        ),
         source_module="operations.adapters.api.routes",
     )
 

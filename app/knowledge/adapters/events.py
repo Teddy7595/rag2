@@ -5,6 +5,7 @@ from app.core.events import EventEnvelope
 from app.knowledge.application import KnowledgeService
 from app.knowledge.events import (
     ContextBuildRequest,
+    ContextGraphRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
     DocumentIngestRequest,
@@ -21,6 +22,7 @@ from app.knowledge.events import (
     KnowledgeOverviewRequest,
     REQUEST_KNOWLEDGE_CURRENT_IDENTITY,
     REQUEST_KNOWLEDGE_CONTEXT_PACK,
+    REQUEST_KNOWLEDGE_CONTEXT_GRAPH,
     REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
     REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
     REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
@@ -83,6 +85,9 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     def handle_context_prompt(envelope: EventEnvelope[ContextBuildRequest]) -> dict[str, object]:
         return service.build_prompt(envelope.payload)
 
+    def handle_context_graph(envelope: EventEnvelope[ContextGraphRequest]) -> dict[str, object]:
+        return service.build_context_graph(envelope.payload)
+
     def handle_document_ingest(envelope: EventEnvelope[DocumentIngestRequest]) -> dict[str, object]:
         return service.ingest_document(envelope.payload)
 
@@ -105,6 +110,7 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_ROUTE, handle_context_route)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_PACK, handle_context_pack)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_PROMPT, handle_context_prompt)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CONTEXT_GRAPH, handle_context_graph)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_INGEST, handle_document_ingest)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENTS, handle_document_list)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW, handle_document_overview)

@@ -149,6 +149,33 @@
     display: grid;
     gap: 12px;
   }
+  .chat-vision-panel {
+    display: grid;
+    gap: 12px;
+    padding: 12px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(2, 6, 23, 0.4);
+  }
+  .chat-upload {
+    width: 100%;
+    border: 1px dashed rgba(125, 211, 252, 0.26);
+    border-radius: 16px;
+    padding: 12px;
+    background: rgba(2, 6, 23, 0.48);
+    color: #cbd5e1;
+  }
+  .chat-preview {
+    display: none;
+    width: 100%;
+    max-height: 220px;
+    object-fit: cover;
+    border-radius: 16px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+  }
+  .chat-preview.is-visible {
+    display: block;
+  }
   .chat-input {
     width: 100%;
     min-height: 104px;
@@ -287,6 +314,13 @@
       <span class="chat-chip">Futuro runtime local llama.cpp</span>
     </div>
     <form class="chat-form" id="chat-form">
+      <div class="chat-vision-panel">
+        <span class="chat-help">Analisis de imagen local: sube una imagen y se enviara al runtime de vision seleccionado.</span>
+        <input id="chat-image-file" class="chat-upload" type="file" accept="image/*">
+        <img id="chat-image-preview" class="chat-preview" alt="Preview de imagen para analisis local">
+        <textarea id="chat-vision-prompt" class="chat-input" style="min-height: 84px;" placeholder="Prompt opcional para vision. Ej: describe la escena y el texto visible.">Describe la imagen en espanol con foco en sujetos, objetos, texto visible y contexto.</textarea>
+        <button type="button" class="chat-send" id="chat-vision-send">Analizar imagen</button>
+      </div>
       <textarea id="chat-input" class="chat-input" placeholder="Escribe un mensaje. Ej: Atlas resume el contexto actual y prepara el siguiente paso."></textarea>
       <div class="chat-actions">
         <span class="chat-help" id="chat-help">Sesion realtime iniciando...</span>
@@ -306,6 +340,10 @@
   const input = document.getElementById('chat-input');
   const help = document.getElementById('chat-help');
   const send = document.getElementById('chat-send');
+  const visionSend = document.getElementById('chat-vision-send');
+  const imageFile = document.getElementById('chat-image-file');
+  const imagePreview = document.getElementById('chat-image-preview');
+  const visionPrompt = document.getElementById('chat-vision-prompt');
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
   let typingRow = null;
@@ -371,6 +409,17 @@
     streamedTokens = [];
   };
 
+  const showPreview = () => {
+    const file = imageFile.files && imageFile.files[0];
+    if (!file) {
+      imagePreview.src = '';
+      imagePreview.classList.remove('is-visible');
+      return;
+    }
+    imagePreview.src = URL.createObjectURL(file);
+    imagePreview.classList.add('is-visible');
+  };
+
   socket.addEventListener('open', () => {
     help.textContent = 'Sesion realtime conectada. El websocket del modulo interaction esta listo.';
   });
@@ -419,6 +468,40 @@
   socket.addEventListener('close', () => {
     send.disabled = true;
     help.textContent = 'El websocket se cerro. Recarga la pagina para reconectar.';
+  });
+
+  imageFile.addEventListener('change', showPreview);
+
+  visionSend.addEventListener('click', async () => {
+    const file = imageFile.files && imageFile.files[0];
+    if (!file) {
+      help.textContent = 'Selecciona una imagen para usar el runtime de vision.';
+      return;
+    }
+    const formData = new FormData();
+    formData.append('image', file);
+    formData.append('prompt', visionPrompt.value.trim());
+    visionSend.disabled = true;
+    help.textContent = 'Analizando imagen con el runtime local de vision...';
+    appendMessage({ author: 'user', content: `[imagen] ${file.name}\n${visionPrompt.value.trim()}`, channel: 'vision' });
+    try {
+      const response = await fetch('/api/models/runtime/vision', {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = await response.json();
+      appendMessage({
+        author: 'vision',
+        content: payload.content || payload.detail || payload.reason || 'Sin respuesta del runtime de vision.',
+        channel: 'assistant',
+      });
+      help.textContent = payload.ok ? 'Analisis de imagen completado.' : 'El runtime de vision devolvio un error controlado.';
+    } catch (error) {
+      appendMessage({ author: 'vision', content: String(error), channel: 'assistant' });
+      help.textContent = 'Fallo la llamada al runtime de vision.';
+    } finally {
+      visionSend.disabled = false;
+    }
   });
 
   form.addEventListener('submit', (event) => {

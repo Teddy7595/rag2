@@ -99,6 +99,14 @@ class ContextBuildRequest:
 
 
 @dataclass(frozen=True)
+class ContextGraphRequest:
+    raw_text: str
+    limit: int = 7
+    identity_id: str | None = None
+    history: str = ""
+
+
+@dataclass(frozen=True)
 class DocumentIngestRequest:
     title: str
     raw_text: str | None = None
@@ -223,6 +231,14 @@ REQUEST_KNOWLEDGE_CONTEXT_PROMPT = EventSpec[ContextBuildRequest, dict](
     output_type=dict,
 )
 
+REQUEST_KNOWLEDGE_CONTEXT_GRAPH = EventSpec[ContextGraphRequest, dict](
+    name="knowledge.context.graph.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=ContextGraphRequest,
+    output_type=dict,
+)
+
 REQUEST_KNOWLEDGE_DOCUMENT_INGEST = EventSpec[DocumentIngestRequest, dict](
     name="knowledge.document.ingest.request",
     kind=EventKind.REQUEST,
@@ -295,6 +311,14 @@ PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT = EventSpec[dict, dict](
     output_type=dict,
 )
 
+PUBLISH_KNOWLEDGE_CONTEXT_GRAPH_BUILT = EventSpec[dict, dict](
+    name="knowledge.context.graph.built",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
 PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED = EventSpec[dict, dict](
     name="knowledge.document.ingested",
     kind=EventKind.PUBLISH,
@@ -310,6 +334,7 @@ __all__ = [
     "KnowledgeOverviewRequest",
     "CurrentIdentityRequest",
     "ContextBuildRequest",
+    "ContextGraphRequest",
     "ContextRouteRequest",
     "DocumentIngestRequest",
     "DocumentListRequest",
@@ -323,11 +348,13 @@ __all__ = [
     "PUBLISH_KNOWLEDGE_ITEM_CREATED",
     "PUBLISH_KNOWLEDGE_ENGRAM_CHANGED",
     "PUBLISH_KNOWLEDGE_CONTEXT_PACKED",
+    "PUBLISH_KNOWLEDGE_CONTEXT_GRAPH_BUILT",
     "PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT",
     "PUBLISH_KNOWLEDGE_CONTEXT_ROUTED",
     "PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED",
     "PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED",
     "REQUEST_KNOWLEDGE_CURRENT_IDENTITY",
+    "REQUEST_KNOWLEDGE_CONTEXT_GRAPH",
     "REQUEST_KNOWLEDGE_CONTEXT_PACK",
     "REQUEST_KNOWLEDGE_CONTEXT_PROMPT",
     "REQUEST_KNOWLEDGE_CONTEXT_ROUTE",

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
+import importlib
+import importlib.metadata
 import importlib.util
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from app.models.events import ModelTextGenerationRequest, ModelVisionAnalysisRequest
 from app.models.service import ModelCatalogService
 
 
 def _build_multimodal_chat_handler(mmproj_path: str) -> object:
-    from llama_cpp.llama_chat_format import Llava15ChatHandler
+    chat_format_module = importlib.import_module("llama_cpp.llama_chat_format")
+    Llava15ChatHandler = getattr(chat_format_module, "Llava15ChatHandler")
 
     class GemmaMultimodalChatHandler(Llava15ChatHandler):
         DEFAULT_SYSTEM_MESSAGE = None
@@ -48,10 +51,45 @@ class LocalInferenceService:
     def binding_available(self) -> bool:
         return importlib.util.find_spec("llama_cpp") is not None
 
+    def binding_version(self) -> str | None:
+        if not self.binding_available():
+            return None
+        try:
+            return importlib.metadata.version("llama-cpp-python")
+        except importlib.metadata.PackageNotFoundError:
+            return None
+
+    def runtime_status(self) -> dict[str, object]:
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        runtime = dict(cast(dict[str, object], catalog["runtime"]))
+        runtime["binding_version"] = self.binding_version()
+        runtime["models_dir"] = str(self.catalog_service.models_dir)
+        runtime["selection"] = catalog["selection"]
+        runtime["resolved"] = catalog["resolved"]
+        return runtime
+
+    def smoke_text(self, prompt: str) -> dict[str, object]:
+        return self.generate_text(
+            ModelTextGenerationRequest(
+                prompt=prompt,
+                temperature=0.25,
+                max_tokens=256,
+            )
+        )
+
+    def smoke_vision(self, image_path: str, prompt: str | None = None) -> dict[str, object]:
+        return self.analyze_image(
+            ModelVisionAnalysisRequest(
+                image_path=image_path,
+                prompt=prompt or "Describe la imagen en espanol con foco operativo y contextual.",
+                max_tokens=256,
+            )
+        )
+
     def generate_text(self, request: ModelTextGenerationRequest) -> dict[str, object]:
-        catalog = self.catalog_service.catalog()
-        runtime = catalog["runtime"]
-        resolved = catalog["resolved"]
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        runtime = cast(dict[str, Any], catalog["runtime"])
+        resolved = cast(dict[str, dict[str, Any]], catalog["resolved"])
         if not self.binding_available():
             return {
                 "ok": False,
@@ -87,14 +125,15 @@ class LocalInferenceService:
             }
 
         try:
-            response = llm.create_completion(
+            response = cast(Any, llm).create_completion(
                 prompt=request.prompt,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
                 stop=["<end_of_turn>", "<|eot_id|>"],
                 stream=False,
             )
-            choices = response.get("choices", []) if isinstance(response, dict) else []
+            response_payload = cast(dict[str, Any], response) if isinstance(response, dict) else {}
+            choices = cast(list[dict[str, Any]], response_payload.get("choices", []))
             text = ""
             if choices:
                 text = str(choices[0].get("text") or "").strip()
@@ -115,9 +154,9 @@ class LocalInferenceService:
             }
 
     def analyze_image(self, request: ModelVisionAnalysisRequest) -> dict[str, object]:
-        catalog = self.catalog_service.catalog()
-        runtime = catalog["runtime"]
-        resolved = catalog["resolved"]
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        runtime = cast(dict[str, Any], catalog["runtime"])
+        resolved = cast(dict[str, dict[str, Any]], catalog["resolved"])
         if not self.binding_available():
             return {
                 "ok": False,
@@ -158,7 +197,7 @@ class LocalInferenceService:
             prompt = request.prompt or (
                 "Describe esta imagen en espanol con foco en sujetos, objetos, texto visible, acciones y contexto util."
             )
-            response = llm.create_chat_completion(
+            response = cast(Any, llm).create_chat_completion(
                 messages=[
                     {
                         "role": "user",
@@ -172,12 +211,13 @@ class LocalInferenceService:
                 temperature=0.2,
                 stream=False,
             )
-            choices = response.get("choices", []) if isinstance(response, dict) else []
+            response_payload = cast(dict[str, Any], response) if isinstance(response, dict) else {}
+            choices = cast(list[dict[str, Any]], response_payload.get("choices", []))
             content = ""
             if choices:
-                first = choices[0] if isinstance(choices[0], dict) else {}
-                message = first.get("message", {}) if isinstance(first, dict) else {}
-                raw_content = message.get("content") if isinstance(message, dict) else None
+                first = choices[0]
+                message = cast(dict[str, Any], first.get("message", {}))
+                raw_content = message.get("content")
                 if isinstance(raw_content, str):
                     content = raw_content.strip()
             return {
@@ -219,7 +259,8 @@ class LocalInferenceService:
 
     def _build_llama_model(self, relative_model_path: str) -> object | None:
         try:
-            from llama_cpp import Llama
+            llama_module = importlib.import_module("llama_cpp")
+            Llama = getattr(llama_module, "Llama")
         except Exception:
             return None
 
@@ -238,7 +279,8 @@ class LocalInferenceService:
 
     def _build_llava_model(self, relative_model_path: str, relative_mmproj_path: str) -> object | None:
         try:
-            from llama_cpp import Llama
+            llama_module = importlib.import_module("llama_cpp")
+            Llama = getattr(llama_module, "Llama")
         except Exception:
             return None
 

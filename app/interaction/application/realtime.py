@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import re
 from typing import AsyncIterator
 from uuid import uuid4
 
@@ -37,6 +38,54 @@ def _format_history(messages: list[dict[str, object]]) -> str:
 
 def _packet(packet_type: str, *, session_id: str, **payload: object) -> dict[str, object]:
     return {"type": packet_type, "session_id": session_id, **payload}
+
+
+def _extract_topics(text: str, *, max_items: int = 5) -> list[str]:
+    stopwords = {
+        "de",
+        "la",
+        "el",
+        "los",
+        "las",
+        "y",
+        "o",
+        "con",
+        "sin",
+        "para",
+        "por",
+        "del",
+        "que",
+        "una",
+        "uno",
+        "unos",
+        "unas",
+        "como",
+        "esto",
+        "esta",
+        "estas",
+        "este",
+        "estos",
+        "sobre",
+        "pero",
+        "donde",
+        "cuando",
+        "quien",
+        "cual",
+        "porque",
+        "ser",
+        "estar",
+        "hacer",
+        "tener",
+    }
+    tokens = re.findall(r"[a-z0-9áéíóúñ]{3,}", text.lower())
+    ranked: list[str] = []
+    for token in tokens:
+        if token in stopwords or token in ranked:
+            continue
+        ranked.append(token)
+        if len(ranked) >= max_items:
+            break
+    return ranked
 
 
 @dataclass(frozen=True)
@@ -262,10 +311,40 @@ class RealtimeChatService:
     def _compose_reply(self, input_data: InteractionRealtimeInput, context_preview: dict[str, object]) -> str:
         identity = context_preview.get("identity", {})
         identity_name = str(identity.get("name") or "assistant")
+        behavior_prompt = str(identity.get("behavior_prompt") or "").strip()
+        meta_rule = str(identity.get("meta_rule") or "").strip()
+        intellectual_profile = str(identity.get("intellectual_profile") or "").strip()
         context_pack = context_preview.get("context_pack", {})
         knowledge_matches = list(context_pack.get("knowledge_matches", []))
         engram_matches = list(context_pack.get("engram_matches", []))
         context_text = str(context_preview.get("context_text") or "").strip()
+        route_payload = context_pack.get("route", {}) if isinstance(context_pack, dict) else {}
+        route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
+
+        main_idea = ""
+        secondary_ideas: list[str] = []
+
+        if knowledge_matches:
+            first_match = knowledge_matches[0] if isinstance(knowledge_matches[0], dict) else {}
+            main_idea = str(first_match.get("label") or "").strip()
+            for match in knowledge_matches[1:4]:
+                if isinstance(match, dict):
+                    label = str(match.get("label") or "").strip()
+                    if label and label != main_idea and label not in secondary_ideas:
+                        secondary_ideas.append(label)
+
+        if not main_idea:
+            message_topics = _extract_topics(input_data.content)
+            route_topics = [str(item).strip() for item in route_keywords if str(item).strip()]
+            merged_topics = [topic for topic in message_topics + route_topics if topic]
+            if merged_topics:
+                main_idea = merged_topics[0]
+                for topic in merged_topics[1:4]:
+                    if topic != main_idea and topic not in secondary_ideas:
+                        secondary_ideas.append(topic)
+
+        if not main_idea:
+            main_idea = input_data.content.strip()[:80]
 
         lines: list[str] = [f"{identity_name}: recibí '{input_data.content.strip()}'."]
 
@@ -291,6 +370,10 @@ class RealtimeChatService:
             lines.append("Resumen de contexto:")
             lines.append(context_text)
 
+        lines.append(f"Idea principal detectada: {main_idea}")
+        if secondary_ideas:
+            lines.append("Ideas secundarias detectadas: " + ", ".join(secondary_ideas))
+
         lines.append("Siguiente paso: sigo el contexto recuperado y mantengo el historial persistente.")
         fallback_reply = "\n".join(lines).strip()
 
@@ -298,7 +381,16 @@ class RealtimeChatService:
             f"Identidad activa: {identity_name}.",
             "Responde en espanol, de forma clara y concisa.",
             f"Mensaje del usuario: {input_data.content.strip()}",
+            f"Idea principal: {main_idea}",
         ]
+        if secondary_ideas:
+            prompt_sections.append("Ideas secundarias: " + ", ".join(secondary_ideas))
+        if intellectual_profile:
+            prompt_sections.append(f"Perfil intelectual del engrama: {intellectual_profile}")
+        if behavior_prompt:
+            prompt_sections.append(f"Instruccion de comportamiento del engrama: {behavior_prompt}")
+        if meta_rule:
+            prompt_sections.append(f"Meta-regla del engrama: {meta_rule}")
         if context_text:
             prompt_sections.append(f"Contexto recuperado:\n{context_text}")
         if knowledge_matches:
@@ -308,13 +400,31 @@ class RealtimeChatService:
                     for match in knowledge_matches[:4]
                 )
             )
+        prompt_sections.append(
+            "Estructura la respuesta en este orden: "
+            "1) idea principal, 2) ideas secundarias conectadas, 3) respuesta integrada, 4) siguiente accion sugerida."
+        )
         prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
+
+        temperature = 0.35
+        try:
+            temperature = float(identity.get("resolved_temperature") or identity.get("temperatura_base") or 0.35)
+        except (TypeError, ValueError):
+            temperature = 0.35
+        temperature = max(0.0, min(2.0, temperature))
+
+        max_tokens = 768
+        try:
+            max_tokens = int(identity.get("resolved_max_tokens") or identity.get("max_tokens_respuesta") or 768)
+        except (TypeError, ValueError):
+            max_tokens = 768
+        max_tokens = max(128, min(2048, max_tokens))
 
         try:
             generated = self.event_bus.request(
                 REQUEST_MODEL_TEXT_GENERATION,
-                ModelTextGenerationRequest(prompt=prompt, temperature=0.35, max_tokens=768),
+                ModelTextGenerationRequest(prompt=prompt, temperature=temperature, max_tokens=max_tokens),
                 source_module="interaction.application.realtime",
             )
             content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""

@@ -1,0 +1,116 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Binding</span>
+    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.binding_version or 'llama-cpp-python no visible' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Texto local</span>
+    <strong class="stat-value">{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin modelo activo' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Vision local</span>
+    <strong class="stat-value">{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj activo' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Bundles</span>
+    <strong class="stat-value">{{ catalog.summary.bundle_count }}</strong>
+    <span class="stat-copy">{{ catalog.summary.root_bundle_count }} planos en raiz</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <h2 class="panel-title">Estado actual</h2>
+    <div class="panel-body">
+      <p><strong>Models dir:</strong> <code>{{ runtime.models_dir }}</code></p>
+      <p><strong>Texto seleccionado:</strong> <code>{{ runtime.selected_text_model_path or 'sin ruta local' }}</code></p>
+      <p><strong>Vision seleccionada:</strong> <code>{{ runtime.selected_vision_model_path or 'sin ruta local' }}</code></p>
+      <p><strong>MMProj seleccionado:</strong> <code>{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</code></p>
+      <p><strong>Adaptador:</strong> {{ runtime.runtime_adapter_status }} · {{ runtime.runtime_adapter_note }}</p>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Smoke test de texto</h2>
+    <div class="panel-body">
+      <form id="runtime-text-form" style="display: grid; gap: 12px;">
+        <textarea id="runtime-text-prompt" class="control-input" style="min-height: 120px; resize: vertical;" placeholder="Escribe el prompt de prueba para el modelo local de texto.">Resume el estado actual del runtime y el modelo local seleccionado.</textarea>
+        <button type="submit" class="save-button">Ejecutar texto</button>
+      </form>
+      <pre id="runtime-text-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Esperando ejecucion...</pre>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Smoke test de vision</h2>
+    <div class="panel-body">
+      <form id="runtime-vision-form" style="display: grid; gap: 12px;" enctype="multipart/form-data">
+        <input id="runtime-vision-file" class="control-input" type="file" accept="image/*">
+        <textarea id="runtime-vision-prompt" class="control-input" style="min-height: 96px; resize: vertical;" placeholder="Prompt opcional para el analisis de imagen.">Describe la imagen en espanol, con foco en contenido visible y contexto.</textarea>
+        <button type="submit" class="save-button">Ejecutar vision</button>
+      </form>
+      <pre id="runtime-vision-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Esperando imagen...</pre>
+    </div>
+  </article>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const textForm = document.getElementById('runtime-text-form');
+  const textPrompt = document.getElementById('runtime-text-prompt');
+  const textResult = document.getElementById('runtime-text-result');
+  const visionForm = document.getElementById('runtime-vision-form');
+  const visionPrompt = document.getElementById('runtime-vision-prompt');
+  const visionFile = document.getElementById('runtime-vision-file');
+  const visionResult = document.getElementById('runtime-vision-result');
+
+  const showResult = (target, payload) => {
+    target.textContent = JSON.stringify(payload, null, 2);
+  };
+
+  textForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    textResult.textContent = 'Ejecutando smoke test de texto...';
+    const response = await fetch('/api/models/runtime/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: textPrompt.value.trim() }),
+    });
+    const payload = await response.json();
+    showResult(textResult, payload);
+  });
+
+  visionForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!visionFile.files.length) {
+      visionResult.textContent = 'Selecciona una imagen antes de ejecutar el smoke test.';
+      return;
+    }
+    visionResult.textContent = 'Ejecutando smoke test de vision...';
+    const formData = new FormData();
+    formData.append('image', visionFile.files[0]);
+    formData.append('prompt', visionPrompt.value.trim());
+    const response = await fetch('/api/models/runtime/vision', {
+      method: 'POST',
+      body: formData,
+    });
+    const payload = await response.json();
+    showResult(visionResult, payload);
+  });
+})();
+</script>
+{% endblock %}

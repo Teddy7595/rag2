@@ -8,6 +8,7 @@ from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepos
 from app.knowledge.domain import Identity, KnowledgeEntry
 from app.knowledge.events import (
     ContextBuildRequest,
+    ContextGraphRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
     DocumentIngestRequest,
@@ -23,6 +24,7 @@ from app.knowledge.events import (
     KnowledgeItemsRequest,
     KnowledgeOverviewRequest,
     PUBLISH_KNOWLEDGE_CONTEXT_PACKED,
+    PUBLISH_KNOWLEDGE_CONTEXT_GRAPH_BUILT,
     PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT,
     PUBLISH_KNOWLEDGE_CONTEXT_ROUTED,
     PUBLISH_KNOWLEDGE_ENGRAM_CHANGED,
@@ -249,6 +251,127 @@ class KnowledgeService:
             payload,
             source_module="knowledge.application.service",
             metadata={"intent": preview.route.intent, "prompt_chars": len(preview.prompt)},
+        )
+        return payload
+
+    def build_context_graph(self, request: ContextGraphRequest) -> dict[str, object]:
+        preview = self._build_context_preview(
+            ContextBuildRequest(
+                raw_text=request.raw_text,
+                limit=request.limit,
+                identity_id=request.identity_id,
+                history=request.history,
+            )
+        )
+
+        route = preview.route
+        context_pack = preview.context_pack
+        identity = preview.identity
+
+        graph_nodes: list[dict[str, object]] = [
+            {
+                "id": "query",
+                "type": "query",
+                "label": request.raw_text,
+                "metadata": {
+                    "intent": route.intent,
+                    "keywords": list(route.keywords),
+                },
+            },
+            {
+                "id": f"identity:{identity.id}",
+                "type": "identity",
+                "label": identity.name,
+                "metadata": {
+                    "hint_handle": identity.hint_handle(),
+                },
+            },
+        ]
+
+        graph_edges: list[dict[str, object]] = [
+            {
+                "from": "query",
+                "to": f"identity:{identity.id}",
+                "relation": "resolved_identity",
+                "weight": 1.0,
+            }
+        ]
+
+        for index, match in enumerate(context_pack.knowledge_matches):
+            node_id = f"knowledge:{match.source_id}"
+            graph_nodes.append(
+                {
+                    "id": node_id,
+                    "type": "knowledge",
+                    "label": match.label,
+                    "metadata": {
+                        "source_type": match.source_type,
+                        "excerpt": match.excerpt,
+                        "score": match.score,
+                    },
+                }
+            )
+            graph_edges.append(
+                {
+                    "from": "query",
+                    "to": node_id,
+                    "relation": "retrieved_context",
+                    "weight": round(max(0.1, float(match.score) + (0.5 if index == 0 else 0.0)), 3),
+                }
+            )
+
+        for match in context_pack.engram_matches:
+            node_id = f"engram:{match.source_id}"
+            graph_nodes.append(
+                {
+                    "id": node_id,
+                    "type": "engram",
+                    "label": match.label,
+                    "metadata": {
+                        "excerpt": match.excerpt,
+                        "score": match.score,
+                    },
+                }
+            )
+            graph_edges.append(
+                {
+                    "from": f"identity:{identity.id}",
+                    "to": node_id,
+                    "relation": "persona_reference",
+                    "weight": round(max(0.1, float(match.score)), 3),
+                }
+            )
+
+        primary_topic = context_pack.knowledge_matches[0].label if context_pack.knowledge_matches else (route.keywords[0] if route.keywords else "")
+        secondary_topics = [
+            match.label
+            for match in context_pack.knowledge_matches[1:4]
+            if match.label and match.label != primary_topic
+        ]
+        if not secondary_topics and len(route.keywords) > 1:
+            secondary_topics = [keyword for keyword in route.keywords[1:4] if keyword != primary_topic]
+
+        payload = {
+            "intent": route.intent,
+            "identity": identity.as_dict(),
+            "primary_topic": primary_topic,
+            "secondary_topics": secondary_topics,
+            "graph": {
+                "nodes": graph_nodes,
+                "edges": graph_edges,
+            },
+            "context_pack": context_pack.to_dict(),
+        }
+
+        self.event_bus.publish(
+            PUBLISH_KNOWLEDGE_CONTEXT_GRAPH_BUILT,
+            payload,
+            source_module="knowledge.application.service",
+            metadata={
+                "intent": route.intent,
+                "node_count": len(graph_nodes),
+                "edge_count": len(graph_edges),
+            },
         )
         return payload
 

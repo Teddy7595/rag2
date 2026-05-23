@@ -1,0 +1,209 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Runtime texto</span>
+    <strong class="stat-value">{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin modelo local activo' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Runtime vision</span>
+    <strong class="stat-value">{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Binding llama.cpp</span>
+    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.binding_version or 'sin version detectada' }}</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <h2 class="panel-title">Construir grafo de contexto</h2>
+    <div class="panel-body">
+      <form id="context-graph-form" style="display: grid; gap: 10px;">
+        <label class="control-label" for="graph-query">Consulta</label>
+        <textarea id="graph-query" class="control-input" style="min-height: 94px; resize: vertical;" placeholder="Ej: Atlas conecta los elementos de la saga con el documento base y su conflicto principal."></textarea>
+
+        <label class="control-label" for="graph-history">Historial relevante (opcional)</label>
+        <textarea id="graph-history" class="control-input" style="min-height: 88px; resize: vertical;" placeholder="Resumen de conversaciones recientes para enriquecer el grafo."></textarea>
+
+        <label class="control-label" for="graph-limit">Limite de contexto</label>
+        <input id="graph-limit" class="control-input" type="number" min="3" max="20" value="7">
+
+        <button type="submit" class="save-button">Generar grafo</button>
+      </form>
+      <p class="small-note" id="graph-status">Esperando consulta.</p>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Debate de saga</h2>
+    <div class="panel-body">
+      <form id="saga-debate-form" style="display: grid; gap: 10px;">
+        <label class="control-label" for="saga-id">Saga ID</label>
+        <input id="saga-id" class="control-input" type="text" placeholder="ID de saga para debatir">
+
+        <label class="control-label" for="saga-topic">Tema de debate</label>
+        <textarea id="saga-topic" class="control-input" style="min-height: 84px; resize: vertical;" placeholder="Debatir conflicto principal y alternativas narrativas."></textarea>
+
+        <label class="control-label" for="saga-note">Nota</label>
+        <input id="saga-note" class="control-input" type="text" placeholder="Tono, enfoque o restriccion de estilo">
+
+        <label class="control-label" for="saga-identity">Engrama</label>
+        <input id="saga-identity" class="control-input" type="text" value="System">
+
+        <button type="submit" class="save-button">Debatir y persistir memoria</button>
+      </form>
+      <p class="small-note" id="debate-status">Aun sin debate.</p>
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top: 16px;">
+  <h2 class="panel-title">Panorama de contexto</h2>
+  <div class="panel-body" style="display: grid; gap: 12px;">
+    <div>
+      <strong>Tema principal:</strong> <span id="graph-primary">-</span><br>
+      <strong>Temas secundarios:</strong> <span id="graph-secondary">-</span>
+    </div>
+    <div class="route-search" style="margin: 0;">
+      <strong style="display: block; margin-bottom: 10px;">Nodos</strong>
+      <div id="graph-nodes" class="route-rows"></div>
+    </div>
+    <div class="route-search" style="margin: 0;">
+      <strong style="display: block; margin-bottom: 10px;">Relaciones</strong>
+      <div id="graph-edges" class="route-rows"></div>
+    </div>
+  </div>
+</section>
+
+<section class="panel" style="margin-top: 16px;">
+  <h2 class="panel-title">Respuesta cruda</h2>
+  <div class="panel-body">
+    <pre id="graph-json" style="white-space: pre-wrap; overflow-wrap: anywhere;">Esperando datos...</pre>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const graphForm = document.getElementById('context-graph-form');
+  const graphQuery = document.getElementById('graph-query');
+  const graphHistory = document.getElementById('graph-history');
+  const graphLimit = document.getElementById('graph-limit');
+  const graphStatus = document.getElementById('graph-status');
+  const graphJson = document.getElementById('graph-json');
+  const graphPrimary = document.getElementById('graph-primary');
+  const graphSecondary = document.getElementById('graph-secondary');
+  const graphNodes = document.getElementById('graph-nodes');
+  const graphEdges = document.getElementById('graph-edges');
+
+  const debateForm = document.getElementById('saga-debate-form');
+  const sagaId = document.getElementById('saga-id');
+  const sagaTopic = document.getElementById('saga-topic');
+  const sagaNote = document.getElementById('saga-note');
+  const sagaIdentity = document.getElementById('saga-identity');
+  const debateStatus = document.getElementById('debate-status');
+
+  const renderRows = (target, items, renderItem) => {
+    target.innerHTML = '';
+    if (!Array.isArray(items) || !items.length) {
+      target.innerHTML = '<div class="route-row"><p class="route-path">Sin datos</p></div>';
+      return;
+    }
+    for (const item of items) {
+      const row = document.createElement('div');
+      row.className = 'route-row';
+      row.innerHTML = renderItem(item);
+      target.appendChild(row);
+    }
+  };
+
+  graphForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const query = graphQuery.value.trim();
+    if (!query) {
+      graphStatus.textContent = 'Debes ingresar una consulta para construir el grafo.';
+      return;
+    }
+
+    graphStatus.textContent = 'Generando grafo de contexto...';
+    const payload = {
+      raw_text: query,
+      history: graphHistory.value.trim(),
+      limit: Number(graphLimit.value || 7),
+      identity_id: null,
+    };
+
+    try {
+      const response = await fetch('/api/knowledge/context/graph', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      graphJson.textContent = JSON.stringify(data, null, 2);
+      graphPrimary.textContent = data.primary_topic || '-';
+      graphSecondary.textContent = (data.secondary_topics || []).join(', ') || '-';
+
+      const nodes = data.graph && data.graph.nodes ? data.graph.nodes : [];
+      const edges = data.graph && data.graph.edges ? data.graph.edges : [];
+
+      renderRows(graphNodes, nodes, (node) =>
+        `<p class="route-path">${node.id} · ${node.label}</p><div class="route-meta"><span class="pill">${node.type}</span></div>`
+      );
+      renderRows(graphEdges, edges, (edge) =>
+        `<p class="route-path">${edge.from} → ${edge.to}</p><div class="route-meta"><span class="pill">${edge.relation}</span><span class="pill" data-uppercase="false">w=${edge.weight}</span></div>`
+      );
+
+      graphStatus.textContent = `Grafo listo con ${nodes.length} nodos y ${edges.length} relaciones.`;
+    } catch (error) {
+      graphStatus.textContent = `Fallo al generar grafo: ${String(error)}`;
+    }
+  });
+
+  debateForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const currentSagaId = sagaId.value.trim();
+    const topic = sagaTopic.value.trim();
+    if (!currentSagaId || !topic) {
+      debateStatus.textContent = 'Debes indicar saga_id y tema de debate.';
+      return;
+    }
+
+    debateStatus.textContent = 'Enviando debate de saga...';
+    const payload = {
+      topic,
+      note: sagaNote.value.trim(),
+      identity_name: sagaIdentity.value.trim() || 'System',
+      persist_memory: true,
+    };
+
+    try {
+      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(currentSagaId)}/debate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const data = await response.json();
+      debateStatus.textContent = data.debated
+        ? `Debate registrado. Saga: ${data.saga && data.saga.title ? data.saga.title : currentSagaId}`
+        : `No se pudo debatir: ${data.detail || 'saga no encontrada'}`;
+      graphJson.textContent = JSON.stringify(data, null, 2);
+    } catch (error) {
+      debateStatus.textContent = `Fallo al debatir saga: ${String(error)}`;
+    }
+  });
+})();
+</script>
+{% endblock %}
