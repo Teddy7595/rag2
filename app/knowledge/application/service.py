@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from app.core.events import EventBus
+from app.knowledge.application.context_pipeline import KnowledgeContextPipeline
 from app.knowledge.application.engram_directory import EngramDirectory
 from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
-from app.knowledge.domain import Identity
-from app.knowledge.application.ports import KnowledgeRepositoryPort
-from app.knowledge.domain import KnowledgeEntry
+from app.knowledge.domain import Identity, KnowledgeEntry
 from app.knowledge.events import (
+    ContextBuildRequest,
+    ContextRouteRequest,
     CurrentIdentityRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
@@ -17,16 +18,12 @@ from app.knowledge.events import (
     KnowledgeItemCreateRequest,
     KnowledgeItemsRequest,
     KnowledgeOverviewRequest,
+    PUBLISH_KNOWLEDGE_CONTEXT_PACKED,
+    PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT,
+    PUBLISH_KNOWLEDGE_CONTEXT_ROUTED,
     PUBLISH_KNOWLEDGE_ENGRAM_CHANGED,
     PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED,
     PUBLISH_KNOWLEDGE_ITEM_CREATED,
-    REQUEST_KNOWLEDGE_CURRENT_IDENTITY,
-    REQUEST_KNOWLEDGE_ENGRAM_CREATE,
-    REQUEST_KNOWLEDGE_ENGRAM_DELETE,
-    REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
-    REQUEST_KNOWLEDGE_ENGRAMS,
-    REQUEST_KNOWLEDGE_IDENTITY_HINTS,
-    REQUEST_KNOWLEDGE_IDENTITY_RESOLVE,
 )
 
 
@@ -42,6 +39,11 @@ class KnowledgeService:
         self.event_bus = event_bus
         self.engram_repository = engram_repository
         self.directory = directory or EngramDirectory()
+        self.context_pipeline = KnowledgeContextPipeline(
+            knowledge_repository=self.repository,
+            engram_repository=self.engram_repository,
+            directory=self.directory,
+        )
         self._engrams_loaded = False
 
     def overview(self, request: KnowledgeOverviewRequest) -> dict[str, object]:
@@ -183,6 +185,53 @@ class KnowledgeService:
                 metadata={"action": "deleted", "engram_id": request.engram_id},
             )
         return {"deleted": deleted, "engram_id": request.engram_id}
+
+    def route_context(self, request: ContextRouteRequest) -> dict[str, object]:
+        route = self.context_pipeline.route_query(request.raw_text, limit=request.limit)
+        payload = route.to_dict()
+        self.event_bus.publish(
+            PUBLISH_KNOWLEDGE_CONTEXT_ROUTED,
+            payload,
+            source_module="knowledge.application.service",
+            metadata={"intent": route.intent, "limit": route.limit},
+        )
+        return payload
+
+    def build_context_pack(self, request: ContextBuildRequest) -> dict[str, object]:
+        preview = self._build_context_preview(request)
+        payload = preview.context_pack.to_dict()
+        self.event_bus.publish(
+            PUBLISH_KNOWLEDGE_CONTEXT_PACKED,
+            payload,
+            source_module="knowledge.application.service",
+            metadata={
+                "intent": preview.route.intent,
+                "identity_name": preview.identity.name,
+                "knowledge_matches": len(preview.context_pack.knowledge_matches),
+                "engram_matches": len(preview.context_pack.engram_matches),
+            },
+        )
+        return payload
+
+    def build_prompt(self, request: ContextBuildRequest) -> dict[str, object]:
+        preview = self._build_context_preview(request)
+        payload = preview.to_dict()
+        self.event_bus.publish(
+            PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT,
+            payload,
+            source_module="knowledge.application.service",
+            metadata={"intent": preview.route.intent, "prompt_chars": len(preview.prompt)},
+        )
+        return payload
+
+    def _build_context_preview(self, request: ContextBuildRequest):
+        self._ensure_engrams_loaded()
+        return self.context_pipeline.build_preview(
+            request.raw_text,
+            limit=request.limit,
+            identity_id=request.identity_id,
+            history=request.history,
+        )
 
     def _ensure_engrams_loaded(self) -> None:
         if not self._engrams_loaded:

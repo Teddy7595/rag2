@@ -4,6 +4,8 @@ from pydantic import BaseModel, Field
 
 from app.core.app_context import get_app_context_from_request
 from app.knowledge.events import (
+    ContextBuildRequest,
+    ContextRouteRequest,
     CurrentIdentityRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
@@ -15,6 +17,9 @@ from app.knowledge.events import (
     KnowledgeItemsRequest,
     KnowledgeOverviewRequest,
     REQUEST_KNOWLEDGE_CURRENT_IDENTITY,
+    REQUEST_KNOWLEDGE_CONTEXT_PACK,
+    REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
+    REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
@@ -68,6 +73,13 @@ class KnowledgeEngramUpdateInput(BaseModel):
 class KnowledgeIdentityResolveInput(BaseModel):
     raw_text: str
     identity_id: str | None = None
+
+
+class KnowledgeContextInput(BaseModel):
+    raw_text: str
+    limit: int = 5
+    identity_id: str | None = None
+    history: str = ""
 
 
 router = APIRouter(prefix="/api/knowledge", tags=["knowledge"])
@@ -143,6 +155,46 @@ async def resolve_identity(request: Request, payload: KnowledgeIdentityResolveIn
     return context.event_bus.request(
         REQUEST_KNOWLEDGE_IDENTITY_RESOLVE,
         IdentityResolveRequest(raw_text=payload.raw_text, identity_id=payload.identity_id),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.get("/context/route")
+async def route_context(request: Request, raw_text: str, limit: int = 5) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
+        ContextRouteRequest(raw_text=raw_text, limit=limit),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.post("/context/pack")
+async def build_context_pack(request: Request, payload: KnowledgeContextInput) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_CONTEXT_PACK,
+        ContextBuildRequest(
+            raw_text=payload.raw_text,
+            limit=payload.limit,
+            identity_id=payload.identity_id,
+            history=payload.history,
+        ),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.post("/context/prompt")
+async def build_prompt(request: Request, payload: KnowledgeContextInput) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
+        ContextBuildRequest(
+            raw_text=payload.raw_text,
+            limit=payload.limit,
+            identity_id=payload.identity_id,
+            history=payload.history,
+        ),
         source_module="knowledge.adapters.api.routes",
     )
 

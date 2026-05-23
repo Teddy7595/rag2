@@ -84,6 +84,20 @@ class EngramHintsRequest:
     pass
 
 
+@dataclass(frozen=True)
+class ContextRouteRequest:
+    raw_text: str
+    limit: int = 5
+
+
+@dataclass(frozen=True)
+class ContextBuildRequest:
+    raw_text: str
+    limit: int = 5
+    identity_id: str | None = None
+    history: str = ""
+
+
 REQUEST_KNOWLEDGE_OVERVIEW = EventSpec[KnowledgeOverviewRequest, dict](
     name="knowledge.overview.request",
     kind=EventKind.REQUEST,
@@ -164,6 +178,30 @@ REQUEST_KNOWLEDGE_IDENTITY_HINTS = EventSpec[EngramHintsRequest, list](
     output_type=list,
 )
 
+REQUEST_KNOWLEDGE_CONTEXT_ROUTE = EventSpec[ContextRouteRequest, dict](
+    name="knowledge.context.route.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=ContextRouteRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_CONTEXT_PACK = EventSpec[ContextBuildRequest, dict](
+    name="knowledge.context.pack.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=ContextBuildRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_CONTEXT_PROMPT = EventSpec[ContextBuildRequest, dict](
+    name="knowledge.context.prompt.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=ContextBuildRequest,
+    output_type=dict,
+)
+
 PUBLISH_KNOWLEDGE_ITEM_CREATED = EventSpec[dict, dict](
     name="knowledge.item.created",
     kind=EventKind.PUBLISH,
@@ -188,12 +226,38 @@ PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED = EventSpec[dict, dict](
     output_type=dict,
 )
 
+PUBLISH_KNOWLEDGE_CONTEXT_ROUTED = EventSpec[dict, dict](
+    name="knowledge.context.routed",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
+PUBLISH_KNOWLEDGE_CONTEXT_PACKED = EventSpec[dict, dict](
+    name="knowledge.context.packed",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
+PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT = EventSpec[dict, dict](
+    name="knowledge.context.prompt.built",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
 
 __all__ = [
     "KnowledgeItemCreateRequest",
     "KnowledgeItemsRequest",
     "KnowledgeOverviewRequest",
     "CurrentIdentityRequest",
+    "ContextBuildRequest",
+    "ContextRouteRequest",
     "EngramCreateRequest",
     "EngramDeleteRequest",
     "EngramHintsRequest",
@@ -202,8 +266,14 @@ __all__ = [
     "IdentityResolveRequest",
     "PUBLISH_KNOWLEDGE_ITEM_CREATED",
     "PUBLISH_KNOWLEDGE_ENGRAM_CHANGED",
+    "PUBLISH_KNOWLEDGE_CONTEXT_PACKED",
+    "PUBLISH_KNOWLEDGE_CONTEXT_PROMPT_BUILT",
+    "PUBLISH_KNOWLEDGE_CONTEXT_ROUTED",
     "PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED",
     "REQUEST_KNOWLEDGE_CURRENT_IDENTITY",
+    "REQUEST_KNOWLEDGE_CONTEXT_PACK",
+    "REQUEST_KNOWLEDGE_CONTEXT_PROMPT",
+    "REQUEST_KNOWLEDGE_CONTEXT_ROUTE",
     "REQUEST_KNOWLEDGE_ENGRAM_CREATE",
     "REQUEST_KNOWLEDGE_ENGRAM_DELETE",
     "REQUEST_KNOWLEDGE_ENGRAM_UPDATE",

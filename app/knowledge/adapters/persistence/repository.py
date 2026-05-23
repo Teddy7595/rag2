@@ -19,6 +19,12 @@ class SqlAlchemyKnowledgeRepository(KnowledgeRepositoryPort):
             session.flush()
             return persisted.to_domain()
 
+    def list_all(self) -> list[KnowledgeEntry]:
+        with self.database.session_factory() as session:
+            statement = select(KnowledgeEntryRecord).order_by(KnowledgeEntryRecord.created_at.asc(), KnowledgeEntryRecord.id.asc())
+            records = session.scalars(statement).all()
+            return [record.to_domain() for record in records]
+
     def list_recent(self, limit: int = 20) -> list[KnowledgeEntry]:
         if limit <= 0:
             return []

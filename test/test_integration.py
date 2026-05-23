@@ -33,6 +33,9 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/messages",
         "/api/interaction/summary",
         "/api/knowledge/items",
+        "/api/knowledge/context/pack",
+        "/api/knowledge/context/prompt",
+        "/api/knowledge/context/route",
         "/api/knowledge/engrams",
         "/api/knowledge/engrams/{engram_id}",
         "/api/knowledge/overview",
@@ -105,6 +108,46 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert resolve_payload["identity"]["name"] == "Atlas"
         assert "@Atlas" not in resolve_payload["resolved_text"]
 
+        route_response = client.get(
+            "/api/knowledge/context/route",
+            params={"raw_text": "@Atlas resume el conocimiento base", "limit": 5},
+        )
+        assert route_response.status_code == 200
+        route_payload = route_response.json()
+        assert route_payload["intent"] == "mixed"
+        assert route_payload["include_source_types"] is None
+        assert "Atlas" in route_payload["identity_mentions"]
+
+        pack_response = client.post(
+            "/api/knowledge/context/pack",
+            json={
+                "raw_text": "@Atlas resume el conocimiento base",
+                "limit": 5,
+                "identity_id": None,
+                "history": "user: revisa el contexto",
+            },
+        )
+        assert pack_response.status_code == 200
+        pack_payload = pack_response.json()
+        assert pack_payload["identity"]["name"] == "Atlas"
+        assert "Primer conocimiento" in pack_payload["context_text"]
+        assert "Atlas" in pack_payload["context_text"]
+
+        prompt_response = client.post(
+            "/api/knowledge/context/prompt",
+            json={
+                "raw_text": "@Atlas resume el conocimiento base",
+                "limit": 5,
+                "identity_id": None,
+                "history": "user: revisa el contexto",
+            },
+        )
+        assert prompt_response.status_code == 200
+        prompt_payload = prompt_response.json()
+        assert prompt_payload["identity"]["name"] == "Atlas"
+        assert "Primer conocimiento" in prompt_payload["prompt"]
+        assert "Atlas" in prompt_payload["prompt"]
+
         current_identity_response = client.get("/api/knowledge/identity/current")
         assert current_identity_response.status_code == 200
         assert current_identity_response.json()["name"] == "Atlas"
@@ -116,11 +159,14 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         status_response = client.get("/api/operations/status", params={"limit": 10})
         assert status_response.status_code == 200
         status_payload = status_response.json()
-        assert status_payload["captured_events"] >= 5
+        assert status_payload["captured_events"] >= 8
         assert status_payload["event_counts"]["knowledge.item.created"] >= 1
         assert status_payload["event_counts"]["interaction.message.recorded"] >= 1
         assert status_payload["event_counts"]["knowledge.engram.changed"] >= 2
         assert status_payload["event_counts"]["knowledge.identity.resolved"] >= 1
+        assert status_payload["event_counts"]["knowledge.context.routed"] >= 1
+        assert status_payload["event_counts"]["knowledge.context.packed"] >= 1
+        assert status_payload["event_counts"]["knowledge.context.prompt.built"] >= 1
 
     app_again = build_test_app(tmp_path, monkeypatch)
 
@@ -132,6 +178,24 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         engrams_response = client_again.get("/api/knowledge/engrams", params={"limit": 10})
         assert engrams_response.status_code == 200
         assert any(item["name"] == "Atlas" for item in engrams_response.json())
+
+        route_again = client_again.get(
+            "/api/knowledge/context/route",
+            params={"raw_text": "@Atlas resume el conocimiento base", "limit": 5},
+        )
+        assert route_again.status_code == 200
+
+        prompt_again = client_again.post(
+            "/api/knowledge/context/prompt",
+            json={
+                "raw_text": "@Atlas resume el conocimiento base",
+                "limit": 5,
+                "identity_id": None,
+                "history": "user: revisa el contexto",
+            },
+        )
+        assert prompt_again.status_code == 200
+        assert "Primer conocimiento" in prompt_again.json()["prompt"]
 
         current_identity_again = client_again.get("/api/knowledge/identity/current")
         assert current_identity_again.status_code == 200
