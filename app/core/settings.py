@@ -117,6 +117,7 @@ class AppSettings:
     conversation_sanitize_enabled: bool
     conversation_timeout_enabled: bool
     conversation_telemetry_enabled: bool
+    conversation_debug_trace_enabled: bool
     conversation_deadline_scale_percent: int
     conversation_intent_bundle_id: str | None
     conversation_intent_max_tokens: int
@@ -164,6 +165,7 @@ def load_settings(project_root: Path) -> AppSettings:
         conversation_sanitize_enabled=_read_bool_env("APP_CONVERSATION_SANITIZE_ENABLED", default=True),
         conversation_timeout_enabled=_read_bool_env("APP_CONVERSATION_TIMEOUT_ENABLED", default=True),
         conversation_telemetry_enabled=_read_bool_env("APP_CONVERSATION_TELEMETRY_ENABLED", default=True),
+        conversation_debug_trace_enabled=_read_bool_env("APP_CONVERSATION_DEBUG_TRACE_ENABLED", default=False),
         conversation_deadline_scale_percent=max(10, min(500, _read_int_env("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", 100))),
         conversation_intent_bundle_id=(_read_env("APP_CONVERSATION_INTENT_BUNDLE_ID", "") or None),
         conversation_intent_max_tokens=max(4, min(16, _read_int_env("APP_CONVERSATION_INTENT_MAX_TOKENS", 8))),

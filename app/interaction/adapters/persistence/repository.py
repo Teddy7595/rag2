@@ -303,6 +303,10 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                     "response_too_long": bool(quality.get("response_too_long")),
                     "deadline_ms": int(quality.get("deadline_ms") or 0),
                     "elapsed_ms": int(quality.get("elapsed_ms") or 0),
+                    "intent": str(quality.get("intent") or ""),
+                    "non_rag_mode": bool(quality.get("non_rag_mode")),
+                    "guard_path": str(quality.get("guard_path") or ""),
+                    "instruction_echo_stripped": bool(quality.get("instruction_echo_stripped")),
                 }
                 payload.append(
                     {
@@ -358,6 +362,10 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                 "response_too_long": bool(quality.get("response_too_long")),
                 "deadline_ms": int(quality.get("deadline_ms") or 0),
                 "elapsed_ms": int(quality.get("elapsed_ms") or 0),
+                "intent": str(quality.get("intent") or ""),
+                "non_rag_mode": bool(quality.get("non_rag_mode")),
+                "guard_path": str(quality.get("guard_path") or ""),
+                "instruction_echo_stripped": bool(quality.get("instruction_echo_stripped")),
             }
 
             rows.append(

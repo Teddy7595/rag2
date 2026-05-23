@@ -75,6 +75,7 @@ def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) 
     monkeypatch.setenv("APP_CONVERSATION_SANITIZE_ENABLED", "true")
     monkeypatch.setenv("APP_CONVERSATION_TIMEOUT_ENABLED", "false")
     monkeypatch.setenv("APP_CONVERSATION_TELEMETRY_ENABLED", "false")
+    monkeypatch.setenv("APP_CONVERSATION_DEBUG_TRACE_ENABLED", "true")
     monkeypatch.setenv("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", "175")
     monkeypatch.setenv("APP_CONVERSATION_INTENT_BUNDLE_ID", "intent-small")
     monkeypatch.setenv("APP_CONVERSATION_INTENT_MAX_TOKENS", "6")
@@ -84,6 +85,7 @@ def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) 
     assert settings.conversation_sanitize_enabled is True
     assert settings.conversation_timeout_enabled is False
     assert settings.conversation_telemetry_enabled is False
+    assert settings.conversation_debug_trace_enabled is True
     assert settings.conversation_deadline_scale_percent == 175
     assert settings.conversation_intent_bundle_id == "intent-small"
     assert settings.conversation_intent_max_tokens == 6

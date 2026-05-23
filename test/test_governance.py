@@ -4,6 +4,7 @@ from app.interaction.application.governance import (
     build_turn_policy,
     classify_intent,
     dedupe_rule_lines,
+    instruction_echo_prefix_detected,
     sanitize_generated_reply,
     sanitize_history_content,
 )
@@ -50,6 +51,18 @@ def test_sanitize_generated_reply_removes_quoted_transcript_leaks() -> None:
     assert sanitize_generated_reply(noisy) == ""
 
 
+def test_sanitize_generated_reply_strips_meta_instruction_prefix() -> None:
+    noisy = "Solo enfoca la respuesta al usuario. ¿Te refieres a mis historias? Puedo aclararlo en corto."
+    cleaned = sanitize_generated_reply(noisy)
+    assert cleaned.startswith("¿Te refieres a mis historias?")
+    assert "solo enfoca la respuesta" not in cleaned.lower()
+
+
+def test_instruction_echo_prefix_detected_matches_known_pattern() -> None:
+    assert instruction_echo_prefix_detected("Coloca la respuesta en un solo bloque de texto sin separaciones. Si, es cierto.") is True
+    assert instruction_echo_prefix_detected("Si, es cierto.") is False
+
+
 def test_sanitize_history_content_masks_internal_reasoning() -> None:
     masked = sanitize_history_content("1. **Analyze the Request:** user input")
     assert "omitida por seguridad" in masked
@@ -74,5 +87,6 @@ def test_classify_intent_detects_conversational_queries() -> None:
 def test_build_turn_policy_for_conversational_queries() -> None:
     policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
     assert policy.intent == "conversational"
-    assert policy.max_tokens >= 200
+    assert policy.max_tokens <= 180
     assert policy.deadline_ms >= 2400
+    assert policy.prefer_short is True

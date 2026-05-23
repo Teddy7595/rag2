@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import logging
 import re
 import time
 from typing import AsyncIterator
@@ -11,6 +12,7 @@ from app.interaction.application.governance import (
     build_turn_policy,
     compact_context_for_prompt,
     dedupe_rule_lines,
+    instruction_echo_prefix_detected,
     is_identity_question,
     is_simple_greeting,
     looks_like_internal_reasoning,
@@ -32,6 +34,9 @@ from app.knowledge.events import ContextBuildRequest, CurrentIdentityRequest, RE
 from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
 from app.models.runtime_service import LocalInferenceService
 from app.models.events import ModelTextGenerationRequest, REQUEST_MODEL_TEXT_GENERATION
+
+
+logger = logging.getLogger(__name__)
 
 
 def _message_role(author: str, channel: str) -> str:
@@ -87,14 +92,14 @@ def _choose_conversational_fallback(user_text: str, identity_name: str, *, repea
     normalized = re.sub(r"\s+", " ", user_text.lower()).strip()
     tone_index = sum(ord(char) for char in normalized) % 3 if normalized else 0
     variants = [
-        f"Te sigo. Voy directo: {identity_name} responde sin rodeos. Si quieres, te contesto más natural y sobre lo que te preocupa de verdad.",
-        f"Vale, te leo. Soy {identity_name}. Te respondo en corto y más humano: dime qué parte te interesa y la aterrizo.",
-        f"Vamos por una respuesta más clara. {identity_name} te sigue el hilo: si quieres, cambio el tono y vamos punto por punto.",
+        f"Soy {identity_name}. Te respondo directo y corto: hazme la pregunta concreta y voy al punto.",
+        f"Soy {identity_name}. Vamos sin rodeos: dime exactamente qué quieres resolver y te doy una respuesta clara.",
+        f"Soy {identity_name}. Puedo responderte en 2-3 lineas, sin plantilla ni relleno. Dispara tu pregunta puntual.",
     ]
     repeat_variants = [
-        f"Te sigo. Cambio el enfoque: {identity_name} va más directo ahora. Si quieres, lo hablamos sin formalidad y sin meter contexto interno.",
-        f"Entendido. {identity_name} responde de forma más natural: dime qué te molesta o qué quieres resolver y voy al grano.",
-        f"Sí, te leo. {identity_name} se pone más claro: pregunta concreta, respuesta concreta.",
+        f"Soy {identity_name}. Cambio de enfoque: respuesta breve, directa y sin vueltas.",
+        f"Soy {identity_name}. Entendido: voy al grano en la siguiente respuesta.",
+        f"Soy {identity_name}. Queda claro: pregunta puntual, respuesta puntual.",
     ]
     pool = repeat_variants if repeat_variant else variants
     return pool[tone_index % len(pool)]
@@ -255,10 +260,23 @@ class RealtimeChatService:
             "sanitize_enabled": bool(getattr(settings, "conversation_sanitize_enabled", True)),
             "timeout_enabled": bool(getattr(settings, "conversation_timeout_enabled", True)),
             "telemetry_enabled": bool(getattr(settings, "conversation_telemetry_enabled", True)),
+            "debug_trace_enabled": bool(getattr(settings, "conversation_debug_trace_enabled", False)),
             "deadline_scale_percent": int(getattr(settings, "conversation_deadline_scale_percent", 100) or 100),
             "intent_bundle_id": str(getattr(settings, "conversation_intent_bundle_id", "") or "").strip(),
             "intent_max_tokens": int(getattr(settings, "conversation_intent_max_tokens", 8) or 8),
         }
+
+    def _debug_turn(self, enabled: bool, step: str, *, session_id: str, turn_id: str = "", payload: dict[str, object] | None = None) -> None:
+        if not enabled:
+            return
+        data = payload or {}
+        logger.info(
+            "[realtime-trace] session=%s turn=%s step=%s payload=%s",
+            session_id,
+            turn_id,
+            step,
+            data,
+        )
 
     def _intent_hint(self, user_text: str) -> str | None:
         runtime = self.embedding_runtime
@@ -414,6 +432,15 @@ class RealtimeChatService:
 
     def build_turn(self, session_id: str, input_data: InteractionRealtimeInput) -> RealtimeTurnResult:
         turn_id = str(uuid4())
+        rollout = self._rollout_flags()
+        debug_trace_enabled = bool(rollout.get("debug_trace_enabled"))
+        self._debug_turn(
+            debug_trace_enabled,
+            "turn.start",
+            session_id=session_id,
+            turn_id=turn_id,
+            payload={"author": input_data.author, "channel": input_data.channel, "content_chars": len(input_data.content or "")},
+        )
         history_messages = self.interaction_service.list_session_messages(
             InteractionSessionRequest(session_id=session_id, limit=input_data.history_limit)
         )
@@ -432,6 +459,17 @@ class RealtimeChatService:
                 history=history_text,
             ),
             source_module="interaction.application.realtime",
+        )
+        self._debug_turn(
+            debug_trace_enabled,
+            "turn.context_preview",
+            session_id=session_id,
+            turn_id=turn_id,
+            payload={
+                "identity": str((context_preview.get("identity") or {}).get("name") or ""),
+                "knowledge_matches": len(list((context_preview.get("context_pack") or {}).get("knowledge_matches") or [])),
+                "engram_matches": len(list((context_preview.get("context_pack") or {}).get("engram_matches") or [])),
+            },
         )
 
         identity = context_preview["identity"]
@@ -461,6 +499,22 @@ class RealtimeChatService:
             world_rules=world_rules,
             history_messages=history_messages,
             session_id=session_id,
+        )
+        self._debug_turn(
+            debug_trace_enabled,
+            "turn.reply_ready",
+            session_id=session_id,
+            turn_id=turn_id,
+            payload={
+                "intent": str(quality_flags.get("intent") or ""),
+                "non_rag_mode": bool(quality_flags.get("non_rag_mode")),
+                "guard_path": str(quality_flags.get("guard_path") or ""),
+                "instruction_echo_stripped": bool(quality_flags.get("instruction_echo_stripped")),
+                "fallback_used": bool(quality_flags.get("fallback_used")),
+                "timeout_hit": bool(quality_flags.get("timeout_hit")),
+                "elapsed_ms": int(quality_flags.get("elapsed_ms") or 0),
+                "reply_chars": len(assistant_reply or ""),
+            },
         )
         assistant_author = str(identity.get("name") or "assistant")
         assistant_message = self.interaction_service.record_message(
@@ -618,6 +672,10 @@ class RealtimeChatService:
                 "response_too_long": bool(quality_flags.get("response_too_long")),
                 "deadline_ms": int(quality_flags.get("deadline_ms") or 0),
                 "elapsed_ms": int(quality_flags.get("elapsed_ms") or 0),
+                "intent": str(quality_flags.get("intent") or ""),
+                "non_rag_mode": bool(quality_flags.get("non_rag_mode")),
+                "guard_path": str(quality_flags.get("guard_path") or ""),
+                "instruction_echo_stripped": bool(quality_flags.get("instruction_echo_stripped")),
             }
         repository.save_turn_metric(
             turn_id=turn_id,
@@ -670,7 +728,9 @@ class RealtimeChatService:
         route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
 
         identity_id = str(identity.get("id") or "").strip().upper()
-        has_custom_engram = identity_id not in {"", "DEFAULT", "SETUP", "ERR"}
+        identity_name_normalized = re.sub(r"\s+", " ", identity_name.strip().lower())
+        is_default_identity_name = identity_name_normalized in {"asistente base", "assistant base", "default assistant"}
+        has_custom_engram = (identity_id not in {"", "DEFAULT", "SETUP", "ERR"}) and not is_default_identity_name
         rollout = self._rollout_flags()
         guard_enabled = bool(rollout["guard_enabled"])
         sanitize_enabled = bool(rollout["sanitize_enabled"])
@@ -684,7 +744,7 @@ class RealtimeChatService:
             intent_hint=intent_hint,
             embedding_runtime=self.embedding_runtime,
         )
-        conversational_mode = policy.intent == "conversational"
+        conversational_mode = policy.intent in {"greeting", "identity", "conversational"}
 
         if conversational_mode:
             knowledge_matches = []
@@ -728,7 +788,7 @@ class RealtimeChatService:
 
         prompt_sections = [
             f"Identidad activa: {identity_name}.",
-            "Responde en espanol, de forma clara y concisa.",
+            "Estilo objetivo (interno, no repetir): espanol claro y conciso.",
             f"Mensaje del usuario: {input_data.content.strip()}",
             f"Idea principal: {main_idea}",
         ]
@@ -752,16 +812,16 @@ class RealtimeChatService:
                 )
             )
         if conversational_mode:
-            prompt_sections.append("Tono conversacional: responde natural, cercano y sin sonar mecanico.")
-            prompt_sections.append("Si el usuario habla de ti, de tu tono o de cómo sigues, responde en primera persona de forma breve y humana.")
-            prompt_sections.append("No menciones contexto recuperado, etiquetas internas, ni nombres de documentos o rutas.")
+            prompt_sections.append("Tono conversacional (interno, no repetir): natural, cercano y sin sonar mecanico.")
+            prompt_sections.append("Regla interna (no repetir): si el usuario habla de ti o de tu tono, responde en primera persona breve y humana.")
+            prompt_sections.append("Regla interna (no repetir): no mencionar contexto recuperado, etiquetas internas ni nombres de documentos o rutas.")
         else:
-            prompt_sections.append("Responde al usuario de forma directa, breve y util en espanol.")
+            prompt_sections.append("Estilo de salida (interno, no repetir): respuesta directa, breve y util en espanol.")
             prompt_sections.append(
-                "No muestres analisis interno, listas de planificacion, ni encabezados tecnicos como "
+                "Regla interna (no repetir): no mostrar analisis interno, listas de planificacion ni encabezados tecnicos como "
                 "[CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS]."
             )
-            prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
+            prompt_sections.append("Regla interna (no repetir): responder como el asistente activo sin detalles internos del runtime.")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
 
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
@@ -776,11 +836,17 @@ class RealtimeChatService:
             "deadline_ms": scaled_deadline_ms,
             "elapsed_ms": 0,
             "telemetry_enabled": telemetry_enabled,
+            "intent": policy.intent,
+            "non_rag_mode": conversational_mode,
+            "guard_path": "",
+            "instruction_echo_stripped": False,
         }
 
-        if guard_enabled and is_simple_greeting(input_data.content):
+        if guard_enabled and is_simple_greeting(input_data.content) and not has_custom_engram:
+            quality_flags["guard_path"] = "greeting_guard_default"
             return f"Hola, soy {identity_name}. En que te ayudo hoy?", quality_flags
-        if guard_enabled and is_identity_question(input_data.content):
+        if guard_enabled and is_identity_question(input_data.content) and not has_custom_engram:
+            quality_flags["guard_path"] = "identity_guard_default"
             return (
                 f"Si, soy {identity_name}, tu asistente activo en este chat. Puedo ayudarte con dudas tecnicas, RAG y tareas operativas.",
                 quality_flags,
@@ -822,8 +888,28 @@ class RealtimeChatService:
             quality_flags["elapsed_ms"] = elapsed_ms
             if timeout_enabled and elapsed_ms > scaled_deadline_ms:
                 quality_flags["timeout_hit"] = True
+            content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
+            if guard_enabled and content and looks_like_internal_reasoning(content):
+                quality_flags["leak_detected"] = True
+            if content and instruction_echo_prefix_detected(content):
+                quality_flags["instruction_echo_stripped"] = True
+            max_chars_budget = 280 if policy.prefer_short else 1200
+            if len(content) > max_chars_budget:
+                quality_flags["response_too_long"] = True
+            sanitized = sanitize_generated_reply(content, prefer_short=policy.prefer_short) if sanitize_enabled else content
+            if conversational_mode and sanitized:
+                compact = re.sub(r"\s+", " ", sanitized).strip()
+                sentences = re.split(r"(?<=[.!?])\s+", compact)
+                sanitized = " ".join(part for part in sentences[:2] if part).strip()
+            if guard_enabled and content and not sanitized:
+                quality_flags["guard_triggered"] = True
+                quality_flags["guard_path"] = "sanitizer_blocked"
+            if isinstance(generated, dict) and generated.get("ok") and sanitized:
+                return sanitized, quality_flags
+            if timeout_enabled and quality_flags["timeout_hit"] and elapsed_ms > int(scaled_deadline_ms * 2.5):
                 quality_flags["guard_triggered"] = True
                 quality_flags["fallback_used"] = True
+                quality_flags["guard_path"] = "timeout_fallback_hard"
                 return (
                     self._avoid_repetitive_fallback(
                         fallback_reply,
@@ -835,21 +921,12 @@ class RealtimeChatService:
                     ),
                     quality_flags,
                 )
-            content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
-            if guard_enabled and content and looks_like_internal_reasoning(content):
-                quality_flags["leak_detected"] = True
-            max_chars_budget = 280 if policy.prefer_short else 1200
-            if len(content) > max_chars_budget:
-                quality_flags["response_too_long"] = True
-            sanitized = sanitize_generated_reply(content, prefer_short=policy.prefer_short) if sanitize_enabled else content
-            if guard_enabled and content and not sanitized:
-                quality_flags["guard_triggered"] = True
-            if isinstance(generated, dict) and generated.get("ok") and sanitized:
-                return sanitized, quality_flags
         except Exception:
             pass
 
         quality_flags["fallback_used"] = True
+        if not str(quality_flags.get("guard_path") or ""):
+            quality_flags["guard_path"] = "generic_fallback"
         return (
             self._avoid_repetitive_fallback(
                 fallback_reply,

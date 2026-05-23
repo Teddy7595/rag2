@@ -95,6 +95,18 @@ def _base_context_preview() -> dict[str, object]:
     }
 
 
+def _custom_engram_context_preview() -> dict[str, object]:
+    payload = _base_context_preview()
+    payload["identity"] = {
+        "id": "ENGRAM-ATLAS",
+        "name": "Mistress Keynes",
+        "behavior_prompt": "Responde con elegancia, seguridad y tono estrategico.",
+        "meta_rule": "- Mantener voz distintiva del engrama.",
+        "intellectual_profile": "Operadora tactica",
+    }
+    return payload
+
+
 def test_compose_reply_conversational_bypasses_rag_heavy_prompt() -> None:
     event_bus = FakeEventBus({"ok": True, "content": "Respuesta conversacional"})
     service = RealtimeChatService(
@@ -184,7 +196,76 @@ def test_compose_reply_chatty_query_uses_conversational_fallback_without_interna
     assert quality["fallback_used"] is True
     assert "smoke-doc" not in reply
     assert "contexto" not in reply.lower()
-    assert "Te sigo" in reply or "Vale, te leo" in reply or "Vamos por una respuesta" in reply
+    assert "Soy Asistente Base" in reply
+    assert "sin plantilla" in reply.lower() or "sin rodeos" in reply.lower() or "directo" in reply.lower()
+
+
+def test_compose_reply_typoed_greeting_never_uses_smoke_doc_fallback(monkeypatch) -> None:
+    event_bus = FakeEventBus({"ok": True, "content": ""})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=10),
+    )
+
+    ticks = iter([32.0, 32.03])
+    monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Hola srta Keynes ¿Como ha estdo?"),
+        _base_context_preview(),
+        session_id="session-typo-greeting",
+    )
+
+    assert quality["fallback_used"] in {False, True}
+    assert "smoke-doc" not in reply
+    assert "punto principal" not in reply.lower()
+    assert "contexto" not in reply.lower()
+    assert "Soy Asistente Base" in reply or "Hola" in reply
+
+
+def test_custom_engram_greeting_uses_model_generation_not_default_guard() -> None:
+    event_bus = FakeEventBus({"ok": True, "content": "Buenas, soy Mistress Keynes. Estoy lista."})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=100),
+    )
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Hola Keynes, como sigues?"),
+        _custom_engram_context_preview(),
+        session_id="session-custom-engram-greeting",
+    )
+
+    assert reply == "Buenas, soy Mistress Keynes. Estoy lista."
+    assert quality["fallback_used"] is False
+    assert quality["guard_path"] == ""
+    assert "Instruccion de comportamiento del engrama" in event_bus.last_prompt
+
+
+def test_compose_reply_sets_instruction_echo_flag_when_prefix_is_stripped() -> None:
+    event_bus = FakeEventBus(
+        {
+            "ok": True,
+            "content": "Solo enfoca la respuesta al usuario. Si, es cierto y te respondo directo.",
+        }
+    )
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=100),
+    )
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Responde claro"),
+        _custom_engram_context_preview(),
+        session_id="session-instruction-echo",
+    )
+
+    assert quality["instruction_echo_stripped"] is True
+    assert reply.lower().startswith("si, es cierto")
+    assert "solo enfoca" not in reply.lower()
 
 
 def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch) -> None:
@@ -217,7 +298,7 @@ def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch
 
 
 def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypatch) -> None:
-    event_bus = FakeEventBus({"ok": True, "content": "contenido cualquiera"})
+    event_bus = FakeEventBus({"ok": True, "content": ""})
     service = RealtimeChatService(
         event_bus=event_bus,
         interaction_service=FakeInteractionService(repository=FakeRepository()),

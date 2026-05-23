@@ -172,9 +172,21 @@
         metrics || [],
         (metric) => {
           const secondary = Array.isArray(metric.secondary_topics) ? metric.secondary_topics.join(', ') : '';
+          const quality = metric.quality_flags || {};
+          const intent = String(quality.intent || '-');
+          const guardPath = String(quality.guard_path || '-');
+          const nonRag = quality.non_rag_mode ? 'on' : 'off';
+          const instructionEcho = quality.instruction_echo_stripped ? 'yes' : 'no';
+          const elapsed = Number(quality.elapsed_ms || 0);
+          const deadline = Number(quality.deadline_ms || 0);
           return `<p class="route-path">${metric.turn_id || '-'} · score=${metric.coherence_score ?? '-'}</p>` +
             `<div class="route-meta"><span class="pill" data-uppercase="false">primary: ${metric.primary_topic || '-'}</span>` +
-            `<span class="pill" data-uppercase="false">secondary: ${secondary || '-'}</span></div>`;
+            `<span class="pill" data-uppercase="false">secondary: ${secondary || '-'}</span>` +
+            `<span class="pill" data-uppercase="false">intent: ${intent}</span>` +
+            `<span class="pill" data-uppercase="false">non-rag: ${nonRag}</span>` +
+            `<span class="pill" data-uppercase="false">guard: ${guardPath}</span>` +
+            `<span class="pill" data-uppercase="false">instruction-echo: ${instructionEcho}</span>` +
+            `<span class="pill" data-uppercase="false">latency: ${elapsed}/${deadline}ms</span></div>`;
         }
       );
 

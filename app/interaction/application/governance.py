@@ -80,11 +80,11 @@ def build_turn_policy(
     if intent == "conversational":
         return ConversationTurnPolicy(
             intent=intent,
-            max_tokens=260 if has_custom_engram else 220,
+            max_tokens=180 if has_custom_engram else 160,
             temperature=0.35 if has_custom_engram else 0.25,
             top_p=0.95,
-            deadline_ms=2600,
-            prefer_short=False,
+            deadline_ms=2800,
+            prefer_short=True,
         )
     if intent == "technical":
         return ConversationTurnPolicy(
@@ -142,6 +142,8 @@ def classify_intent(text: str, *, embedding_runtime: SemanticEmbeddingRuntime | 
 
 def is_conversational_query(text: str) -> bool:
     lowered = re.sub(r"\s+", " ", text.lower()).strip()
+    lowered_compact = re.sub(r"[^a-z0-9áéíóúñ\s]", " ", lowered)
+    lowered_compact = re.sub(r"\s+", " ", lowered_compact).strip()
     markers = (
         "que piensas",
         "que opinas",
@@ -183,7 +185,16 @@ def is_conversational_query(text: str) -> bool:
         "serio",
         "robot",
     )
-    return any(marker in lowered for marker in markers)
+    if any(marker in lowered for marker in markers):
+        return True
+
+    # Handle common typo variants in casual conversational prompts.
+    conversational_patterns = (
+        r"\bcomo\s+ha\s+est",
+        r"\bcomo\s+est(?:a|as|an|do|toy)\b",
+        r"\bque\s+tal\b",
+    )
+    return any(re.search(pattern, lowered_compact) for pattern in conversational_patterns)
 
 
 def dedupe_rule_lines(raw: str, *, max_lines: int = 10) -> str:
@@ -242,6 +253,14 @@ def is_simple_greeting(text: str) -> bool:
         "tal",
     }
     if len(tokens) > 4:
+        greeting_openers = {"hola", "holi", "hello", "hi", "hey", "buenas", "buenos"}
+        technical_tokens = {"error", "bug", "api", "sql", "db", "websocket", "endpoint"}
+        if tokens[0] not in greeting_openers:
+            return False
+        if any(token in technical_tokens for token in tokens):
+            return False
+        if len(tokens) <= 9 and any(token in {"como", "que", "tal", "estas", "estdo", "sigues"} for token in tokens):
+            return True
         return False
     non_greeting = [token for token in tokens if token not in greeting_tokens]
     return len(non_greeting) <= 1 and any(token in greeting_tokens for token in tokens)
@@ -271,6 +290,16 @@ def looks_like_internal_reasoning(text: str) -> bool:
         "idea principal",
         "coincidencias relevantes",
         "responde al usuario de forma directa",
+        "solo muestra la respuesta final",
+        "respuesta final y humana",
+        "mensaje del usuario:",
+        "identidad activa:",
+        "ideas secundarias:",
+        "perfil intelectual del engrama:",
+        "instruccion de comportamiento del engrama:",
+        "meta-regla del engrama:",
+        "reglas del mundo activas para esta sesion:",
+        "tono conversacional:",
     )
     if any(marker in lower for marker in markers):
         return True
@@ -321,6 +350,12 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
     if not result:
         return ""
 
+    # Models can echo prompt directives first (e.g., "Solo enfoca la respuesta...").
+    # Strip that leading meta-instruction sentence when detected.
+    result = _strip_instruction_echo_prefix(result)
+    if not result:
+        return ""
+
     if len(result) > max_chars:
         result = result[:max_chars].rstrip() + "..."
 
@@ -328,3 +363,37 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
         result = result[:280].rstrip() + "..."
 
     return result
+
+
+def _strip_instruction_echo_prefix(text: str) -> str:
+    compact = re.sub(r"\s+", " ", text).strip().strip('"\'` ')
+    if not compact:
+        return ""
+
+    sentences = [part.strip() for part in re.split(r"(?<=[.!?])\s+", compact) if part.strip()]
+    if not sentences:
+        return compact
+
+    first = sentences[0].strip().strip('"\'` ')
+    if not instruction_echo_prefix_detected(first):
+        return compact
+
+    remainder = " ".join(sentences[1:]).strip()
+    if remainder:
+        return remainder
+    return ""
+
+
+def instruction_echo_prefix_detected(text: str) -> bool:
+    compact = re.sub(r"\s+", " ", text).strip().strip('"\'` ')
+    if not compact:
+        return False
+    first_sentence = re.split(r"(?<=[.!?])\s+", compact, maxsplit=1)[0].strip().strip('"\'` ')
+    first_low = first_sentence.lower()
+    instruction_echo_patterns = (
+        r"\bsolo\s+(enfoca|muestra|coloca)\b.*\b(respuesta|usuario|bloque|texto)\b",
+        r"\b(enfoca(?:te)?|enf[oó]cate|coloca|pon|escribe|redacta|responde|contesta)\b.*\b(respuesta|usuario|tono|bloque|texto|separaciones)\b",
+        r"\ben\s+un\s+solo\s+bloque\s+de\s+texto\b",
+        r"\bno\s+separaciones\b",
+    )
+    return any(re.search(pattern, first_low) for pattern in instruction_echo_patterns)
