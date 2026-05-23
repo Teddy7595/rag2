@@ -51,6 +51,26 @@
     font-weight: 700;
     white-space: nowrap;
   }
+  .chat-session-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 0.78rem;
+    color: #cbd5e1;
+    background: rgba(2, 6, 23, 0.5);
+  }
+  .chat-session-copy {
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 999px;
+    background: rgba(2, 6, 23, 0.5);
+    color: #cbd5e1;
+    padding: 6px 10px;
+    cursor: pointer;
+    font-size: 0.74rem;
+  }
   .chat-status[data-tone="warn"] {
     color: #fde68a;
     border-color: rgba(245, 158, 11, 0.22);
@@ -198,6 +218,17 @@
     gap: 12px;
     align-items: center;
   }
+  .chat-world-rules {
+    width: 100%;
+    min-height: 76px;
+    resize: vertical;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 14px;
+    background: rgba(2, 6, 23, 0.72);
+    color: #f8fafc;
+    padding: 12px;
+    font: inherit;
+  }
   .chat-help {
     font-size: 0.82rem;
     color: #94a3b8;
@@ -271,16 +302,22 @@
     <div class="chat-header-top">
       <div>
         <p class="eyebrow">{{ eyebrow }}</p>
-        <h1 class="chat-title">{{ headline }}</h1>
+        <h1 class="chat-title" id="chat-title">{{ headline }}</h1>
         <p class="description">{{ description }}</p>
       </div>
-      <span class="chat-status" data-runtime-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}" data-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}">
-        {% if runtime.local_text_ready %}
-        runtime local listo
-        {% else %}
-        runtime local pendiente
-        {% endif %}
-      </span>
+      <div style="display:grid; gap:10px;">
+        <span class="chat-status" data-runtime-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}" data-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}">
+          {% if runtime.local_text_ready %}
+          runtime local listo
+          {% else %}
+          runtime local pendiente
+          {% endif %}
+        </span>
+        <div class="chat-session-badge">
+          <span id="chat-session-id">session: pendiente</span>
+          <button type="button" id="chat-session-copy" class="chat-session-copy">copiar</button>
+        </div>
+      </div>
     </div>
     <div class="chat-kpis">
       <article class="chat-kpi">
@@ -313,8 +350,10 @@
       <span class="chat-chip">Contexto por knowledge</span>
       <span class="chat-chip">Futuro runtime local llama.cpp</span>
       <a class="chat-chip" id="chat-session-intel-link" href="/admin/session-intel">Monitor de sesion</a>
+      <a class="chat-chip" href="/admin/engrams">Engramas</a>
     </div>
     <form class="chat-form" id="chat-form">
+      <textarea id="chat-world-rules" class="chat-world-rules" placeholder="Condiciones de conversacion / reglas del mundo para esta sala."></textarea>
       <div class="chat-vision-panel">
         <span class="chat-help">Analisis de imagen local: sube una imagen y se enviara al runtime de vision seleccionado.</span>
         <input id="chat-image-file" class="chat-upload" type="file" accept="image/*">
@@ -322,9 +361,13 @@
         <textarea id="chat-vision-prompt" class="chat-input" style="min-height: 84px;" placeholder="Prompt opcional para vision. Ej: describe la escena y el texto visible.">Describe la imagen en espanol con foco en sujetos, objetos, texto visible y contexto.</textarea>
         <button type="button" class="chat-send" id="chat-vision-send">Analizar imagen</button>
       </div>
+      <div class="chat-vision-panel">
+        <span class="chat-help">Assets de sala: sube archivos que se guardan en .vault/uploads/chats/&lt;session_id&gt; con su nombre original.</span>
+        <input id="chat-asset-file" class="chat-upload" type="file">
+      </div>
       <textarea id="chat-input" class="chat-input" placeholder="Escribe un mensaje. Ej: Atlas resume el contexto actual y prepara el siguiente paso."></textarea>
       <div class="chat-actions">
-        <span class="chat-help" id="chat-help">Sesion realtime iniciando...</span>
+        <span class="chat-help" id="chat-help">Sesion realtime iniciando... Usa /help para comandos.</span>
         <button type="submit" class="chat-send" id="chat-send">Enviar</button>
       </div>
     </form>
@@ -343,12 +386,18 @@
   const send = document.getElementById('chat-send');
   const visionSend = document.getElementById('chat-vision-send');
   const imageFile = document.getElementById('chat-image-file');
+  const assetFile = document.getElementById('chat-asset-file');
   const imagePreview = document.getElementById('chat-image-preview');
   const visionPrompt = document.getElementById('chat-vision-prompt');
+  const worldRulesInput = document.getElementById('chat-world-rules');
+  const sessionIdLabel = document.getElementById('chat-session-id');
+  const sessionCopyButton = document.getElementById('chat-session-copy');
   const sessionIntelLink = document.getElementById('chat-session-intel-link');
+  const chatTitle = document.getElementById('chat-title');
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
   const SESSION_STORAGE_KEY = 'rag2.activeRealtimeSessionId';
+  const WORLD_RULES_PREFIX = 'rag2.worldRules.';
   let typingRow = null;
   let streamedTokens = [];
   let activeSessionId = '';
@@ -362,6 +411,13 @@
     if (sessionIntelLink) {
       sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
     }
+    if (sessionIdLabel) {
+      sessionIdLabel.textContent = `session: ${sessionId}`;
+    }
+    const storedRules = window.localStorage.getItem(`${WORLD_RULES_PREFIX}${sessionId}`) || '';
+    if (worldRulesInput && storedRules && !worldRulesInput.value.trim()) {
+      worldRulesInput.value = storedRules;
+    }
   };
 
   const preloadSessionLink = () => {
@@ -371,6 +427,125 @@
     }
     activeSessionId = remembered;
     sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(remembered)}`;
+    if (sessionIdLabel) {
+      sessionIdLabel.textContent = `session: ${remembered}`;
+    }
+  };
+
+  const saveWorldRules = async () => {
+    if (!activeSessionId || !worldRulesInput) {
+      return;
+    }
+    const worldRules = worldRulesInput.value.trim();
+    window.localStorage.setItem(`${WORLD_RULES_PREFIX}${activeSessionId}`, worldRules);
+    await fetch(`/api/interaction/sessions/${encodeURIComponent(activeSessionId)}/conditions`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ world_rules: worldRules }),
+    });
+  };
+
+  const loadWorldRules = async (sessionId) => {
+    if (!sessionId || !worldRulesInput) {
+      return;
+    }
+    const localRules = window.localStorage.getItem(`${WORLD_RULES_PREFIX}${sessionId}`);
+    if (localRules !== null) {
+      worldRulesInput.value = localRules;
+      return;
+    }
+    try {
+      const response = await fetch(`/api/interaction/sessions/${encodeURIComponent(sessionId)}/conditions`);
+      const payload = await response.json();
+      const rules = String(payload.world_rules || '');
+      worldRulesInput.value = rules;
+      window.localStorage.setItem(`${WORLD_RULES_PREFIX}${sessionId}`, rules);
+    } catch (_) {
+      worldRulesInput.value = '';
+    }
+  };
+
+  const handleSlashCommand = async (rawMessage) => {
+    const [command, ...rest] = rawMessage.trim().split(/\s+/);
+    const args = rest.join(' ').trim();
+
+    if (command === '/help') {
+      appendMessage({
+        author: 'system',
+        channel: 'system',
+        content: 'Comandos: /help · /assets list · /vault list · /upload · /ingest <ruta_relativa_vault> · /vision <prompt>',
+        tone: 'assistant',
+      });
+      return true;
+    }
+
+    if (command === '/assets' && args === 'list') {
+      if (!activeSessionId) {
+        appendMessage({ author: 'system', channel: 'system', content: 'No hay session_id activo aún.', tone: 'assistant' });
+        return true;
+      }
+      const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`);
+      const payload = await response.json();
+      appendMessage({ author: 'system', channel: 'system', content: `Assets de sala: ${(payload || []).join(', ') || 'sin archivos'}`, tone: 'assistant' });
+      return true;
+    }
+
+    if (command === '/vault' && args === 'list') {
+      const response = await fetch('/api/storage/vault/files?limit=120');
+      const payload = await response.json();
+      const preview = Array.isArray(payload) ? payload.slice(0, 20).map((item) => item.relative_path).join('\n') : '';
+      appendMessage({ author: 'system', channel: 'system', content: preview || 'Vault sin archivos.', tone: 'assistant' });
+      return true;
+    }
+
+    if (command === '/upload') {
+      if (!activeSessionId) {
+        appendMessage({ author: 'system', channel: 'system', content: 'No hay session_id activo aún.', tone: 'assistant' });
+        return true;
+      }
+      const file = assetFile.files && assetFile.files[0];
+      if (!file) {
+        appendMessage({ author: 'system', channel: 'system', content: 'Selecciona un archivo en Assets de sala primero.', tone: 'assistant' });
+        return true;
+      }
+      const formData = new FormData();
+      formData.append('file', file);
+      const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`, {
+        method: 'POST',
+        body: formData,
+      });
+      const payload = await response.json();
+      appendMessage({ author: 'system', channel: 'system', content: `Asset subido: ${payload.relative_path || file.name}`, tone: 'assistant' });
+      return true;
+    }
+
+    if (command === '/ingest') {
+      if (!args) {
+        appendMessage({ author: 'system', channel: 'system', content: 'Uso: /ingest <ruta_relativa_en_vault>', tone: 'assistant' });
+        return true;
+      }
+      const response = await fetch(`/api/storage/vault/ingest?relative_path=${encodeURIComponent(args)}`, { method: 'POST' });
+      const payload = await response.json();
+      appendMessage({ author: 'system', channel: 'system', content: response.ok ? `Ingestado: ${payload.relative_path}` : `Fallo ingest: ${JSON.stringify(payload)}`, tone: 'assistant' });
+      return true;
+    }
+
+    if (command === '/vision') {
+      const file = imageFile.files && imageFile.files[0];
+      if (!file) {
+        appendMessage({ author: 'system', channel: 'system', content: 'Selecciona una imagen para /vision.', tone: 'assistant' });
+        return true;
+      }
+      const formData = new FormData();
+      formData.append('image', file);
+      formData.append('prompt', args || visionPrompt.value.trim());
+      const response = await fetch('/api/models/runtime/vision', { method: 'POST', body: formData });
+      const payload = await response.json();
+      appendMessage({ author: 'vision', channel: 'assistant', content: payload.content || payload.detail || 'Sin salida de vision.' });
+      return true;
+    }
+
+    return false;
   };
 
   preloadSessionLink();
@@ -455,10 +630,19 @@
     switch (packet.type) {
       case 'session_started':
         persistSessionId(String(packet.session_id || ''));
+        loadWorldRules(String(packet.session_id || ''));
         help.textContent = `Sesion ${packet.session_id.slice(0, 8)} activa.`;
         break;
       case 'welcome':
         appendMessage({ author: 'system', content: packet.content, channel: 'system', tone: 'assistant' });
+        break;
+      case 'meta_update':
+        if (packet.color) {
+          document.documentElement.style.setProperty('--accent', packet.color);
+          if (chatTitle) {
+            chatTitle.style.color = String(packet.color);
+          }
+        }
         break;
       case 'history_message':
         appendMessage({ author: packet.message.author, content: packet.message.content, channel: packet.message.channel });
@@ -501,6 +685,16 @@
   });
 
   imageFile.addEventListener('change', showPreview);
+  sessionCopyButton.addEventListener('click', async () => {
+    if (!activeSessionId) {
+      return;
+    }
+    await navigator.clipboard.writeText(activeSessionId);
+    help.textContent = 'Session ID copiado al portapapeles.';
+  });
+  worldRulesInput.addEventListener('change', () => {
+    saveWorldRules();
+  });
 
   visionSend.addEventListener('click', async () => {
     const file = imageFile.files && imageFile.files[0];
@@ -534,14 +728,29 @@
     }
   });
 
-  form.addEventListener('submit', (event) => {
+  form.addEventListener('submit', async (event) => {
     event.preventDefault();
     const content = input.value.trim();
     if (!content || socket.readyState !== WebSocket.OPEN) {
       return;
     }
+    if (content.startsWith('/')) {
+      const handled = await handleSlashCommand(content);
+      if (handled) {
+        input.value = '';
+        input.focus();
+        return;
+      }
+    }
+    await saveWorldRules();
     appendMessage({ author: 'user', content, channel: 'chat' });
-    socket.send(JSON.stringify({ content, context_limit: 5, history_limit: 20, channel: 'chat' }));
+    socket.send(JSON.stringify({
+      content,
+      context_limit: 5,
+      history_limit: 20,
+      channel: 'chat',
+      world_rules: worldRulesInput.value.trim(),
+    }));
     input.value = '';
     input.focus();
   });

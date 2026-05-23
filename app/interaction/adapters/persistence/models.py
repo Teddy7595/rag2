@@ -83,3 +83,11 @@ class TurnCoherenceMetricRecord(DatabaseBase):
     coherence_score: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, index=True)
     context_trace: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class SessionConditionsRecord(DatabaseBase):
+    __tablename__ = "interaction_session_conditions"
+
+    session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
+    world_rules: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)

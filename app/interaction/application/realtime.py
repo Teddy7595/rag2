@@ -249,6 +249,10 @@ class RealtimeChatService:
         turn_id = str(uuid4())
         history_messages = self.interaction_service.list_messages(InteractionHistoryRequest(limit=input_data.history_limit))
         history_text = _format_history(history_messages)
+        stored_conditions = self.interaction_service.repository.get_session_conditions(session_id) or {}
+        world_rules = (input_data.world_rules or str(stored_conditions.get("world_rules") or "")).strip()
+        if input_data.world_rules.strip() and input_data.world_rules.strip() != str(stored_conditions.get("world_rules") or "").strip():
+            self.interaction_service.repository.save_session_conditions(session_id, world_rules=input_data.world_rules)
 
         context_preview = self.event_bus.request(
             REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
@@ -282,7 +286,7 @@ class RealtimeChatService:
             metadata={"session_id": session_id, "turn_id": turn_id, "author": user_message.get("author")},
         )
 
-        assistant_reply = self._compose_reply(input_data, context_preview)
+        assistant_reply = self._compose_reply(input_data, context_preview, world_rules=world_rules)
         assistant_author = str(identity.get("name") or "assistant")
         assistant_message = self.interaction_service.record_message(
             InteractionMessageRecordRequest(
@@ -441,7 +445,13 @@ class RealtimeChatService:
             source_module="interaction.application.realtime",
         )
 
-    def _compose_reply(self, input_data: InteractionRealtimeInput, context_preview: dict[str, object]) -> str:
+    def _compose_reply(
+        self,
+        input_data: InteractionRealtimeInput,
+        context_preview: dict[str, object],
+        *,
+        world_rules: str = "",
+    ) -> str:
         identity = context_preview.get("identity", {})
         identity_name = str(identity.get("name") or "assistant")
         behavior_prompt = str(identity.get("behavior_prompt") or "").strip()
@@ -524,6 +534,8 @@ class RealtimeChatService:
             prompt_sections.append(f"Instruccion de comportamiento del engrama: {behavior_prompt}")
         if meta_rule:
             prompt_sections.append(f"Meta-regla del engrama: {meta_rule}")
+        if world_rules:
+            prompt_sections.append(f"Reglas del mundo activas para esta sesion:\n{world_rules}")
         if context_text:
             prompt_sections.append(f"Contexto recuperado:\n{context_text}")
         if knowledge_matches:

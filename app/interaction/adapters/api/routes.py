@@ -10,10 +10,13 @@ from app.interaction.events import (
     InteractionHistoryRequest,
     InteractionMessageRecordRequest,
     InteractionRealtimeInput,
+    InteractionSessionConditionsRequest,
     InteractionSummaryRequest,
     InteractionSessionRequest,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
+    REQUEST_INTERACTION_SESSION_CONDITIONS,
+    REQUEST_INTERACTION_SESSION_CONDITIONS_SET,
     REQUEST_INTERACTION_SESSION_MEMORY,
     REQUEST_INTERACTION_SESSION_TOPIC_GRAPH,
     REQUEST_INTERACTION_TURN_METRICS,
@@ -35,6 +38,11 @@ class InteractionRealtimeInputModel(BaseModel):
     identity_id: str | None = None
     context_limit: int = 5
     history_limit: int = 20
+    world_rules: str = ""
+
+
+class InteractionSessionConditionsInput(BaseModel):
+    world_rules: str = ""
 
 
 router = APIRouter(prefix="/api/interaction", tags=["interaction"])
@@ -113,5 +121,29 @@ async def session_turn_metrics(request: Request, session_id: str, limit: int = 2
     return context.event_bus.request(
         REQUEST_INTERACTION_TURN_METRICS,
         InteractionSessionRequest(session_id=session_id, limit=limit),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@router.get("/sessions/{session_id}/conditions")
+async def session_conditions(request: Request, session_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_CONDITIONS,
+        InteractionSessionRequest(session_id=session_id, limit=1),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@router.put("/sessions/{session_id}/conditions")
+async def set_session_conditions(
+    request: Request,
+    session_id: str,
+    payload: InteractionSessionConditionsInput,
+) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_CONDITIONS_SET,
+        InteractionSessionConditionsRequest(session_id=session_id, world_rules=payload.world_rules),
         source_module="interaction.adapters.api.routes",
     )

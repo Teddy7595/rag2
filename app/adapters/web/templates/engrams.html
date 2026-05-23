@@ -1,0 +1,168 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="panel" style="margin-bottom: 16px;">
+  <h2 class="panel-title">Nuevo engrama</h2>
+  <div class="panel-body">
+    <form id="engram-form" style="display: grid; gap: 10px;">
+      <label class="control-label" for="engram-name">Nombre</label>
+      <input id="engram-name" class="control-input" type="text" placeholder="Atlas" required>
+
+      <label class="control-label" for="engram-color">Color</label>
+      <input id="engram-color" class="control-input" type="color" value="#00ff41">
+
+      <label class="control-label" for="engram-avatar-file">Avatar (imagen)</label>
+      <input id="engram-avatar-file" class="control-input" type="file" accept="image/*">
+
+      <label class="control-label" for="engram-behavior">Comportamiento</label>
+      <textarea id="engram-behavior" class="control-input" style="min-height: 90px;" placeholder="Habla con claridad y foco operativo."></textarea>
+
+      <label class="control-label" for="engram-meta">Meta-regla</label>
+      <textarea id="engram-meta" class="control-input" style="min-height: 90px;" placeholder="Nunca romper reglas del mundo activas."></textarea>
+
+      <button type="submit" class="save-button">Crear engrama</button>
+    </form>
+    <p class="small-note" id="engram-status">Sin cambios.</p>
+  </div>
+</section>
+
+<section class="panel">
+  <h2 class="panel-title">Inventario de engramas</h2>
+  <div class="panel-body route-search" style="margin: 0;">
+    <div id="engram-list" class="route-rows"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById('engram-form');
+  const statusText = document.getElementById('engram-status');
+  const list = document.getElementById('engram-list');
+
+  const fileInput = document.getElementById('engram-avatar-file');
+  const nameInput = document.getElementById('engram-name');
+  const colorInput = document.getElementById('engram-color');
+  const behaviorInput = document.getElementById('engram-behavior');
+  const metaInput = document.getElementById('engram-meta');
+
+  const renderRows = (rows) => {
+    list.innerHTML = '';
+    if (!rows.length) {
+      list.innerHTML = '<div class="route-row"><p class="route-path">Sin engramas.</p></div>';
+      return;
+    }
+    rows.forEach((engram) => {
+      const row = document.createElement('div');
+      row.className = 'route-row';
+      const avatar = engram.avatar ? `<img src="${engram.avatar}" alt="avatar" style="width:24px;height:24px;border-radius:6px;border:1px solid #333;">` : '';
+      row.innerHTML = `<p class="route-path">${avatar} ${engram.name}</p>` +
+        `<div class="route-meta">` +
+        `<span class="pill" data-uppercase="false" style="--pill-accent:${engram.color_hex || '#7dd3fc'}">${engram.color_hex || '#7dd3fc'}</span>` +
+        `<button type="button" class="bundle-button" data-action="edit" data-id="${engram.id}">Editar</button>` +
+        `<button type="button" class="bundle-button" data-action="delete" data-id="${engram.id}">Borrar</button>` +
+        `</div>`;
+      row.dataset.payload = JSON.stringify(engram);
+      list.appendChild(row);
+    });
+  };
+
+  const loadEngrams = async () => {
+    const response = await fetch('/api/knowledge/engrams?limit=100');
+    const payload = await response.json();
+    renderRows(Array.isArray(payload) ? payload : []);
+  };
+
+  const uploadAvatar = async () => {
+    const file = fileInput.files && fileInput.files[0];
+    if (!file) {
+      return '';
+    }
+    const formData = new FormData();
+    formData.append('file', file);
+    const response = await fetch('/api/storage/engrams/avatar', { method: 'POST', body: formData });
+    if (!response.ok) {
+      throw new Error('No se pudo subir avatar');
+    }
+    const payload = await response.json();
+    return String(payload.public_url || '');
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    statusText.textContent = 'Creando engrama...';
+    try {
+      const avatarUrl = await uploadAvatar();
+      const payload = {
+        name: nameInput.value.trim(),
+        avatar: avatarUrl,
+        color_hex: colorInput.value,
+        behavior_prompt: behaviorInput.value.trim(),
+        meta_rule: metaInput.value.trim(),
+      };
+      const response = await fetch('/api/knowledge/engrams', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (!response.ok) {
+        throw new Error(await response.text());
+      }
+      statusText.textContent = 'Engrama creado correctamente.';
+      form.reset();
+      colorInput.value = '#00ff41';
+      await loadEngrams();
+    } catch (error) {
+      statusText.textContent = `Error creando engrama: ${String(error)}`;
+    }
+  });
+
+  list.addEventListener('click', async (event) => {
+    const button = event.target.closest('button[data-action]');
+    if (!button) {
+      return;
+    }
+    const row = button.closest('.route-row');
+    if (!row || !row.dataset.payload) {
+      return;
+    }
+    const engram = JSON.parse(row.dataset.payload);
+    const action = button.dataset.action;
+
+    if (action === 'delete') {
+      const response = await fetch(`/api/knowledge/engrams/${encodeURIComponent(engram.id)}`, { method: 'DELETE' });
+      statusText.textContent = response.ok ? 'Engrama eliminado.' : 'No se pudo eliminar engrama.';
+      await loadEngrams();
+      return;
+    }
+
+    if (action === 'edit') {
+      const newBehavior = window.prompt('Nuevo behavior_prompt:', engram.behavior_prompt || '');
+      if (newBehavior === null) {
+        return;
+      }
+      const newColor = window.prompt('Nuevo color_hex:', engram.color_hex || '#00ff41');
+      if (newColor === null) {
+        return;
+      }
+      const response = await fetch(`/api/knowledge/engrams/${encodeURIComponent(engram.id)}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ behavior_prompt: newBehavior, color_hex: newColor }),
+      });
+      statusText.textContent = response.ok ? 'Engrama actualizado.' : 'No se pudo actualizar engrama.';
+      await loadEngrams();
+    }
+  });
+
+  loadEngrams();
+})();
+</script>
+{% endblock %}

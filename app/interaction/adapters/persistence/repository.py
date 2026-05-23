@@ -5,6 +5,7 @@ from sqlalchemy import func, select
 from app.core.database import DatabaseManager
 from app.interaction.adapters.persistence.models import ConversationMessageRecord
 from app.interaction.adapters.persistence.models import SessionMemorySnapshotRecord
+from app.interaction.adapters.persistence.models import SessionConditionsRecord
 from app.interaction.adapters.persistence.models import SessionTopicGraphRecord
 from app.interaction.adapters.persistence.models import TurnCoherenceMetricRecord
 from app.interaction.application.ports import InteractionMessageRepositoryPort
@@ -196,3 +197,25 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                 }
                 for record in reversed(records)
             ]
+
+    def get_session_conditions(self, session_id: str) -> dict[str, object] | None:
+        with self.database.session_factory() as session:
+            record = session.get(SessionConditionsRecord, session_id)
+            if not record:
+                return None
+            return {
+                "session_id": record.session_id,
+                "world_rules": record.world_rules,
+                "updated_at": record.updated_at.isoformat() if record.updated_at else None,
+            }
+
+    def save_session_conditions(self, session_id: str, *, world_rules: str) -> dict[str, object]:
+        with self.database.session_scope() as session:
+            record = SessionConditionsRecord(session_id=session_id, world_rules=world_rules.strip())
+            persisted = session.merge(record)
+            session.flush()
+            return {
+                "session_id": persisted.session_id,
+                "world_rules": persisted.world_rules,
+                "updated_at": persisted.updated_at.isoformat() if persisted.updated_at else None,
+            }

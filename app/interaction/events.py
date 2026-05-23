@@ -31,12 +31,19 @@ class InteractionRealtimeInput:
     identity_id: str | None = None
     context_limit: int = 5
     history_limit: int = 20
+    world_rules: str = ""
 
 
 @dataclass(frozen=True)
 class InteractionSessionRequest:
     session_id: str
     limit: int = 20
+
+
+@dataclass(frozen=True)
+class InteractionSessionConditionsRequest:
+    session_id: str
+    world_rules: str = ""
 
 
 REQUEST_INTERACTION_SUMMARY = EventSpec[InteractionSummaryRequest, dict](
@@ -85,6 +92,22 @@ REQUEST_INTERACTION_TURN_METRICS = EventSpec[InteractionSessionRequest, list](
     channel=EventChannel.DOMAIN,
     input_type=InteractionSessionRequest,
     output_type=list,
+)
+
+REQUEST_INTERACTION_SESSION_CONDITIONS = EventSpec[InteractionSessionRequest, dict](
+    name="interaction.session.conditions.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_SESSION_CONDITIONS_SET = EventSpec[InteractionSessionConditionsRequest, dict](
+    name="interaction.session.conditions.set.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionConditionsRequest,
+    output_type=dict,
 )
 
 PUBLISH_INTERACTION_MESSAGE_RECORDED = EventSpec[dict, dict](
@@ -140,6 +163,7 @@ __all__ = [
     "InteractionHistoryRequest",
     "InteractionMessageRecordRequest",
     "InteractionRealtimeInput",
+    "InteractionSessionConditionsRequest",
     "InteractionSessionRequest",
     "InteractionSummaryRequest",
     "PUBLISH_INTERACTION_MESSAGE_RECORDED",
@@ -150,6 +174,8 @@ __all__ = [
     "PUBLISH_INTERACTION_REALTIME_TURN_COMPLETED",
     "REQUEST_INTERACTION_MESSAGE_RECORD",
     "REQUEST_INTERACTION_MESSAGES",
+    "REQUEST_INTERACTION_SESSION_CONDITIONS",
+    "REQUEST_INTERACTION_SESSION_CONDITIONS_SET",
     "REQUEST_INTERACTION_SESSION_MEMORY",
     "REQUEST_INTERACTION_SESSION_TOPIC_GRAPH",
     "REQUEST_INTERACTION_TURN_METRICS",

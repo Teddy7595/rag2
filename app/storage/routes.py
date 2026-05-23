@@ -1,9 +1,13 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 from fastapi import APIRouter, Request
+from fastapi import File, HTTPException, Query, UploadFile
 
 from app.core.app_context import get_app_context_from_request
 from app.storage.service import UploadStorage
+from app.knowledge.events import DocumentIngestRequest, REQUEST_KNOWLEDGE_DOCUMENT_INGEST
 
 router = APIRouter(tags=["storage"])
 
@@ -29,3 +33,77 @@ async def list_public_files(request: Request) -> list[str]:
 @router.get("/api/storage/uploads")
 async def list_upload_files(request: Request) -> list[str]:
     return list(_get_storage(request).list_upload_files())
+
+
+@router.get("/api/storage/vault/files")
+async def list_vault_files(request: Request, limit: int = Query(default=200, ge=1, le=2000)) -> list[dict[str, object]]:
+    return _get_storage(request).list_vault_files(limit=limit)
+
+
+@router.get("/api/storage/chats/{session_id}/assets")
+async def list_chat_assets(request: Request, session_id: str) -> list[str]:
+    return list(_get_storage(request).list_chat_assets(session_id))
+
+
+@router.post("/api/storage/chats/{session_id}/assets")
+async def upload_chat_asset(request: Request, session_id: str, file: UploadFile = File(...)) -> dict[str, object]:
+    storage = _get_storage(request)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    return storage.save_chat_asset(session_id, original_name=file.filename or "asset.bin", payload=content)
+
+
+@router.post("/api/storage/engrams/avatar")
+async def upload_engram_avatar(request: Request, file: UploadFile = File(...)) -> dict[str, object]:
+    storage = _get_storage(request)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    return storage.save_engram_avatar(original_name=file.filename or "avatar.png", payload=content)
+
+
+@router.post("/api/storage/vault/ingest")
+async def ingest_vault_file(
+    request: Request,
+    relative_path: str = Query(..., min_length=1),
+    title: str | None = Query(default=None),
+    chunk_size: int = Query(default=180, ge=32, le=1200),
+    chunk_overlap: int = Query(default=40, ge=0, le=300),
+) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    storage = _get_storage(request)
+    resolved = storage.resolve_vault_path(relative_path)
+    if not resolved:
+        raise HTTPException(status_code=404, detail="Vault file not found")
+
+    suffix = resolved.suffix.lower()
+    if suffix == ".pdf":
+        payload = DocumentIngestRequest(
+            title=title or resolved.stem,
+            pdf_path=str(resolved),
+            source_uri=f"vault://{relative_path}",
+            tags=("vault", "chat_ingest", "pdf"),
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+    else:
+        text = resolved.read_text(encoding="utf-8", errors="ignore")
+        payload = DocumentIngestRequest(
+            title=title or resolved.stem,
+            raw_text=text,
+            source_uri=f"vault://{relative_path}",
+            tags=("vault", "chat_ingest", "text"),
+            chunk_size=chunk_size,
+            chunk_overlap=chunk_overlap,
+        )
+
+    ingested = context.event_bus.request(
+        REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
+        payload,
+        source_module="storage.routes",
+    )
+    return {
+        "relative_path": Path(relative_path).as_posix(),
+        "ingested": ingested,
+    }

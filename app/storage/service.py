@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import re
 
 from app.core.settings import AppSettings
 
@@ -64,3 +65,91 @@ class UploadStorage:
             public_files=public_files,
             upload_files=upload_files,
         ).as_dict()
+
+    @staticmethod
+    def _sanitize_segment(value: str) -> str:
+        cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", (value or "").strip()).strip("-._")
+        return cleaned or "default"
+
+    @staticmethod
+    def _clean_filename(file_name: str) -> str:
+        candidate = Path(file_name or "asset.bin").name
+        return candidate or "asset.bin"
+
+    def _resolve_unique_path(self, target_dir: Path, original_name: str) -> Path:
+        base_name = self._clean_filename(original_name)
+        stem = Path(base_name).stem
+        suffix = Path(base_name).suffix
+        candidate = target_dir / base_name
+        index = 1
+        while candidate.exists():
+            candidate = target_dir / f"{stem}_{index}{suffix}"
+            index += 1
+        return candidate
+
+    def chat_assets_dir(self, session_id: str) -> Path:
+        safe_session = self._sanitize_segment(session_id)
+        directory = self.uploads_dir / "chats" / safe_session
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def list_chat_assets(self, session_id: str) -> tuple[str, ...]:
+        directory = self.chat_assets_dir(session_id)
+        return tuple(sorted(item.name for item in directory.iterdir() if item.is_file()))
+
+    def save_chat_asset(self, session_id: str, *, original_name: str, payload: bytes) -> dict[str, object]:
+        directory = self.chat_assets_dir(session_id)
+        target = self._resolve_unique_path(directory, original_name)
+        target.write_bytes(payload)
+        relative = target.relative_to(self.vault_dir).as_posix()
+        return {
+            "session_id": self._sanitize_segment(session_id),
+            "file_name": target.name,
+            "relative_path": relative,
+            "public_url": f"/uploads/{target.relative_to(self.uploads_dir).as_posix()}",
+            "size_bytes": target.stat().st_size,
+        }
+
+    def save_engram_avatar(self, *, original_name: str, payload: bytes) -> dict[str, object]:
+        directory = self.uploads_dir / "engrams"
+        directory.mkdir(parents=True, exist_ok=True)
+        target = self._resolve_unique_path(directory, original_name)
+        target.write_bytes(payload)
+        return {
+            "file_name": target.name,
+            "relative_path": target.relative_to(self.vault_dir).as_posix(),
+            "public_url": f"/uploads/{target.relative_to(self.uploads_dir).as_posix()}",
+            "size_bytes": target.stat().st_size,
+        }
+
+    def list_vault_files(self, *, limit: int = 500) -> list[dict[str, object]]:
+        if limit <= 0:
+            return []
+        rows: list[dict[str, object]] = []
+        for path in sorted(self.vault_dir.rglob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(self.vault_dir).as_posix()
+            rows.append(
+                {
+                    "name": path.name,
+                    "relative_path": relative,
+                    "size_bytes": path.stat().st_size,
+                }
+            )
+            if len(rows) >= limit:
+                break
+        return rows
+
+    def resolve_vault_path(self, relative_path: str) -> Path | None:
+        safe_relative = Path(relative_path.strip())
+        if safe_relative.is_absolute():
+            return None
+        resolved = (self.vault_dir / safe_relative).resolve()
+        try:
+            resolved.relative_to(self.vault_dir.resolve())
+        except ValueError:
+            return None
+        if not resolved.exists() or not resolved.is_file():
+            return None
+        return resolved

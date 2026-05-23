@@ -6,6 +6,7 @@ from app.interaction.events import (
     InteractionHistoryRequest,
     InteractionMessageRecordRequest,
     InteractionSessionRequest,
+    InteractionSessionConditionsRequest,
     InteractionSummaryRequest,
     PUBLISH_INTERACTION_MESSAGE_RECORDED,
 )
@@ -75,3 +76,13 @@ class InteractionService:
 
     def turn_metrics(self, request: InteractionSessionRequest) -> list[dict[str, object]]:
         return self.repository.list_turn_metrics(request.session_id, limit=request.limit)
+
+    def session_conditions(self, request: InteractionSessionRequest) -> dict[str, object]:
+        return self.repository.get_session_conditions(request.session_id) or {
+            "session_id": request.session_id,
+            "world_rules": "",
+            "updated_at": None,
+        }
+
+    def set_session_conditions(self, request: InteractionSessionConditionsRequest) -> dict[str, object]:
+        return self.repository.save_session_conditions(request.session_id, world_rules=request.world_rules)

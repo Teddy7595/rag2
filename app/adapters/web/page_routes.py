@@ -346,3 +346,19 @@ async def models_admin_page(request: Request) -> HTMLResponse:
         description="Explora los bundles locales de ai_models, ve qué soporta texto o visión y cambia la selección activa sin tocar la consola.",
         **catalog_context,
     )
+
+
+@router.get("/admin/engrams")
+async def engrams_admin_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    return _render(
+        request,
+        "engrams.html",
+        title=f"{context.settings.app_name} | Engrams",
+        eyebrow="Identity",
+        headline="Gestor de engramas",
+        description=(
+            "Crea, actualiza, elimina y visualiza engramas con avatar y color activo para orientar "
+            "el estilo de la sesion de chat."
+        ),
+    )

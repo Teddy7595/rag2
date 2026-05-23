@@ -71,6 +71,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/admin/runtime-ai",
         "/admin/context-graph",
         "/admin/session-intel",
+        "/admin/engrams",
         "/chat",
         "/admin/routes",
         "/admin/models",
@@ -81,6 +82,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/sessions/{session_id}/memory",
         "/api/interaction/sessions/{session_id}/topics",
         "/api/interaction/sessions/{session_id}/metrics",
+        "/api/interaction/sessions/{session_id}/conditions",
         "/api/operations/sagas",
         "/api/operations/sagas/{saga_id}",
         "/api/operations/sagas/{saga_id}/commands",
@@ -90,6 +92,10 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/storage/overview",
         "/api/storage/public",
         "/api/storage/uploads",
+        "/api/storage/vault/files",
+        "/api/storage/chats/{session_id}/assets",
+        "/api/storage/engrams/avatar",
+        "/api/storage/vault/ingest",
         "/api/knowledge/items",
         "/api/knowledge/context/pack",
         "/api/knowledge/context/prompt",
@@ -152,6 +158,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert "Monitor de continuidad por sesion" in session_intel_admin_response.text
         assert "rag2.activeRealtimeSessionId" in session_intel_admin_response.text
 
+        engrams_admin_response = client.get("/admin/engrams")
+        assert engrams_admin_response.status_code == 200
+        assert "Gestor de engramas" in engrams_admin_response.text
+
         frontend_response = client.get("/ui-assets/")
         assert frontend_response.status_code == 200
         assert "RAG2 Control Plane" in frontend_response.text
@@ -186,6 +196,30 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         refreshed_storage = refreshed_storage_response.json()
         assert refreshed_storage["public_file_count"] == 1
         assert refreshed_storage["upload_file_count"] == 1
+
+        vault_files_response = client.get("/api/storage/vault/files", params={"limit": 100})
+        assert vault_files_response.status_code == 200
+        assert any(item["relative_path"].endswith("public/hola-publico.txt") for item in vault_files_response.json())
+
+        chat_asset_upload = client.post(
+            "/api/storage/chats/test-room/assets",
+            files={"file": ("nota.txt", b"contenido de sala", "text/plain")},
+        )
+        assert chat_asset_upload.status_code == 200
+        chat_asset_payload = chat_asset_upload.json()
+        assert chat_asset_payload["file_name"] == "nota.txt"
+        assert "uploads/chats/test-room/nota.txt" in chat_asset_payload["relative_path"]
+
+        chat_asset_list = client.get("/api/storage/chats/test-room/assets")
+        assert chat_asset_list.status_code == 200
+        assert "nota.txt" in chat_asset_list.json()
+
+        avatar_upload = client.post(
+            "/api/storage/engrams/avatar",
+            files={"file": ("atlas.png", b"\x89PNG\r\n\x1a\n", "image/png")},
+        )
+        assert avatar_upload.status_code == 200
+        assert avatar_upload.json()["public_url"].startswith("/uploads/engrams/")
 
         model_bundle_dir = app.state.context.settings.ai_model_dir / "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive"
         model_bundle_dir.mkdir(parents=True, exist_ok=True)
@@ -435,6 +469,17 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         hints_response = client.get("/api/knowledge/identity/hints")
         assert hints_response.status_code == 200
         assert "@Atlas" in hints_response.json()
+
+        conditions_set = client.put(
+            "/api/interaction/sessions/test-room/conditions",
+            json={"world_rules": "No romper continuidad. Mantener tono epico sobrio."},
+        )
+        assert conditions_set.status_code == 200
+        assert "No romper continuidad" in conditions_set.json()["world_rules"]
+
+        conditions_get = client.get("/api/interaction/sessions/test-room/conditions")
+        assert conditions_get.status_code == 200
+        assert "tono epico" in conditions_get.json()["world_rules"]
 
         status_response = client.get("/api/operations/status", params={"limit": 10})
         assert status_response.status_code == 200

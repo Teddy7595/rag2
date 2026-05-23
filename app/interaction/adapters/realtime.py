@@ -47,6 +47,7 @@ def _build_input(payload: dict[str, Any]) -> InteractionRealtimeInput:
         identity_id=payload.get("identity_id"),
         context_limit=int(payload.get("context_limit") or payload.get("limit") or 5),
         history_limit=int(payload.get("history_limit") or 20),
+        world_rules=str(payload.get("world_rules") or ""),
     )
 
 
