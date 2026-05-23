@@ -53,10 +53,13 @@ The storage slice adds a landing page, a local admin panel, and storage endpoint
 ```text
 /
 /admin
+/admin/routes
 /api/storage/overview
 /public
 /uploads
 ```
+
+The admin area also includes a route visualizer with a NestJS-style module tree for the registered HTTP, websocket, and static mount routes.
 
 Security policy is configured with local-only admin access, a simple in-memory rate limit, and an optional ban list via `APP_ADMIN_LOCAL_ONLY`, `APP_RATE_LIMIT_WINDOW_SECONDS`, `APP_RATE_LIMIT_MAX_REQUESTS`, and `APP_BAN_LIST`.
 

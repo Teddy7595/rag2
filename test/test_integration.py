@@ -54,16 +54,20 @@ def build_test_app(tmp_path: Path, monkeypatch, extra_env: dict[str, str] | None
     return create_app()
 
 
-def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatch) -> None:
+def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatch, capsys) -> None:
     app = build_test_app(tmp_path, monkeypatch)
+    captured = capsys.readouterr()
 
     assert app.state.context.database is not None
     assert app.state.context.database.settings.is_sqlite
+    assert "Registered routes:" in captured.out
+    assert "/api/platform/health" in captured.out
 
     route_paths = {route.path for route in app.routes if hasattr(route, "path")}
     expected_paths = {
         "/",
         "/admin",
+        "/admin/routes",
         "/api/platform/health",
         "/api/interaction/messages",
         "/api/interaction/summary",
@@ -107,6 +111,11 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         admin_response = client.get("/admin")
         assert admin_response.status_code == 200
         assert "Panel de administración" in admin_response.text
+
+        routes_response = client.get("/admin/routes")
+        assert routes_response.status_code == 200
+        assert "Visualizador de rutas" in routes_response.text
+        assert "/api/operations/sagas" in routes_response.text
 
         storage_overview_response = client.get("/api/storage/overview")
         assert storage_overview_response.status_code == 200

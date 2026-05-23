@@ -16,6 +16,7 @@ from app.operations.operations_module import register_operations_module
 from app.core.middleware import RequestContextMiddleware
 from app.platform.platform_module import register_platform_module
 from app.storage.storage_module import register_storage_module
+from app.core.module_registry import dump_registered_routes
 
 
 def create_app() -> FastAPI:
@@ -56,4 +57,5 @@ def create_app() -> FastAPI:
         database.create_schema()
 
     include_registered_routers(app)
+    dump_registered_routes(app)
     return app
