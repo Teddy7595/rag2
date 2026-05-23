@@ -21,14 +21,21 @@ class FakeInteractionService:
 
 
 class FakeEventBus:
-    def __init__(self, response: dict[str, object]) -> None:
-        self._response = response
+    def __init__(self, response: dict[str, object] | list[dict[str, object]]) -> None:
+        if isinstance(response, list):
+            self._responses = [dict(item) for item in response]
+        else:
+            self._responses = [dict(response)]
         self.last_prompt = ""
+        self.prompts: list[str] = []
 
     def request(self, spec, payload, source_module: str = "") -> dict[str, object]:
         if spec == REQUEST_MODEL_TEXT_GENERATION:
             self.last_prompt = str(payload.prompt)
-            return dict(self._response)
+            self.prompts.append(self.last_prompt)
+            if len(self._responses) > 1:
+                return self._responses.pop(0)
+            return dict(self._responses[0])
         raise AssertionError(f"Unexpected request spec: {getattr(spec, 'name', spec)}")
 
 
@@ -68,6 +75,10 @@ class FakeSettings:
     conversation_deadline_scale_percent: int = 100
     conversation_intent_bundle_id: str | None = None
     conversation_intent_max_tokens: int = 8
+    conversation_immersive_mode_enabled: bool = False
+    conversation_immersive_retry_max: int = 1
+    conversation_immersive_threshold_percent: int = 65
+    conversation_immersive_strict_engram: bool = True
 
 
 def _base_context_preview() -> dict[str, object]:
@@ -353,3 +364,40 @@ def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypat
     assert reply != repeated_fallback
     assert "smoke-doc" not in reply
     assert "contexto" not in reply.lower()
+
+
+def test_compose_reply_immersive_mode_retries_when_first_draft_is_meta() -> None:
+    event_bus = FakeEventBus(
+        [
+            {
+                "ok": True,
+                "content": "Reserve el uso de etiquetas internas al procesamiento de informacion. Ahora, escribe una historia completa.",
+            },
+            {
+                "ok": True,
+                "content": "Soy Mistress Keynes. Te cuento una historia breve: una ciudad sin luna, un pacto roto y un final que respira esperanza.",
+            },
+        ]
+    )
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(
+            conversation_immersive_mode_enabled=True,
+            conversation_immersive_retry_max=1,
+            conversation_immersive_threshold_percent=65,
+            conversation_immersive_strict_engram=True,
+        ),
+    )
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Escribe una historia completa, con intro, body y conclusion."),
+        _custom_engram_context_preview(),
+        session_id="session-immersive-retry",
+    )
+
+    assert quality["immersive_triggered"] is True
+    assert quality["immersive_retry_count"] == 1
+    assert quality["fallback_used"] is False
+    assert "etiquetas internas" not in reply.lower()
+    assert "historia" in reply.lower()

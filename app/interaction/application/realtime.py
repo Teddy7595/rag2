@@ -13,6 +13,7 @@ from app.interaction.application.governance import (
     build_turn_policy,
     compact_context_for_prompt,
     dedupe_rule_lines,
+    evaluate_immersive_response,
     instruction_echo_prefix_detected,
     looks_like_internal_reasoning,
     sanitize_generated_reply,
@@ -317,6 +318,10 @@ class RealtimeChatService:
             "deadline_scale_percent": int(getattr(settings, "conversation_deadline_scale_percent", 100) or 100),
             "intent_bundle_id": str(getattr(settings, "conversation_intent_bundle_id", "") or "").strip(),
             "intent_max_tokens": int(getattr(settings, "conversation_intent_max_tokens", 8) or 8),
+            "immersive_mode_enabled": bool(getattr(settings, "conversation_immersive_mode_enabled", False)),
+            "immersive_retry_max": int(getattr(settings, "conversation_immersive_retry_max", 1) or 1),
+            "immersive_threshold_percent": int(getattr(settings, "conversation_immersive_threshold_percent", 65) or 65),
+            "immersive_strict_engram": bool(getattr(settings, "conversation_immersive_strict_engram", True)),
         }
 
     def _debug_turn(self, enabled: bool, step: str, *, session_id: str, turn_id: str = "", payload: dict[str, object] | None = None) -> None:
@@ -965,6 +970,13 @@ class RealtimeChatService:
             "non_rag_mode": conversational_mode,
             "guard_path": "",
             "instruction_echo_stripped": False,
+            "immersive_mode_enabled": bool(rollout.get("immersive_mode_enabled", False)),
+            "immersive_triggered": False,
+            "immersive_retry_count": 0,
+            "immersive_score": 1.0,
+            "immersive_reasons": [],
+            "immersive_retry_score": 1.0,
+            "immersive_retry_reasons": [],
         }
 
         default_temperature = policy.temperature
@@ -1031,6 +1043,86 @@ class RealtimeChatService:
                     ),
                     quality_flags,
                 )
+
+            immersive_mode_enabled = bool(rollout.get("immersive_mode_enabled", False))
+            immersive_retry_max = max(0, min(2, int(rollout.get("immersive_retry_max", 1) or 1)))
+            immersive_threshold = max(0.1, min(0.95, float(int(rollout.get("immersive_threshold_percent", 65) or 65)) / 100.0))
+            immersive_strict_engram = bool(rollout.get("immersive_strict_engram", True))
+
+            if immersive_mode_enabled:
+                candidate_for_immersive = sanitized or content
+                immersive_eval = evaluate_immersive_response(
+                    candidate_for_immersive,
+                    identity_name=identity_name,
+                    user_text=input_data.content,
+                    threshold=immersive_threshold,
+                    strict_engram=immersive_strict_engram,
+                    has_custom_engram=has_custom_engram,
+                )
+                quality_flags["immersive_score"] = float(immersive_eval.get("score") or 0.0)
+                quality_flags["immersive_reasons"] = list(immersive_eval.get("reasons") or [])
+
+                needs_retry = (not sanitized) or (not bool(immersive_eval.get("passed")))
+                if needs_retry and immersive_retry_max > 0:
+                    quality_flags["immersive_triggered"] = True
+                    quality_flags["immersive_retry_count"] = 1
+
+                    repair_prompt = "\n\n".join(
+                        section
+                        for section in [
+                            prompt,
+                            "Correccion inmersiva interna (no repetir):",
+                            "- Reescribe la respuesta como el engrama activo, en primera persona y tono natural.",
+                            "- Prohibido mostrar reglas internas, etiquetas, contexto recuperado o metacomentarios.",
+                            "- Responde la peticion del usuario de forma concreta.",
+                            f"Borrador descartado (interno): {candidate_for_immersive[:260]}",
+                        ]
+                        if section.strip()
+                    )
+
+                    retry_start = time.perf_counter()
+                    retry_generated = self.event_bus.request(
+                        REQUEST_MODEL_TEXT_GENERATION,
+                        ModelTextGenerationRequest(prompt=repair_prompt, temperature=temperature, top_p=top_p, max_tokens=max_tokens),
+                        source_module="interaction.application.realtime",
+                    )
+                    retry_elapsed_ms = int((time.perf_counter() - retry_start) * 1000)
+                    quality_flags["elapsed_ms"] = int(quality_flags.get("elapsed_ms") or 0) + retry_elapsed_ms
+                    retry_content = str(retry_generated.get("content") or "").strip() if isinstance(retry_generated, dict) else ""
+
+                    if retry_content and instruction_echo_prefix_detected(retry_content):
+                        quality_flags["instruction_echo_stripped"] = True
+
+                    retry_sanitized = sanitize_generated_reply(retry_content, prefer_short=policy.prefer_short) if sanitize_enabled else retry_content
+                    retry_eval = evaluate_immersive_response(
+                        retry_sanitized or retry_content,
+                        identity_name=identity_name,
+                        user_text=input_data.content,
+                        threshold=immersive_threshold,
+                        strict_engram=immersive_strict_engram,
+                        has_custom_engram=has_custom_engram,
+                    )
+                    quality_flags["immersive_retry_score"] = float(retry_eval.get("score") or 0.0)
+                    quality_flags["immersive_retry_reasons"] = list(retry_eval.get("reasons") or [])
+
+                    if isinstance(retry_generated, dict) and retry_generated.get("ok") and retry_sanitized and bool(retry_eval.get("passed")):
+                        return retry_sanitized, quality_flags
+
+                    quality_flags["guard_triggered"] = True
+                    quality_flags["fallback_used"] = True
+                    quality_flags["guard_path"] = "immersive_retry_fallback"
+                    return (
+                        self._avoid_repetitive_fallback(
+                            fallback_reply,
+                            identity_name=identity_name,
+                            user_input=input_data.content,
+                            main_idea=main_idea,
+                            conversational_mode=conversational_mode,
+                            history_messages=history_messages,
+                        ),
+                        quality_flags,
+                    )
+
             if guard_enabled and content and not sanitized:
                 quality_flags["guard_triggered"] = True
                 quality_flags["guard_path"] = "sanitizer_blocked"

@@ -16,6 +16,19 @@ def _is_local_host(host: str | None) -> bool:
     return host.startswith("127.")
 
 
+def _path_is_allowed_remote_admin(path: str, allowed_prefixes: tuple[str, ...]) -> bool:
+    normalized = str(path or "").strip()
+    if not normalized:
+        return False
+    for prefix in allowed_prefixes:
+        value = str(prefix or "").strip()
+        if not value:
+            continue
+        if normalized == value or normalized.startswith(f"{value}/"):
+            return True
+    return False
+
+
 class RequestContextMiddleware:
     def __init__(self, app: ASGIApp) -> None:
         self.app = app
@@ -53,6 +66,7 @@ class RequestContextMiddleware:
         context = getattr(getattr(app, "state", None), "context", None)
         settings = getattr(context, "settings", None)
         admin_local_only = getattr(settings, "admin_local_only", True)
+        admin_remote_allow_paths = tuple(getattr(settings, "admin_remote_allow_paths", ()) or ())
 
         banned_hosts = set(getattr(settings, "ban_list", ()))
         if client_key in banned_hosts:
@@ -82,7 +96,13 @@ class RequestContextMiddleware:
             await response(scope, receive, send)
             return
 
-        if scope.get("path", "").startswith("/admin") and admin_local_only and not is_local_request:
+        path = str(scope.get("path", "") or "")
+        if (
+            path.startswith("/admin")
+            and admin_local_only
+            and not is_local_request
+            and not _path_is_allowed_remote_admin(path, admin_remote_allow_paths)
+        ):
             response = JSONResponse(
                 {"detail": "Admin access restricted to local requests"},
                 status_code=403,

@@ -110,6 +110,7 @@ class AppSettings:
     port: int
     debug: bool
     admin_local_only: bool
+    admin_remote_allow_paths: tuple[str, ...]
     rate_limit_window_seconds: int
     rate_limit_max_requests: int
     ban_list: tuple[str, ...]
@@ -121,6 +122,10 @@ class AppSettings:
     conversation_deadline_scale_percent: int
     conversation_intent_bundle_id: str | None
     conversation_intent_max_tokens: int
+    conversation_immersive_mode_enabled: bool
+    conversation_immersive_retry_max: int
+    conversation_immersive_threshold_percent: int
+    conversation_immersive_strict_engram: bool
     chat_trash_retention_hours: int
     embedding_model_dir: Path
     ai_model_dir: Path
@@ -159,6 +164,7 @@ def load_settings(project_root: Path) -> AppSettings:
         port=max(1, _read_int_env("APP_PORT", 8000)),
         debug=_read_bool_env("APP_DEBUG", default=False),
         admin_local_only=_read_bool_env("APP_ADMIN_LOCAL_ONLY", default=True),
+        admin_remote_allow_paths=_read_csv_env("APP_ADMIN_REMOTE_ALLOW_PATHS") or ("/admin/engrams",),
         rate_limit_window_seconds=max(1, _read_int_env("APP_RATE_LIMIT_WINDOW_SECONDS", 60)),
         rate_limit_max_requests=max(1, _read_int_env("APP_RATE_LIMIT_MAX_REQUESTS", 120)),
         ban_list=_read_list_env("APP_BAN_LIST"),
@@ -170,6 +176,10 @@ def load_settings(project_root: Path) -> AppSettings:
         conversation_deadline_scale_percent=max(10, min(500, _read_int_env("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", 100))),
         conversation_intent_bundle_id=(_read_env("APP_CONVERSATION_INTENT_BUNDLE_ID", "") or None),
         conversation_intent_max_tokens=max(4, min(16, _read_int_env("APP_CONVERSATION_INTENT_MAX_TOKENS", 8))),
+        conversation_immersive_mode_enabled=_read_bool_env("APP_CONVERSATION_IMMERSIVE_MODE_ENABLED", default=False),
+        conversation_immersive_retry_max=max(0, min(2, _read_int_env("APP_CONVERSATION_IMMERSIVE_RETRY_MAX", 1))),
+        conversation_immersive_threshold_percent=max(10, min(95, _read_int_env("APP_CONVERSATION_IMMERSIVE_THRESHOLD_PERCENT", 65))),
+        conversation_immersive_strict_engram=_read_bool_env("APP_CONVERSATION_IMMERSIVE_STRICT_ENGRAM", default=True),
         chat_trash_retention_hours=max(1, min(168, _read_int_env("APP_CHAT_TRASH_RETENTION_HOURS", 24))),
         embedding_model_dir=embedding_model_dir,
         ai_model_dir=ai_model_dir,

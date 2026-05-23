@@ -4,6 +4,7 @@ from app.interaction.application.governance import (
     build_turn_policy,
     classify_intent,
     dedupe_rule_lines,
+    evaluate_immersive_response,
     instruction_echo_prefix_detected,
     sanitize_generated_reply,
     sanitize_history_content,
@@ -77,6 +78,12 @@ def test_sanitize_generated_reply_strips_metacommentary_directive_prefix() -> No
     assert cleaned.startswith("Hola, que gusto leerte")
 
 
+def test_sanitize_generated_reply_strips_internal_tags_reserve_prefix() -> None:
+    noisy = "Reserve el uso de etiquetas internas al procesamiento de informacion. Ahora, escribe una historia completa."
+    cleaned = sanitize_generated_reply(noisy)
+    assert cleaned == ""
+
+
 def test_sanitize_history_content_masks_internal_reasoning() -> None:
     masked = sanitize_history_content("1. **Analyze the Request:** user input")
     assert "omitida por seguridad" in masked
@@ -104,3 +111,23 @@ def test_build_turn_policy_for_conversational_queries() -> None:
     assert policy.max_tokens <= 180
     assert policy.deadline_ms >= 2400
     assert policy.prefer_short is True
+
+
+def test_evaluate_immersive_response_rejects_internal_meta_markers() -> None:
+    payload = evaluate_immersive_response(
+        "Reserve el uso de etiquetas internas al procesamiento de informacion.",
+        identity_name="Mistress Keynes",
+        user_text="Escribe una historia",
+    )
+    assert payload["passed"] is False
+    assert float(payload["score"]) < 0.65
+
+
+def test_evaluate_immersive_response_accepts_persona_aligned_reply() -> None:
+    payload = evaluate_immersive_response(
+        "Soy Mistress Keynes. Te cuento una historia breve, con tensión y cierre.",
+        identity_name="Mistress Keynes",
+        user_text="Cuéntame una historia",
+        has_custom_engram=True,
+    )
+    assert payload["passed"] is True

@@ -399,8 +399,76 @@ def instruction_echo_prefix_detected(text: str) -> bool:
         r"\bevitar\s+lenguaje\b.*\bformal\b",
         r"\bevitar?\s+metacomentarios\b",
         r"\bevitar?\s+.*\bexplicaciones?\b.*\bengrama",
+        r"\breserv(?:a|ar)\b.*\betiquetas\s+internas\b",
+        r"\betiquetas\s+internas\b.*\bprocesamiento\s+de\s+informaci[oó]n\b",
+        r"\bahora\s*,?\s*escribe\b.*\b(historia|cuento|relato)\b",
         r"\brespuesta\s+del\s+engrama\b",
         r"\ben\s+un\s+solo\s+bloque\s+de\s+texto\b",
         r"\bno\s+separaciones\b",
     )
     return any(re.search(pattern, first_low) for pattern in instruction_echo_patterns)
+
+
+def evaluate_immersive_response(
+    text: str,
+    *,
+    identity_name: str,
+    user_text: str,
+    threshold: float = 0.65,
+    strict_engram: bool = True,
+    has_custom_engram: bool = False,
+) -> dict[str, object]:
+    candidate = re.sub(r"\s+", " ", str(text or "")).strip()
+    score = 1.0
+    reasons: list[str] = []
+    hard_fail = False
+
+    if not candidate:
+        return {"score": 0.0, "passed": False, "reasons": ["empty"]}
+
+    lowered = candidate.lower()
+
+    if looks_like_internal_reasoning(candidate):
+        score -= 0.85
+        reasons.append("internal_reasoning")
+        hard_fail = True
+
+    if instruction_echo_prefix_detected(candidate):
+        score -= 0.55
+        reasons.append("instruction_echo")
+
+    meta_markers = (
+        "etiquetas internas",
+        "procesamiento de informacion",
+        "procesamiento de información",
+        "contexto recuperado",
+        "coincidencias relevantes",
+        "respuesta del engrama",
+        "analisis interno",
+        "analyze the request",
+        "drafting the response",
+    )
+    marker_hits = sum(1 for marker in meta_markers if marker in lowered)
+    if marker_hits:
+        score -= min(0.75, 0.25 * marker_hits)
+        reasons.append("meta_markers")
+
+    if len(candidate) < 20:
+        score -= 0.12
+        reasons.append("too_short")
+
+    if has_custom_engram and strict_engram:
+        first_person_markers = (" yo ", " soy ", " conmigo", "me ")
+        padded = f" {lowered} "
+        if not any(marker in padded for marker in first_person_markers):
+            score -= 0.12
+            reasons.append("weak_persona_voice")
+
+    user_focus = re.sub(r"\s+", " ", user_text.lower()).strip()
+    if user_focus and len(user_focus) >= 8 and user_focus.split()[0] not in lowered and has_custom_engram:
+        score -= 0.08
+        reasons.append("weak_user_alignment")
+
+    score = max(0.0, min(1.0, round(score, 3)))
+    passed = (score >= max(0.1, min(0.95, threshold))) and not hard_fail
+    return {"score": score, "passed": passed, "reasons": reasons}
