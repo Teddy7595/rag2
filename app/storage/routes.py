@@ -136,6 +136,9 @@ async def admin_page(request: Request) -> HTMLResponse:
                 f"<p style='margin-top: 0;'>Cliente detectado: <strong>{escape(str(client_host))}</strong></p>"
                 f"<p>Acceso local: <strong>{'sí' if is_local_request else 'no'}</strong></p>"
                 f"<p>Restricción activa: <strong>{'sí' if context.settings.admin_local_only else 'no'}</strong></p>"
+                f"<p>Rate limit: <strong>{context.settings.rate_limit_max_requests}</strong> solicitudes cada "
+                f"<strong>{context.settings.rate_limit_window_seconds}</strong>s</p>"
+                f"<p>Ban list: <strong>{escape(', '.join(context.settings.ban_list) or 'vacía')}</strong></p>"
             ),
             accent="#86efac",
         ),

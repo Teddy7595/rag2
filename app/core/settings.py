@@ -22,6 +22,19 @@ def _read_int_env(name: str, default: int) -> int:
         return default
 
 
+def _read_list_env(name: str) -> tuple[str, ...]:
+    raw_value = os.getenv(name)
+    if not raw_value:
+        return ()
+
+    values: list[str] = []
+    for item in raw_value.split(","):
+        normalized = item.strip().lower()
+        if normalized and normalized not in values:
+            values.append(normalized)
+    return tuple(values)
+
+
 def _resolve_path(value: str | None, default: Path) -> Path:
     if not value:
         return default
@@ -39,6 +52,9 @@ class AppSettings:
     port: int
     debug: bool
     admin_local_only: bool
+    rate_limit_window_seconds: int
+    rate_limit_max_requests: int
+    ban_list: tuple[str, ...]
     ai_model_dir: Path
     vault_dir: Path
     database_url: str | None
@@ -66,6 +82,9 @@ def load_settings(project_root: Path) -> AppSettings:
         port=max(1, _read_int_env("APP_PORT", 8000)),
         debug=_read_bool_env("APP_DEBUG", default=False),
         admin_local_only=_read_bool_env("APP_ADMIN_LOCAL_ONLY", default=True),
+        rate_limit_window_seconds=max(1, _read_int_env("APP_RATE_LIMIT_WINDOW_SECONDS", 60)),
+        rate_limit_max_requests=max(1, _read_int_env("APP_RATE_LIMIT_MAX_REQUESTS", 120)),
+        ban_list=_read_list_env("APP_BAN_LIST"),
         ai_model_dir=ai_model_dir,
         vault_dir=vault_dir,
         database_url=os.getenv("DATABASE_URL") or None,

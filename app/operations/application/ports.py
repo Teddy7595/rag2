@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Protocol
 
 from app.operations.domain import OperationAuditEntry
+from app.operations.domain import SagaWorkflow
 
 
 class AuditLogRepositoryPort(Protocol):
@@ -13,3 +14,15 @@ class AuditLogRepositoryPort(Protocol):
     def count(self) -> int: ...
 
     def event_counts(self) -> dict[str, int]: ...
+
+
+class SagaWorkflowRepositoryPort(Protocol):
+    def save(self, workflow: SagaWorkflow) -> SagaWorkflow: ...
+
+    def get_by_id(self, saga_id: str) -> SagaWorkflow | None: ...
+
+    def list_recent(self, limit: int = 20) -> list[SagaWorkflow]: ...
+
+    def delete(self, saga_id: str) -> bool: ...
+
+    def count(self) -> int: ...

@@ -37,7 +37,7 @@ def build_simple_pdf_bytes(text: str) -> bytes:
     return b"".join(output) + b"".join(xref_lines) + trailer
 
 
-def build_test_app(tmp_path: Path, monkeypatch) -> object:
+def build_test_app(tmp_path: Path, monkeypatch, extra_env: dict[str, str] | None = None) -> object:
     vault_dir = tmp_path / "vault"
     ai_model_dir = tmp_path / "ai_model"
     database_path = tmp_path / "rag2.sqlite3"
@@ -47,6 +47,9 @@ def build_test_app(tmp_path: Path, monkeypatch) -> object:
     monkeypatch.setenv("DATABASE_URL", f"sqlite+pysqlite:///{database_path}")
     monkeypatch.setenv("DATABASE_CREATE_SCHEMA_ON_START", "true")
     monkeypatch.setenv("DATABASE_ECHO", "false")
+
+    for key, value in (extra_env or {}).items():
+        monkeypatch.setenv(key, value)
 
     return create_app()
 
@@ -65,6 +68,9 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/messages",
         "/api/interaction/summary",
         "/api/interaction/stream",
+        "/api/operations/sagas",
+        "/api/operations/sagas/{saga_id}",
+        "/api/operations/sagas/{saga_id}/commands",
         "/api/storage/overview",
         "/api/storage/public",
         "/api/storage/uploads",
@@ -302,6 +308,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert status_response.status_code == 200
         status_payload = status_response.json()
         assert status_payload["captured_events"] >= 10
+        assert status_payload["saga_count"] == 0
         assert status_payload["event_counts"]["knowledge.item.created"] >= 1
         assert status_payload["event_counts"]["interaction.message.recorded"] >= 1
         assert status_payload["event_counts"]["knowledge.engram.changed"] >= 2
@@ -310,6 +317,83 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert status_payload["event_counts"]["knowledge.context.packed"] >= 1
         assert status_payload["event_counts"]["knowledge.context.prompt.built"] >= 1
         assert status_payload["event_counts"]["knowledge.document.ingested"] >= 1
+
+        saga_start_response = client.post(
+            "/api/operations/sagas",
+            json={
+                "title": "Saga Atlas",
+                "premise": "Explorar la memoria persistente del sistema.",
+                "summary": "Flujo narrativo de comandos.",
+                "world_building": "Un monolito modular que recuerda cada acto.",
+                "initial_command": "abre el acto inicial",
+            },
+        )
+        assert saga_start_response.status_code == 200
+        saga_payload = saga_start_response.json()
+        assert saga_payload["title"] == "Saga Atlas"
+        assert saga_payload["command_count"] == 1
+        assert saga_payload["act_count"] == 1
+
+        saga_append_response = client.post(
+            f"/api/operations/sagas/{saga_payload['id']}/commands",
+            json={"command": "avanza al siguiente acto", "note": "cierre del primer giro"},
+        )
+        assert saga_append_response.status_code == 200
+        saga_append_payload = saga_append_response.json()
+        assert saga_append_payload["appended"] is True
+        assert saga_append_payload["saga"]["command_count"] == 2
+
+        saga_detail_response = client.get(f"/api/operations/sagas/{saga_payload['id']}")
+        assert saga_detail_response.status_code == 200
+        saga_detail = saga_detail_response.json()
+        assert saga_detail["title"] == "Saga Atlas"
+        assert saga_detail["command_count"] == 2
+        assert saga_detail["last_command"] == "avanza al siguiente acto"
+
+        saga_update_response = client.patch(
+            f"/api/operations/sagas/{saga_payload['id']}",
+            json={
+                "title": "Saga Atlas Renacida",
+                "status": "paused",
+                "world_building": "Un monolito modular que aprende de cada acto.",
+            },
+        )
+        assert saga_update_response.status_code == 200
+        saga_update_payload = saga_update_response.json()
+        assert saga_update_payload["updated"] is True
+        assert saga_update_payload["saga"]["title"] == "Saga Atlas Renacida"
+        assert saga_update_payload["saga"]["status"] == "paused"
+
+        temp_saga_response = client.post(
+            "/api/operations/sagas",
+            json={
+                "title": "Saga Temporal",
+                "premise": "Una historia efimera para probar delete.",
+                "initial_command": "abre un acto que desaparece",
+            },
+        )
+        assert temp_saga_response.status_code == 200
+        temp_saga_id = temp_saga_response.json()["id"]
+
+        saga_delete_response = client.delete(f"/api/operations/sagas/{temp_saga_id}")
+        assert saga_delete_response.status_code == 200
+        saga_delete_payload = saga_delete_response.json()
+        assert saga_delete_payload["deleted"] is True
+
+        sagas_list_response = client.get("/api/operations/sagas", params={"limit": 10})
+        assert sagas_list_response.status_code == 200
+        sagas_list_payload = sagas_list_response.json()
+        assert any(item["title"] == "Saga Atlas Renacida" for item in sagas_list_payload)
+        assert all(item["title"] != "Saga Temporal" for item in sagas_list_payload)
+
+        status_after_saga_response = client.get("/api/operations/status", params={"limit": 10})
+        assert status_after_saga_response.status_code == 200
+        status_after_saga = status_after_saga_response.json()
+        assert status_after_saga["saga_count"] >= 1
+        assert status_after_saga["event_counts"]["operations.saga.started"] >= 1
+        assert status_after_saga["event_counts"]["operations.saga.command.appended"] >= 1
+        assert status_after_saga["event_counts"]["operations.saga.updated"] >= 1
+        assert status_after_saga["event_counts"]["operations.saga.deleted"] >= 1
 
     app_again = build_test_app(tmp_path, monkeypatch)
 
@@ -358,6 +442,17 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert hints_again.status_code == 200
         assert "@Atlas" in hints_again.json()
 
+        sagas_again = client_again.get("/api/operations/sagas", params={"limit": 10})
+        assert sagas_again.status_code == 200
+        assert any(item["title"] == "Saga Atlas Renacida" for item in sagas_again.json())
+        assert all(item["title"] != "Saga Temporal" for item in sagas_again.json())
+
+        saga_detail_again = client_again.get(f"/api/operations/sagas/{saga_payload['id']}")
+        assert saga_detail_again.status_code == 200
+        saga_detail_again_payload = saga_detail_again.json()
+        assert saga_detail_again_payload["title"] == "Saga Atlas Renacida"
+        assert saga_detail_again_payload["command_count"] == 2
+
         interaction_messages_response = client_again.get("/api/interaction/messages", params={"limit": 10})
         assert interaction_messages_response.status_code == 200
         assert any(message["content"] == "Hola" for message in interaction_messages_response.json())
@@ -371,6 +466,39 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         audit_log_payload = audit_log_response.json()
         assert any(entry["event_name"] == "knowledge.item.created" for entry in audit_log_payload)
         assert any(entry["event_name"] == "knowledge.document.ingested" for entry in audit_log_payload)
+        assert any(entry["event_name"] == "operations.saga.started" for entry in audit_log_payload)
+        assert any(entry["event_name"] == "operations.saga.command.appended" for entry in audit_log_payload)
+        assert any(entry["event_name"] == "operations.saga.updated" for entry in audit_log_payload)
+        assert any(entry["event_name"] == "operations.saga.deleted" for entry in audit_log_payload)
+
+
+def test_security_middleware_applies_rate_limit_and_ban_list(tmp_path: Path, monkeypatch) -> None:
+    limited_app = build_test_app(
+        tmp_path / "limited",
+        monkeypatch,
+        extra_env={"APP_RATE_LIMIT_MAX_REQUESTS": "2", "APP_RATE_LIMIT_WINDOW_SECONDS": "60"},
+    )
+
+    with TestClient(limited_app) as client:
+        first_response = client.get("/api/platform/health")
+        second_response = client.get("/api/platform/health")
+        third_response = client.get("/api/platform/health")
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 200
+        assert third_response.status_code == 429
+        assert third_response.json()["detail"] == "Rate limit exceeded"
+
+    banned_app = build_test_app(
+        tmp_path / "banned",
+        monkeypatch,
+        extra_env={"APP_BAN_LIST": "testclient"},
+    )
+
+    with TestClient(banned_app) as client:
+        banned_response = client.get("/api/platform/health")
+        assert banned_response.status_code == 403
+        assert banned_response.json()["detail"] == "Client is banned"
 
 
 def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch) -> None:
