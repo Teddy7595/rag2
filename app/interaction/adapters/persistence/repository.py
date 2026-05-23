@@ -23,6 +23,13 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
             session.flush()
             return persisted.to_domain()
 
+    def get_by_id(self, message_id: str) -> ConversationMessage | None:
+        with self.database.session_factory() as session:
+            record = session.get(ConversationMessageRecord, message_id)
+            if not record:
+                return None
+            return record.to_domain()
+
     def list_recent(self, limit: int = 20) -> list[ConversationMessage]:
         if limit <= 0:
             return []
@@ -35,6 +42,42 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
             )
             records = session.scalars(statement).all()
             return [record.to_domain() for record in reversed(records)]
+
+    def hide_message(self, message_id: str) -> ConversationMessage | None:
+        with self.database.session_scope() as session:
+            record = session.get(ConversationMessageRecord, message_id)
+            if not record:
+                return None
+            record.content = "[mensaje oculto por operador]"
+            record.channel = "hidden"
+            session.flush()
+            return record.to_domain()
+
+    def rewind_session(self, session_id: str, message_id: str) -> dict[str, object]:
+        with self.database.session_scope() as session:
+            anchor = session.get(ConversationMessageRecord, message_id)
+            if not anchor or str(anchor.session_id or "") != session_id:
+                return {"rewound": False, "session_id": session_id, "message_id": message_id, "removed": 0}
+
+            statement = select(ConversationMessageRecord).where(ConversationMessageRecord.session_id == session_id)
+            records = list(session.scalars(statement).all())
+            records.sort(key=lambda item: (item.created_at, item.id))
+            anchor_index = next((index for index, item in enumerate(records) if item.id == anchor.id), -1)
+            if anchor_index < 0:
+                return {"rewound": False, "session_id": session_id, "message_id": message_id, "removed": 0}
+
+            removed = 0
+            for record in records[anchor_index + 1 :]:
+                session.delete(record)
+                removed += 1
+
+            session.flush()
+            return {
+                "rewound": True,
+                "session_id": session_id,
+                "message_id": message_id,
+                "removed": removed,
+            }
 
     def count(self) -> int:
         with self.database.session_factory() as session:
@@ -197,6 +240,54 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                 }
                 for record in reversed(records)
             ]
+
+    def list_context_traces(
+        self,
+        *,
+        trace_id: str | None,
+        session_id: str | None,
+        trigger: str | None,
+        limit: int,
+    ) -> list[dict[str, object]]:
+        safe_limit = max(1, min(500, int(limit)))
+        with self.database.session_factory() as session:
+            statement = (
+                select(TurnCoherenceMetricRecord)
+                .order_by(TurnCoherenceMetricRecord.created_at.desc(), TurnCoherenceMetricRecord.turn_id.desc())
+                .limit(safe_limit * 3)
+            )
+            if session_id:
+                statement = statement.where(TurnCoherenceMetricRecord.session_id == session_id)
+            if trace_id:
+                statement = statement.where(TurnCoherenceMetricRecord.turn_id == trace_id)
+            records = list(session.scalars(statement).all())
+
+        rows: list[dict[str, object]] = []
+        trigger_filter = (trigger or "").strip().lower()
+        for record in records:
+            context_trace = dict(record.context_trace or {})
+            intent = str(context_trace.get("intent") or "")
+            if trigger_filter and trigger_filter not in intent.lower():
+                continue
+
+            rows.append(
+                {
+                    "trace_id": record.turn_id,
+                    "turn_id": record.turn_id,
+                    "session_id": record.session_id,
+                    "trigger": intent,
+                    "coherence_score": float(record.coherence_score),
+                    "primary_topic": record.primary_topic,
+                    "secondary_topics": list(record.secondary_topics or []),
+                    "context_trace": context_trace,
+                    "created_at": record.created_at.isoformat() if record.created_at else None,
+                }
+            )
+            if len(rows) >= safe_limit:
+                break
+
+        rows.reverse()
+        return rows
 
     def get_session_conditions(self, session_id: str) -> dict[str, object] | None:
         with self.database.session_factory() as session:

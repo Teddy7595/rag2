@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import base64
 from hashlib import sha1
 from math import sqrt
 from pathlib import Path
@@ -87,12 +88,21 @@ def _read_pdf_image_metadata(pdf_path: str) -> list[dict[str, object]]:
             name = str(getattr(image, "name", f"image_{page_index}_{image_index}"))
             data = getattr(image, "data", None)
             size = len(data) if isinstance(data, (bytes, bytearray)) else 0
+            data_base64 = ""
+            if isinstance(data, (bytes, bytearray)) and 0 < size <= 2_000_000:
+                data_base64 = base64.b64encode(bytes(data)).decode("ascii")
+
+            extension = Path(name).suffix.lower().lstrip(".")
+            if not extension:
+                extension = "png"
             payload.append(
                 {
                     "page_number": page_index,
                     "image_index": image_index,
                     "name": name,
                     "bytes": size,
+                    "extension": extension,
+                    "data_base64": data_base64,
                 }
             )
     return payload

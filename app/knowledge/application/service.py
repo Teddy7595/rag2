@@ -1,8 +1,18 @@
 from __future__ import annotations
 
+import base64
+from pathlib import Path
+from tempfile import TemporaryDirectory
+
 from app.core.events import EventBus
 from app.knowledge.application.context_pipeline import KnowledgeContextPipeline
-from app.knowledge.application.document_ingestion import DocumentIngestionService
+from app.knowledge.application.document_ingestion import (
+    DocumentIngestionService,
+    _clean_ingested_text,
+    _embedding_from_tokens,
+    _read_pdf_image_metadata,
+    _tokenize,
+)
 from app.knowledge.application.engram_directory import EngramDirectory
 from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
 from app.knowledge.domain import Identity, KnowledgeEntry
@@ -32,6 +42,7 @@ from app.knowledge.events import (
     PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED,
     PUBLISH_KNOWLEDGE_ITEM_CREATED,
 )
+from app.models.events import ModelVisionAnalysisRequest, REQUEST_MODEL_VISION_ANALYSIS
 
 
 class KnowledgeService:
@@ -85,6 +96,7 @@ class KnowledgeService:
 
     def ingest_document(self, request: DocumentIngestRequest) -> dict[str, object]:
         payload = self.document_ingestion.ingest(request)
+        payload["vision_enrichment"] = self._enrich_pdf_images_with_vision(payload, request)
         self.event_bus.publish(
             PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED,
             payload,
@@ -93,6 +105,7 @@ class KnowledgeService:
                 "document_id": payload["document"]["document_id"],
                 "chunk_count": payload["chunk_count"],
                 "page_count": payload["page_count"],
+                "vision_count": len(payload.get("vision_enrichment", []) or []),
             },
         )
         return payload
@@ -420,3 +433,85 @@ class KnowledgeService:
             identity.top_p_base = request.top_p_base
         if request.max_tokens_respuesta is not None:
             identity.max_tokens_respuesta = request.max_tokens_respuesta
+
+    def _enrich_pdf_images_with_vision(
+        self,
+        payload: dict[str, object],
+        request: DocumentIngestRequest,
+    ) -> list[dict[str, object]]:
+        source_uri = str(request.source_uri or request.pdf_path or "")
+        if not source_uri.lower().endswith(".pdf"):
+            return []
+
+        if not request.pdf_path:
+            return []
+        try:
+            artifacts = _read_pdf_image_metadata(request.pdf_path)
+        except Exception:
+            return []
+        if not artifacts:
+            return []
+
+        document = payload.get("document") if isinstance(payload.get("document"), dict) else {}
+        document_id = str((document or {}).get("document_id") or "")
+        document_title = str((document or {}).get("title") or request.title)
+
+        enriched_rows: list[dict[str, object]] = []
+        with TemporaryDirectory(prefix="rag2_pdf_images_") as temp_dir:
+            for image in artifacts:
+                encoded = str(image.get("data_base64") or "").strip()
+                if not encoded:
+                    continue
+
+                try:
+                    image_bytes = base64.b64decode(encoded)
+                except Exception:
+                    continue
+
+                extension = str(image.get("extension") or "png").strip(".") or "png"
+                page_number = int(image.get("page_number") or 0)
+                image_index = int(image.get("image_index") or 0)
+                file_name = f"p{page_number:03d}_img{image_index:03d}.{extension}"
+                file_path = Path(temp_dir) / file_name
+                file_path.write_bytes(image_bytes)
+
+                analysis = self.event_bus.request(
+                    REQUEST_MODEL_VISION_ANALYSIS,
+                    ModelVisionAnalysisRequest(
+                        image_path=str(file_path),
+                        prompt="Extrae texto visible y describe elementos narrativos relevantes para RAG.",
+                        max_tokens=256,
+                    ),
+                    source_module="knowledge.application.service",
+                )
+                if not isinstance(analysis, dict):
+                    continue
+
+                summary = str(analysis.get("content") or analysis.get("result") or "").strip()
+                if not summary:
+                    continue
+
+                cleaned_summary = _clean_ingested_text(summary)
+                if not cleaned_summary:
+                    continue
+
+                vision_entry = KnowledgeEntry(
+                    title=f"{document_title} :: vision p{page_number} #{image_index}",
+                    content=cleaned_summary,
+                    tags=["document", "image", "vision", f"page:{page_number}"],
+                    source_type="document_image_vision",
+                    source_uri=source_uri,
+                    document_id=document_id,
+                    document_title=document_title,
+                    page_number=page_number,
+                    chunk_index=image_index,
+                    chunk_count=None,
+                    source_chars=len(cleaned_summary),
+                    embedding=_embedding_from_tokens(_tokenize(cleaned_summary)),
+                )
+                saved = self.repository.save(vision_entry)
+                row = saved.as_dict()
+                row["analysis_preview"] = cleaned_summary[:280]
+                enriched_rows.append(row)
+
+        return enriched_rows

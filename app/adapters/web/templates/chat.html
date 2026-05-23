@@ -2,758 +2,1429 @@
 
 {% block head_extra %}
 <style>
-  body.chat-body {
+  body {
     overflow: hidden;
   }
-  .chat-shell {
-    max-width: 860px;
-    margin: 0 auto;
-    min-height: calc(100dvh - 96px);
-    display: grid;
-    grid-template-rows: auto 1fr auto;
-    gap: 14px;
-  }
-  .chat-header,
-  .chat-log,
-  .chat-composer {
-    background: rgba(8, 15, 32, 0.9);
-    border: 1px solid rgba(148, 163, 184, 0.18);
-    border-radius: 24px;
-    box-shadow: 0 24px 72px rgba(2, 6, 23, 0.32);
-    backdrop-filter: blur(18px);
-  }
-  .chat-header {
-    padding: 18px;
-    display: grid;
-    gap: 14px;
-  }
-  .chat-header-top {
-    display: flex;
-    justify-content: space-between;
-    gap: 16px;
-    align-items: flex-start;
-  }
-  .chat-title {
+
+  .shell {
+    max-width: none;
     margin: 0;
-    font-size: clamp(1.6rem, 5vw, 2.6rem);
-    line-height: 1;
-  }
-  .chat-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    border-radius: 999px;
-    border: 1px solid rgba(125, 211, 252, 0.18);
-    color: #dbeafe;
-    background: rgba(56, 189, 248, 0.08);
-    font-size: 0.85rem;
-    font-weight: 700;
-    white-space: nowrap;
-  }
-  .chat-session-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    border-radius: 999px;
-    padding: 8px 12px;
-    font-size: 0.78rem;
-    color: #cbd5e1;
-    background: rgba(2, 6, 23, 0.5);
-  }
-  .chat-session-copy {
-    border: 1px solid rgba(148, 163, 184, 0.2);
-    border-radius: 999px;
-    background: rgba(2, 6, 23, 0.5);
-    color: #cbd5e1;
-    padding: 6px 10px;
-    cursor: pointer;
-    font-size: 0.74rem;
-  }
-  .chat-status[data-tone="warn"] {
-    color: #fde68a;
-    border-color: rgba(245, 158, 11, 0.22);
-    background: rgba(245, 158, 11, 0.12);
-  }
-  .chat-kpis {
-    display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 12px;
-  }
-  .chat-kpi {
-    padding: 14px;
-    border-radius: 18px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    background: rgba(2, 6, 23, 0.46);
-  }
-  .chat-kpi strong {
-    display: block;
-    font-size: 1.15rem;
-    margin-top: 6px;
-    color: #f8fafc;
-  }
-  .chat-log {
-    padding: 16px;
-    overflow-y: auto;
-    display: grid;
-    gap: 12px;
-    align-content: start;
-  }
-  .chat-row {
+    padding: 0;
+    height: 100dvh;
     display: flex;
-    gap: 10px;
-    max-width: 88%;
+    flex-direction: column;
   }
-  .chat-row.user {
-    margin-left: auto;
+
+  :root {
+    --chat-bg-color: #050505;
+    --chat-msg-bg-user: #1a1a1a;
+    --chat-msg-bg-ai: #0f0f0f;
+    --chat-accent-color: #00ff41;
+    --chat-suggestion-bg: #111;
+    --chat-suggestion-hover: #222;
+    --chat-font-main: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+    --chat-font-mono: 'Consolas', 'Courier New', monospace;
+  }
+
+  #header-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 15px;
+    background: rgba(10, 10, 10, 0.95);
+    border-bottom: 1px solid #222;
+    backdrop-filter: blur(5px);
+    z-index: 100;
+  }
+
+  .identity-badge {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: var(--chat-accent-color);
+    box-shadow: 0 0 8px var(--chat-accent-color);
+    transition: background-color 0.5s ease;
+  }
+
+  #engram-name {
+    font-family: var(--chat-font-mono);
+    font-size: 0.9rem;
+    color: #aaa;
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
+
+  .header-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+
+  .header-btn {
+    background: transparent;
+    border: 1px solid #333;
+    color: #666;
+    padding: 5px 10px;
+    border-radius: 4px;
+    font-size: 0.75rem;
+    cursor: pointer;
+    text-decoration: none;
+    font-family: var(--chat-font-mono);
+  }
+
+  .header-btn:hover {
+    color: #fff;
+    border-color: #555;
+  }
+
+  .session-chip {
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 5px 8px;
+    font-family: var(--chat-font-mono);
+    color: #9ca3af;
+    font-size: 0.72rem;
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+  }
+
+  .session-copy {
+    background: transparent;
+    border: 0;
+    color: #666;
+    cursor: pointer;
+    font-size: 0.72rem;
+    padding: 0;
+    font-family: var(--chat-font-mono);
+  }
+
+  .session-copy:hover {
+    color: #fff;
+  }
+
+  #suggestions {
+    display: flex;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 15px;
+    background: #080808;
+    border-bottom: 1px solid #222;
+  }
+
+  .chip {
+    background: var(--chat-suggestion-bg);
+    border: 1px solid #333;
+    color: #aaa;
+    padding: 6px 12px;
+    border-radius: 15px;
+    font-size: 0.8rem;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: all 0.2s;
+    font-family: var(--chat-font-mono);
+  }
+
+  .chip:hover {
+    background: var(--chat-suggestion-hover);
+    color: #fff;
+    border-color: var(--chat-accent-color);
+  }
+
+  #chat-container {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 25px;
+    scroll-behavior: smooth;
+    background: var(--chat-bg-color);
+  }
+
+  .message-row {
+    display: flex;
+    gap: 12px;
+    max-width: 95%;
+    animation: fadeIn 0.2s ease-out;
+    position: relative;
+    margin-bottom: 5px;
+  }
+
+  .message-row.user {
+    align-self: flex-end;
     flex-direction: row-reverse;
   }
-  .chat-avatar {
-    width: 34px;
-    height: 34px;
-    border-radius: 12px;
-    display: grid;
-    place-items: center;
-    background: rgba(56, 189, 248, 0.14);
-    border: 1px solid rgba(125, 211, 252, 0.18);
-    color: #f8fafc;
-    font-size: 0.75rem;
-    font-weight: 700;
-    flex: 0 0 auto;
+
+  .message-row.ai,
+  .message-row.system {
+    align-self: flex-start;
   }
-  .chat-row.user .chat-avatar {
-    background: rgba(34, 197, 94, 0.14);
-    border-color: rgba(34, 197, 94, 0.18);
-  }
-  .chat-bubble {
-    padding: 12px 14px;
-    border-radius: 18px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    background: rgba(2, 6, 23, 0.58);
-    color: #dbe5f4;
-    line-height: 1.55;
-    white-space: pre-wrap;
-    word-break: break-word;
-  }
-  .chat-row.user .chat-bubble {
-    background: rgba(22, 101, 52, 0.22);
-  }
-  .chat-meta {
-    margin-top: 6px;
-    font-size: 0.74rem;
-    color: #94a3b8;
-  }
-  .chat-composer {
-    padding: 14px;
-    display: grid;
-    gap: 12px;
-  }
-  .chat-toolbar {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-  }
-  .chat-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.16);
-    background: rgba(2, 6, 23, 0.5);
-    color: #cbd5e1;
-    font-size: 0.82rem;
-  }
-  .chat-form {
-    display: grid;
-    gap: 12px;
-  }
-  .chat-vision-panel {
-    display: grid;
-    gap: 12px;
-    padding: 12px;
-    border-radius: 18px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
-    background: rgba(2, 6, 23, 0.4);
-  }
-  .chat-upload {
-    width: 100%;
-    border: 1px dashed rgba(125, 211, 252, 0.26);
-    border-radius: 16px;
-    padding: 12px;
-    background: rgba(2, 6, 23, 0.48);
-    color: #cbd5e1;
-  }
-  .chat-preview {
-    display: none;
-    width: 100%;
-    max-height: 220px;
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    border-radius: 4px;
     object-fit: cover;
-    border-radius: 16px;
-    border: 1px solid rgba(148, 163, 184, 0.14);
+    border: 1px solid #333;
+    flex-shrink: 0;
   }
-  .chat-preview.is-visible {
-    display: block;
+
+  .bubble {
+    padding: 12px 16px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    line-height: 1.5;
+    word-wrap: break-word;
+    position: relative;
+    min-width: 60px;
+    font-family: var(--chat-font-main);
   }
-  .chat-input {
-    width: 100%;
-    min-height: 104px;
-    resize: vertical;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 18px;
-    background: rgba(2, 6, 23, 0.72);
-    color: #f8fafc;
-    padding: 14px;
-    font: inherit;
-    outline: none;
+
+  .message-row.user .bubble {
+    background-color: var(--chat-msg-bg-user);
+    border: 1px solid #333;
+    color: #fff;
+    border-bottom-right-radius: 2px;
   }
-  .chat-input:focus {
-    border-color: rgba(125, 211, 252, 0.72);
-    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.14);
+
+  .message-row.ai .bubble,
+  .message-row.system .bubble {
+    background-color: var(--chat-msg-bg-ai);
+    border-left: 2px solid var(--chat-accent-color);
+    color: #ddd;
+    border-bottom-left-radius: 2px;
   }
-  .chat-actions {
+
+  .meta {
+    margin-top: 6px;
+    font-size: 0.72rem;
+    color: #666;
+    font-family: var(--chat-font-mono);
+  }
+
+  .msg-controls {
+    position: absolute;
+    bottom: -35px;
+    right: 0;
     display: flex;
-    justify-content: space-between;
-    gap: 12px;
-    align-items: center;
+    gap: 8px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    background: #222;
+    border: 1px solid #444;
+    border-radius: 6px;
+    padding: 4px 8px;
+    z-index: 20;
+    box-shadow: 0 4px 10px rgba(0, 0, 0, 0.6);
+    transform: scale(0.9);
   }
-  .chat-world-rules {
-    width: 100%;
-    min-height: 76px;
-    resize: vertical;
-    border: 1px solid rgba(148, 163, 184, 0.22);
-    border-radius: 14px;
-    background: rgba(2, 6, 23, 0.72);
-    color: #f8fafc;
-    padding: 12px;
-    font: inherit;
+
+  .message-row.user .msg-controls {
+    right: 45px;
   }
-  .chat-help {
-    font-size: 0.82rem;
-    color: #94a3b8;
+
+  .message-row.ai .msg-controls,
+  .message-row.system .msg-controls {
+    left: 45px;
+    right: auto;
   }
-  .chat-send {
-    display: inline-flex;
+
+  .ctrl-btn {
+    background: transparent;
+    border: none;
+    color: #888;
+    cursor: pointer;
+    padding: 6px;
+    display: flex;
     align-items: center;
     justify-content: center;
-    border: 0;
-    border-radius: 999px;
-    padding: 11px 18px;
-    font: inherit;
-    font-weight: 700;
-    color: #eff6ff;
-    background: linear-gradient(135deg, rgba(56, 189, 248, 0.78), rgba(14, 165, 233, 0.92));
-    cursor: pointer;
   }
-  .chat-send:disabled {
-    opacity: 0.65;
-    cursor: progress;
+
+  .ctrl-btn:hover {
+    color: #fff;
+    transform: scale(1.1);
   }
-  .chat-empty {
-    padding: 20px;
-    border-radius: 18px;
-    border: 1px dashed rgba(148, 163, 184, 0.16);
+
+  .ctrl-btn.del:hover {
+    color: #ff0055;
+  }
+
+  .ctrl-btn.star:hover,
+  .ctrl-btn.star.active {
+    color: #ffd700;
+  }
+
+  .ctrl-btn.copy.copied {
+    color: var(--chat-accent-color);
+  }
+
+  .input-wrapper.editing {
+    border-color: #ffaa00;
+    background: #1a1500;
+  }
+
+  #cancel-edit-btn {
+    display: none;
+    color: #ffaa00;
+  }
+
+  #input-area {
+    padding: 15px;
+    background: #0a0a0a;
+    border-top: 1px solid #222;
+    position: relative;
+  }
+
+  #status-bar {
+    font-family: var(--chat-font-mono);
+    font-size: 0.75rem;
+    color: #888;
+    margin-bottom: 8px;
+    padding-left: 5px;
+    min-height: 15px;
+    opacity: 0.95;
+    transition: opacity 0.3s;
+    font-weight: 500;
+  }
+
+  #attached-file {
+    display: none;
+    margin: 0 5px 8px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.75rem;
+    color: #8ab4f8;
+    border: 1px dashed #334155;
+    border-radius: 6px;
+    padding: 6px 8px;
+    background: #111827;
+  }
+
+  #attached-file.is-visible {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+  }
+
+  #clear-file-btn {
+    background: transparent;
+    border: 1px solid #334155;
     color: #94a3b8;
-    text-align: center;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    font-family: var(--chat-font-mono);
   }
-  .typing-row .chat-bubble {
-    color: #7dd3fc;
+
+  .input-wrapper {
+    display: flex;
+    gap: 10px;
+    align-items: flex-end;
+    background: #111;
+    border: 1px solid #333;
+    border-radius: 6px;
+    padding: 8px 12px;
+    transition: border-color 0.2s;
   }
-  @media (max-width: 720px) {
-    .shell {
-      padding: 18px 12px 18px;
+
+  .input-wrapper:focus-within {
+    border-color: var(--chat-accent-color);
+  }
+
+  #message-input {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: #fff;
+    outline: none;
+    font-family: var(--chat-font-main);
+    font-size: 1rem;
+    resize: none;
+    overflow: hidden;
+    min-height: 24px;
+    max-height: 150px;
+    padding: 0;
+    line-height: 1.5;
+  }
+
+  .icon-btn {
+    background: transparent;
+    border: none;
+    color: #666;
+    cursor: pointer;
+    padding: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.2s;
+    height: 24px;
+  }
+
+  .icon-btn:hover {
+    color: var(--chat-accent-color);
+  }
+
+  .icon-btn svg {
+    width: 20px;
+    height: 20px;
+  }
+
+  #autocomplete-list {
+    position: absolute;
+    bottom: 100%;
+    left: 15px;
+    right: 15px;
+    background-color: #111;
+    border: 1px solid #333;
+    border-bottom: none;
+    border-radius: 6px 6px 0 0;
+    max-height: 200px;
+    overflow-y: auto;
+    display: none;
+    z-index: 50;
+    box-shadow: 0 -4px 10px rgba(0, 0, 0, 0.5);
+  }
+
+  .autocomplete-item {
+    padding: 10px 15px;
+    cursor: pointer;
+    border-bottom: 1px solid #222;
+    font-family: var(--chat-font-mono);
+    font-size: 0.9rem;
+    color: #ccc;
+    display: flex;
+    justify-content: space-between;
+  }
+
+  .autocomplete-item:hover {
+    background-color: #222;
+    color: var(--chat-accent-color);
+  }
+
+  .hint-desc {
+    font-size: 0.75rem;
+    color: #666;
+  }
+
+  .blinking {
+    animation: pulse 1.5s infinite;
+  }
+
+  @keyframes fadeIn {
+    from {
+      opacity: 0;
+      transform: translateY(5px);
     }
-    .chat-shell {
-      min-height: calc(100dvh - 36px);
-      grid-template-rows: auto 1fr auto;
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
     }
-    .chat-header,
-    .chat-log,
-    .chat-composer {
-      border-radius: 20px;
+  }
+
+  @keyframes pulse {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
+  }
+
+  ::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: #050505;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: #333;
+    border-radius: 3px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: #555;
+  }
+
+  @media (max-width: 760px) {
+    .header-actions {
+      justify-content: flex-start;
     }
-    .chat-header {
-      padding: 16px;
-    }
-    .chat-header-top {
+
+    #header-bar {
       flex-direction: column;
+      align-items: flex-start;
+      gap: 8px;
     }
-    .chat-kpis {
-      grid-template-columns: 1fr;
-    }
-    .chat-row {
+
+    .message-row {
       max-width: 100%;
     }
-    .chat-actions {
-      flex-direction: column;
-      align-items: stretch;
+
+    .msg-controls.mobile-active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1.1);
+      bottom: -40px;
+      background: rgba(0, 0, 0, 0.95);
+      border-color: var(--chat-accent-color);
     }
-    .chat-send {
-      width: 100%;
+  }
+
+  @media (min-width: 761px) {
+    .message-row:hover .msg-controls {
+      opacity: 1;
+      pointer-events: auto;
+      transform: scale(1);
+      bottom: -28px;
     }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<section class="chat-shell">
-  <header class="chat-header">
-    <div class="chat-header-top">
-      <div>
-        <p class="eyebrow">{{ eyebrow }}</p>
-        <h1 class="chat-title" id="chat-title">{{ headline }}</h1>
-        <p class="description">{{ description }}</p>
-      </div>
-      <div style="display:grid; gap:10px;">
-        <span class="chat-status" data-runtime-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}" data-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}">
-          {% if runtime.local_text_ready %}
-          runtime local listo
-          {% else %}
-          runtime local pendiente
-          {% endif %}
-        </span>
-        <div class="chat-session-badge">
-          <span id="chat-session-id">session: pendiente</span>
-          <button type="button" id="chat-session-copy" class="chat-session-copy">copiar</button>
-        </div>
-      </div>
-    </div>
-    <div class="chat-kpis">
-      <article class="chat-kpi">
-        <span class="stat-label">Texto local</span>
-        <strong>{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
-        <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin bundle seleccionado' }}</span>
-      </article>
-      <article class="chat-kpi">
-        <span class="stat-label">Vision local</span>
-        <strong>{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
-        <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
-      </article>
-      <article class="chat-kpi">
-        <span class="stat-label">Canal</span>
-        <strong>WebSocket</strong>
-        <span class="stat-copy">/ws/chat · fallback SSE disponible</span>
-      </article>
-    </div>
-  </header>
+<div id="header-bar">
+  <div class="identity-badge">
+    <div id="status-dot"></div>
+    <span id="engram-name">OFFLINE</span>
+  </div>
+  <div class="header-actions">
+    <span class="session-chip">
+      <span id="chat-session-id">session: pendiente</span>
+      <button type="button" id="chat-session-copy" class="session-copy">copiar</button>
+    </span>
+    <span class="session-chip" id="chat-limits-chip">ctx=5 · hist=20</span>
+    <a href="/admin/session-intel" id="chat-session-intel-link" class="header-btn">Session Intel</a>
+    <a href="/admin/context-traces" class="header-btn">Context Traces</a>
+    <a href="/admin/engrams" class="header-btn">Engramas</a>
+    <span style="font-size: 0.7rem; color: #444; align-self: center;">Chat realtime</span>
+  </div>
+</div>
 
-  <section class="chat-log" id="chat-log" aria-live="polite">
-    <article class="chat-empty" id="chat-empty">
-      El historial se carga al abrir la sesion. Esta vista esta optimizada para telefono y usa el gateway realtime actual.
-    </article>
-  </section>
+<div id="suggestions"></div>
 
-  <section class="chat-composer">
-    <div class="chat-toolbar">
-      <span class="chat-chip">Historia persistente</span>
-      <span class="chat-chip">Contexto por knowledge</span>
-      <span class="chat-chip">Futuro runtime local llama.cpp</span>
-      <a class="chat-chip" id="chat-session-intel-link" href="/admin/session-intel">Monitor de sesion</a>
-      <a class="chat-chip" href="/admin/engrams">Engramas</a>
+<div id="chat-container" aria-live="polite">
+  <div class="message-row ai">
+    <img src="https://ui-avatars.com/api/?name=OS&background=333&color=fff" class="avatar" alt="avatar">
+    <div>
+      <div class="bubble">Sistema Online. Usa /help para ver comandos y @ para invocar engramas.</div>
+      <div class="meta">CORE-OS</div>
     </div>
-    <form class="chat-form" id="chat-form">
-      <textarea id="chat-world-rules" class="chat-world-rules" placeholder="Condiciones de conversacion / reglas del mundo para esta sala."></textarea>
-      <div class="chat-vision-panel">
-        <span class="chat-help">Analisis de imagen local: sube una imagen y se enviara al runtime de vision seleccionado.</span>
-        <input id="chat-image-file" class="chat-upload" type="file" accept="image/*">
-        <img id="chat-image-preview" class="chat-preview" alt="Preview de imagen para analisis local">
-        <textarea id="chat-vision-prompt" class="chat-input" style="min-height: 84px;" placeholder="Prompt opcional para vision. Ej: describe la escena y el texto visible.">Describe la imagen en espanol con foco en sujetos, objetos, texto visible y contexto.</textarea>
-        <button type="button" class="chat-send" id="chat-vision-send">Analizar imagen</button>
-      </div>
-      <div class="chat-vision-panel">
-        <span class="chat-help">Assets de sala: sube archivos que se guardan en .vault/uploads/chats/&lt;session_id&gt; con su nombre original.</span>
-        <input id="chat-asset-file" class="chat-upload" type="file">
-      </div>
-      <textarea id="chat-input" class="chat-input" placeholder="Escribe un mensaje. Ej: Atlas resume el contexto actual y prepara el siguiente paso."></textarea>
-      <div class="chat-actions">
-        <span class="chat-help" id="chat-help">Sesion realtime iniciando... Usa /help para comandos.</span>
-        <button type="submit" class="chat-send" id="chat-send">Enviar</button>
-      </div>
-    </form>
-  </section>
-</section>
+  </div>
+</div>
+
+<div id="input-area">
+  <div id="autocomplete-list"></div>
+  <div id="status-bar">Sesion realtime iniciando...</div>
+  <div id="attached-file">
+    <span id="attached-file-label"></span>
+    <button id="clear-file-btn" type="button">limpiar</button>
+  </div>
+  <div class="input-wrapper" id="input-box">
+    <input type="file" id="file-upload" style="display:none;" accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx">
+    <button class="icon-btn" id="attach-btn" title="Adjuntar archivo (o usa /attach)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+      </svg>
+    </button>
+    <textarea id="message-input" placeholder="Escribe una orden..." rows="1"></textarea>
+    <button class="icon-btn" id="cancel-edit-btn" title="Cancelar edición">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="18" y1="6" x2="6" y2="18"></line>
+        <line x1="6" y1="6" x2="18" y2="18"></line>
+      </svg>
+    </button>
+    <button class="icon-btn" id="send-btn" title="Enviar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="22" y1="2" x2="11" y2="13"></line>
+        <polygon points="22 2 15 22 11 13 2 9 22 2"></polygon>
+      </svg>
+    </button>
+  </div>
+</div>
 {% endblock %}
 
 {% block scripts %}
 <script>
 (() => {
-  const log = document.getElementById('chat-log');
-  const empty = document.getElementById('chat-empty');
-  const form = document.getElementById('chat-form');
-  const input = document.getElementById('chat-input');
-  const help = document.getElementById('chat-help');
-  const send = document.getElementById('chat-send');
-  const visionSend = document.getElementById('chat-vision-send');
-  const imageFile = document.getElementById('chat-image-file');
-  const assetFile = document.getElementById('chat-asset-file');
-  const imagePreview = document.getElementById('chat-image-preview');
-  const visionPrompt = document.getElementById('chat-vision-prompt');
-  const worldRulesInput = document.getElementById('chat-world-rules');
+  const chatBox = document.getElementById('chat-container');
+  const inputField = document.getElementById('message-input');
+  const statusDot = document.getElementById('status-dot');
+  const statusBar = document.getElementById('status-bar');
+  const engramName = document.getElementById('engram-name');
+  const autocompleteList = document.getElementById('autocomplete-list');
+  const suggestionsDiv = document.getElementById('suggestions');
+  const sendBtn = document.getElementById('send-btn');
+  const attachBtn = document.getElementById('attach-btn');
+  const fileUpload = document.getElementById('file-upload');
+  const attachedFileBox = document.getElementById('attached-file');
+  const attachedFileLabel = document.getElementById('attached-file-label');
+  const clearFileBtn = document.getElementById('clear-file-btn');
+  const inputBox = document.getElementById('input-box');
+  const cancelEditBtn = document.getElementById('cancel-edit-btn');
   const sessionIdLabel = document.getElementById('chat-session-id');
+  const limitsChip = document.getElementById('chat-limits-chip');
   const sessionCopyButton = document.getElementById('chat-session-copy');
   const sessionIntelLink = document.getElementById('chat-session-intel-link');
-  const chatTitle = document.getElementById('chat-title');
+
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
   const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
   const SESSION_STORAGE_KEY = 'rag2.activeRealtimeSessionId';
   const WORLD_RULES_PREFIX = 'rag2.worldRules.';
-  let typingRow = null;
-  let streamedTokens = [];
-  let activeSessionId = '';
+  const LIMITS_PREFIX = 'rag2.sessionLimits.';
+  const DEFAULT_LIMITS_KEY = 'rag2.defaultSessionLimits';
 
-  const persistSessionId = (sessionId) => {
+  let currentEngramColor = '#00ff41';
+  let currentEngramAvatar = 'https://ui-avatars.com/api/?name=AI&background=333&color=fff';
+  let currentAiBubble = null;
+  let isProcessing = false;
+  let availableHints = [];
+  let activeSessionId = '';
+  let attachedFile = null;
+  let lastMessageId = '';
+  let lastAssistantMessageId = '';
+  let worldRules = '';
+  let lastUploadedPath = '';
+  let contextLimit = 5;
+  let historyLimit = 20;
+  let isEditingMode = false;
+  let editMessageId = null;
+  let longPressTimer = null;
+
+  const slashCommands = [
+    '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
+    '/ingest <ruta_relativa_vault>', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
+    '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>',
+    '/ctx <1-50>', '/history <1-100>', '/limits'
+  ];
+
+  function setStatus(text, blinking = false) {
+    statusBar.innerText = text;
+    statusBar.style.opacity = '1';
+    statusBar.className = blinking ? 'blinking' : '';
+  }
+
+  function renderLimitsChip() {
+    if (!limitsChip) {
+      return;
+    }
+    limitsChip.textContent = `ctx=${contextLimit} · hist=${historyLimit}`;
+  }
+
+  function readStoredLimits(sessionId) {
+    const key = sessionId ? `${LIMITS_PREFIX}${sessionId}` : DEFAULT_LIMITS_KEY;
+    const raw = window.localStorage.getItem(key);
+    if (!raw) {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(raw);
+      const ctx = Number(parsed.context_limit);
+      const hist = Number(parsed.history_limit);
+      if (!Number.isFinite(ctx) || !Number.isFinite(hist)) {
+        return null;
+      }
+      return {
+        context_limit: Math.max(1, Math.min(50, Math.floor(ctx))),
+        history_limit: Math.max(1, Math.min(100, Math.floor(hist))),
+      };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function persistLimits(sessionId) {
+    const payload = JSON.stringify({
+      context_limit: contextLimit,
+      history_limit: historyLimit,
+    });
+    window.localStorage.setItem(DEFAULT_LIMITS_KEY, payload);
+    if (sessionId) {
+      window.localStorage.setItem(`${LIMITS_PREFIX}${sessionId}`, payload);
+    }
+  }
+
+  function loadLimitsForSession(sessionId) {
+    const scoped = readStoredLimits(sessionId);
+    const fallback = readStoredLimits(null);
+    const resolved = scoped || fallback;
+    if (resolved) {
+      contextLimit = resolved.context_limit;
+      historyLimit = resolved.history_limit;
+    }
+    renderLimitsChip();
+  }
+
+  function scrollToBottom(force) {
+    const threshold = 10;
+    const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight <= threshold;
+    if (force || isNearBottom) {
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+  }
+
+  function adjustHeight(el) {
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+    if (el.value === '') {
+      el.style.height = '24px';
+    }
+  }
+
+  function renderAttachedFile() {
+    if (!attachedFile) {
+      attachedFileBox.classList.remove('is-visible');
+      attachedFileLabel.textContent = '';
+      return;
+    }
+    attachedFileBox.classList.add('is-visible');
+    attachedFileLabel.textContent = `adjunto: ${attachedFile.name}`;
+  }
+
+  function appendMessage(text, isUser, avatarUrl, forceScroll, msgId = null, author = null, channel = null) {
+    const row = document.createElement('div');
+    row.className = `message-row ${isUser ? 'user' : (channel === 'system' ? 'system' : 'ai')}`;
+    if (msgId) {
+      row.dataset.id = msgId;
+      lastMessageId = msgId;
+      if (!isUser && channel === 'assistant') {
+        lastAssistantMessageId = msgId;
+      }
+    }
+
+    const img = document.createElement('img');
+    img.className = 'avatar';
+    img.src = avatarUrl || currentEngramAvatar;
+    img.alt = 'avatar';
+
+    const body = document.createElement('div');
+    const bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.innerHTML = String(text || '').replace(/\n/g, '<br>');
+
+    const meta = document.createElement('div');
+    meta.className = 'meta';
+    const roleText = author || (isUser ? 'user' : 'assistant');
+    const chanText = channel || (isUser ? 'chat' : 'assistant');
+    meta.textContent = `${roleText} · ${chanText}${msgId ? ` · ${String(msgId).slice(0, 8)}` : ''}`;
+
+    body.appendChild(bubble);
+    body.appendChild(meta);
+
+    if (isUser) {
+      row.appendChild(body);
+      row.appendChild(img);
+    } else {
+      row.appendChild(img);
+      row.appendChild(body);
+    }
+
+    chatBox.appendChild(row);
+
+    if (msgId) {
+      injectControls(row, msgId, isUser);
+    }
+
+    scrollToBottom(forceScroll);
+    return bubble;
+  }
+
+  function setupMessageInteractions(row) {
+    row.addEventListener('touchstart', () => {
+      const controls = row.querySelector('.msg-controls');
+      if (!controls) {
+        return;
+      }
+      longPressTimer = window.setTimeout(() => {
+        document.querySelectorAll('.msg-controls.mobile-active').forEach((element) => element.classList.remove('mobile-active'));
+        controls.classList.add('mobile-active');
+        if (navigator.vibrate) {
+          navigator.vibrate(40);
+        }
+      }, 450);
+    }, { passive: true });
+
+    const cancelLongPress = () => {
+      if (longPressTimer) {
+        window.clearTimeout(longPressTimer);
+        longPressTimer = null;
+      }
+    };
+
+    row.addEventListener('touchend', cancelLongPress);
+    row.addEventListener('touchmove', cancelLongPress);
+    row.addEventListener('touchcancel', cancelLongPress);
+  }
+
+  function startEditing(messageId, originalText) {
+    isEditingMode = true;
+    editMessageId = messageId;
+    inputField.value = originalText;
+    inputBox.classList.add('editing');
+    cancelEditBtn.style.display = 'flex';
+    setStatus('Modo edición activo. El próximo envío aplica rewind + reescritura.', false);
+    inputField.focus();
+    adjustHeight(inputField);
+  }
+
+  function cancelEdit() {
+    isEditingMode = false;
+    editMessageId = null;
+    inputBox.classList.remove('editing');
+    cancelEditBtn.style.display = 'none';
+    setStatus('Edición cancelada.', false);
+  }
+
+  function injectControls(row, messageId, isUser) {
+    if (row.querySelector('.msg-controls')) {
+      return;
+    }
+
+    const controls = document.createElement('div');
+    controls.className = 'msg-controls';
+
+    const starButton = document.createElement('button');
+    starButton.className = 'ctrl-btn star';
+    starButton.type = 'button';
+    starButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"></polygon></svg>';
+    starButton.addEventListener('click', async () => {
+      const response = await fetch(`/api/interaction/messages/${encodeURIComponent(messageId)}/memorize`, { method: 'POST' });
+      const payload = await response.json();
+      starButton.classList.add('active');
+      appendMessage(response.ok && payload.ok ? `Memorizado: ${messageId}` : `No se pudo memorizar ${messageId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+    });
+    controls.appendChild(starButton);
+
+    const copyButton = document.createElement('button');
+    copyButton.className = 'ctrl-btn copy';
+    copyButton.type = 'button';
+    copyButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
+    copyButton.addEventListener('click', async () => {
+      const text = row.querySelector('.bubble')?.textContent || '';
+      await navigator.clipboard.writeText(text);
+      copyButton.classList.add('copied');
+      window.setTimeout(() => copyButton.classList.remove('copied'), 800);
+    });
+    controls.appendChild(copyButton);
+
+    const deleteButton = document.createElement('button');
+    deleteButton.className = 'ctrl-btn del';
+    deleteButton.type = 'button';
+    deleteButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>';
+    deleteButton.addEventListener('click', async () => {
+      const response = await fetch(`/api/interaction/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' });
+      const payload = await response.json();
+      appendMessage(response.ok && payload.ok ? `Oculto: ${messageId}` : `No se pudo ocultar ${messageId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+    });
+    controls.appendChild(deleteButton);
+
+    if (isUser) {
+      const editButton = document.createElement('button');
+      editButton.className = 'ctrl-btn';
+      editButton.type = 'button';
+      editButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+      editButton.addEventListener('click', () => {
+        const original = row.querySelector('.bubble')?.textContent || '';
+        startEditing(messageId, original);
+      });
+      controls.appendChild(editButton);
+    }
+
+    row.appendChild(controls);
+    setupMessageInteractions(row);
+  }
+
+  function startProcessingFeedback() {
+    isProcessing = true;
+    setStatus('Procesando...', true);
+  }
+
+  function stopProcessingFeedback() {
+    if (!isProcessing) {
+      return;
+    }
+    isProcessing = false;
+    setStatus('Online', false);
+  }
+
+  function updateIdentityUI(identity) {
+    if (identity.name) {
+      engramName.innerText = identity.name;
+    }
+    if (identity.color) {
+      currentEngramColor = identity.color;
+      statusDot.style.backgroundColor = identity.color;
+      document.documentElement.style.setProperty('--chat-accent-color', identity.color);
+    }
+    if (identity.avatar) {
+      currentEngramAvatar = identity.avatar;
+    }
+  }
+
+  function persistSessionId(sessionId) {
     if (!sessionId) {
       return;
     }
     activeSessionId = sessionId;
     window.localStorage.setItem(SESSION_STORAGE_KEY, sessionId);
-    if (sessionIntelLink) {
-      sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
-    }
     if (sessionIdLabel) {
       sessionIdLabel.textContent = `session: ${sessionId}`;
     }
-    const storedRules = window.localStorage.getItem(`${WORLD_RULES_PREFIX}${sessionId}`) || '';
-    if (worldRulesInput && storedRules && !worldRulesInput.value.trim()) {
-      worldRulesInput.value = storedRules;
+    if (sessionIntelLink) {
+      sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
     }
-  };
+    loadLimitsForSession(sessionId);
+    persistLimits(sessionId);
+  }
 
-  const preloadSessionLink = () => {
-    const remembered = window.localStorage.getItem(SESSION_STORAGE_KEY) || '';
-    if (!remembered || !sessionIntelLink) {
+  async function loadWorldRules(sessionId) {
+    if (!sessionId) {
       return;
     }
-    activeSessionId = remembered;
-    sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(remembered)}`;
-    if (sessionIdLabel) {
-      sessionIdLabel.textContent = `session: ${remembered}`;
-    }
-  };
-
-  const saveWorldRules = async () => {
-    if (!activeSessionId || !worldRulesInput) {
+    const localRules = window.localStorage.getItem(`${WORLD_RULES_PREFIX}${sessionId}`);
+    if (localRules !== null) {
+      worldRules = localRules;
       return;
     }
-    const worldRules = worldRulesInput.value.trim();
+    try {
+      const response = await fetch(`/api/interaction/sessions/${encodeURIComponent(sessionId)}/conditions`);
+      const payload = await response.json();
+      worldRules = String(payload.world_rules || '');
+      window.localStorage.setItem(`${WORLD_RULES_PREFIX}${sessionId}`, worldRules);
+    } catch (_) {
+      worldRules = '';
+    }
+  }
+
+  async function saveWorldRules() {
+    if (!activeSessionId) {
+      return;
+    }
     window.localStorage.setItem(`${WORLD_RULES_PREFIX}${activeSessionId}`, worldRules);
     await fetch(`/api/interaction/sessions/${encodeURIComponent(activeSessionId)}/conditions`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ world_rules: worldRules }),
     });
-  };
+  }
 
-  const loadWorldRules = async (sessionId) => {
-    if (!sessionId || !worldRulesInput) {
+  function preloadSession() {
+    const remembered = window.localStorage.getItem(SESSION_STORAGE_KEY) || '';
+    if (!remembered) {
       return;
     }
-    const localRules = window.localStorage.getItem(`${WORLD_RULES_PREFIX}${sessionId}`);
-    if (localRules !== null) {
-      worldRulesInput.value = localRules;
+    persistSessionId(remembered);
+    loadWorldRules(remembered);
+    loadLimitsForSession(remembered);
+  }
+
+  async function openAttachPicker() {
+    fileUpload.click();
+  }
+
+  async function uploadAttachedFile() {
+    if (!activeSessionId) {
+      appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
       return;
     }
-    try {
-      const response = await fetch(`/api/interaction/sessions/${encodeURIComponent(sessionId)}/conditions`);
-      const payload = await response.json();
-      const rules = String(payload.world_rules || '');
-      worldRulesInput.value = rules;
-      window.localStorage.setItem(`${WORLD_RULES_PREFIX}${sessionId}`, rules);
-    } catch (_) {
-      worldRulesInput.value = '';
+    if (!attachedFile) {
+      appendMessage('No hay archivo adjunto. Usa /attach.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return;
     }
-  };
 
-  const handleSlashCommand = async (rawMessage) => {
-    const [command, ...rest] = rawMessage.trim().split(/\s+/);
+    const formData = new FormData();
+    formData.append('file', attachedFile);
+    const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`, {
+      method: 'POST',
+      body: formData,
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      appendMessage(`Fallo upload: ${JSON.stringify(payload)}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return;
+    }
+
+    lastUploadedPath = String(payload.relative_path || '');
+    appendMessage(`Asset subido: ${lastUploadedPath || attachedFile.name}`, false, currentEngramAvatar, true, null, 'system', 'system');
+  }
+
+  async function runVisionCommand(promptText) {
+    if (!attachedFile) {
+      appendMessage('Adjunta una imagen con /attach para usar /vision.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return;
+    }
+
+    const formData = new FormData();
+    formData.append('image', attachedFile);
+    formData.append('prompt', promptText || 'Describe la imagen en espanol con foco en sujetos, objetos, texto visible y contexto.');
+
+    const response = await fetch('/api/models/runtime/vision', { method: 'POST', body: formData });
+    const payload = await response.json();
+    appendMessage(payload.content || payload.detail || payload.reason || 'Sin salida de vision.', false, currentEngramAvatar, true, null, 'vision', 'assistant');
+  }
+
+  async function handleSlashCommand(rawText) {
+    const [command, ...rest] = rawText.trim().split(/\s+/);
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      appendMessage({
-        author: 'system',
-        channel: 'system',
-        content: 'Comandos: /help · /assets list · /vault list · /upload · /ingest <ruta_relativa_vault> · /vision <prompt>',
-        tone: 'assistant',
-      });
+      appendMessage(
+        'Comandos: /help · /attach · /clearfile · /upload · /assets list · /vault list · /ingest <ruta_relativa_vault> · /vision <prompt> · /mem [message_id] · /hide [message_id] · /rewind [message_id] · /trace [trigger] · /rules show · /rules <texto> · /ctx <1-50> · /history <1-100> · /limits. Usa @ para engramas.',
+        false,
+        currentEngramAvatar,
+        true,
+        null,
+        'system',
+        'system'
+      );
+      return true;
+    }
+
+    if (command === '/ctx') {
+      const value = Number(args || 0);
+      if (!Number.isFinite(value) || value < 1 || value > 50) {
+        appendMessage('Uso: /ctx <1-50>', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      contextLimit = Math.floor(value);
+      persistLimits(activeSessionId);
+      renderLimitsChip();
+      appendMessage(`Context limit actualizado a ${contextLimit}.`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/history') {
+      const value = Number(args || 0);
+      if (!Number.isFinite(value) || value < 1 || value > 100) {
+        appendMessage('Uso: /history <1-100>', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      historyLimit = Math.floor(value);
+      persistLimits(activeSessionId);
+      renderLimitsChip();
+      appendMessage(`History limit actualizado a ${historyLimit}.`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/limits') {
+      appendMessage(`Límites activos: context_limit=${contextLimit}, history_limit=${historyLimit}.`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/attach') {
+      await openAttachPicker();
+      return true;
+    }
+
+    if (command === '/clearfile') {
+      attachedFile = null;
+      fileUpload.value = '';
+      renderAttachedFile();
+      appendMessage('Adjunto limpiado.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/upload') {
+      await uploadAttachedFile();
       return true;
     }
 
     if (command === '/assets' && args === 'list') {
       if (!activeSessionId) {
-        appendMessage({ author: 'system', channel: 'system', content: 'No hay session_id activo aún.', tone: 'assistant' });
+        appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
         return true;
       }
       const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`);
       const payload = await response.json();
-      appendMessage({ author: 'system', channel: 'system', content: `Assets de sala: ${(payload || []).join(', ') || 'sin archivos'}`, tone: 'assistant' });
+      appendMessage(`Assets de sala: ${(payload || []).join(', ') || 'sin archivos'}`, false, currentEngramAvatar, true, null, 'system', 'system');
       return true;
     }
 
     if (command === '/vault' && args === 'list') {
       const response = await fetch('/api/storage/vault/files?limit=120');
       const payload = await response.json();
-      const preview = Array.isArray(payload) ? payload.slice(0, 20).map((item) => item.relative_path).join('\n') : '';
-      appendMessage({ author: 'system', channel: 'system', content: preview || 'Vault sin archivos.', tone: 'assistant' });
-      return true;
-    }
-
-    if (command === '/upload') {
-      if (!activeSessionId) {
-        appendMessage({ author: 'system', channel: 'system', content: 'No hay session_id activo aún.', tone: 'assistant' });
-        return true;
-      }
-      const file = assetFile.files && assetFile.files[0];
-      if (!file) {
-        appendMessage({ author: 'system', channel: 'system', content: 'Selecciona un archivo en Assets de sala primero.', tone: 'assistant' });
-        return true;
-      }
-      const formData = new FormData();
-      formData.append('file', file);
-      const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`, {
-        method: 'POST',
-        body: formData,
-      });
-      const payload = await response.json();
-      appendMessage({ author: 'system', channel: 'system', content: `Asset subido: ${payload.relative_path || file.name}`, tone: 'assistant' });
+      const preview = Array.isArray(payload)
+        ? payload.slice(0, 20).map((item) => item.relative_path).join('\n')
+        : '';
+      appendMessage(preview || 'Vault sin archivos.', false, currentEngramAvatar, true, null, 'system', 'system');
       return true;
     }
 
     if (command === '/ingest') {
-      if (!args) {
-        appendMessage({ author: 'system', channel: 'system', content: 'Uso: /ingest <ruta_relativa_en_vault>', tone: 'assistant' });
+      const targetPath = args || lastUploadedPath;
+      if (!targetPath) {
+        appendMessage('Uso: /ingest <ruta_relativa_en_vault> o sube con /upload primero.', false, currentEngramAvatar, true, null, 'system', 'system');
         return true;
       }
-      const response = await fetch(`/api/storage/vault/ingest?relative_path=${encodeURIComponent(args)}`, { method: 'POST' });
+      const response = await fetch(`/api/storage/vault/ingest?relative_path=${encodeURIComponent(targetPath)}`, { method: 'POST' });
       const payload = await response.json();
-      appendMessage({ author: 'system', channel: 'system', content: response.ok ? `Ingestado: ${payload.relative_path}` : `Fallo ingest: ${JSON.stringify(payload)}`, tone: 'assistant' });
+      appendMessage(response.ok ? `Ingestado: ${payload.relative_path || targetPath}` : `Fallo ingest: ${JSON.stringify(payload)}`, false, currentEngramAvatar, true, null, 'system', 'system');
       return true;
     }
 
     if (command === '/vision') {
-      const file = imageFile.files && imageFile.files[0];
-      if (!file) {
-        appendMessage({ author: 'system', channel: 'system', content: 'Selecciona una imagen para /vision.', tone: 'assistant' });
+      await runVisionCommand(args);
+      return true;
+    }
+
+    if (command === '/mem') {
+      const targetId = args || lastAssistantMessageId || lastMessageId;
+      if (!targetId) {
+        appendMessage('No hay message_id para memorizar.', false, currentEngramAvatar, true, null, 'system', 'system');
         return true;
       }
-      const formData = new FormData();
-      formData.append('image', file);
-      formData.append('prompt', args || visionPrompt.value.trim());
-      const response = await fetch('/api/models/runtime/vision', { method: 'POST', body: formData });
+      const response = await fetch(`/api/interaction/messages/${encodeURIComponent(targetId)}/memorize`, { method: 'POST' });
       const payload = await response.json();
-      appendMessage({ author: 'vision', channel: 'assistant', content: payload.content || payload.detail || 'Sin salida de vision.' });
+      appendMessage(response.ok && payload.ok ? `Memorizado: ${targetId}` : `No se pudo memorizar ${targetId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/hide') {
+      const targetId = args || lastAssistantMessageId || lastMessageId;
+      if (!targetId) {
+        appendMessage('No hay message_id para ocultar.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      const response = await fetch(`/api/interaction/messages/${encodeURIComponent(targetId)}`, { method: 'DELETE' });
+      const payload = await response.json();
+      appendMessage(response.ok && payload.ok ? `Oculto: ${targetId}` : `No se pudo ocultar ${targetId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/rewind') {
+      if (!activeSessionId) {
+        appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      const targetId = args || lastAssistantMessageId || lastMessageId;
+      if (!targetId) {
+        appendMessage('No hay message_id para rewind.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      const response = await fetch(`/api/interaction/sessions/${encodeURIComponent(activeSessionId)}/rewind/${encodeURIComponent(targetId)}`, { method: 'POST' });
+      const payload = await response.json();
+      appendMessage(response.ok && payload.rewound ? `Rewind aplicado. Mensajes eliminados: ${payload.removed}` : `No se pudo rewind para ${targetId}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/trace') {
+      if (!activeSessionId) {
+        appendMessage('No hay session_id activo aún.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      const params = new URLSearchParams({ session_id: activeSessionId });
+      if (args) {
+        params.set('trigger', args);
+      }
+      window.open(`/admin/context-traces?${params.toString()}`, '_blank', 'noopener,noreferrer');
+      appendMessage('Inspector de trazas abierto en nueva pestaña.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/rules') {
+      if (!args || args === 'show') {
+        appendMessage(worldRules ? `World rules: ${worldRules}` : 'No hay world rules activas.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      worldRules = args;
+      await saveWorldRules();
+      appendMessage('World rules actualizadas para esta sesion.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/cancel') {
+      cancelEdit();
       return true;
     }
 
     return false;
-  };
+  }
 
-  preloadSessionLink();
-
-  const scrollToBottom = () => {
-    log.scrollTop = log.scrollHeight;
-  };
-
-  const initials = (value) => (value || 'AI').trim().slice(0, 2).toUpperCase();
-
-  const removeEmpty = () => {
-    if (empty && !empty.hidden) {
-      empty.hidden = true;
+  function renderQuickChips() {
+    suggestionsDiv.innerHTML = '';
+    const chips = [...slashCommands.slice(0, 6), ...availableHints.slice(0, 6)];
+    for (const hint of chips) {
+      const chip = document.createElement('div');
+      chip.className = 'chip';
+      chip.innerText = hint;
+      chip.onclick = () => {
+        inputField.value = `${hint} `;
+        inputField.focus();
+        adjustHeight(inputField);
+      };
+      suggestionsDiv.appendChild(chip);
     }
-  };
+  }
 
-  const appendMessage = ({ author, content, channel, tone }) => {
-    removeEmpty();
-    const row = document.createElement('article');
-    row.className = `chat-row ${tone || (channel === 'assistant' ? 'assistant' : 'user')}`;
-
-    const avatar = document.createElement('div');
-    avatar.className = 'chat-avatar';
-    avatar.textContent = initials(author);
-
-    const body = document.createElement('div');
-    const bubble = document.createElement('div');
-    bubble.className = 'chat-bubble';
-    bubble.textContent = content;
-    const meta = document.createElement('div');
-    meta.className = 'chat-meta';
-    meta.textContent = `${author} · ${channel}`;
-
-    body.appendChild(bubble);
-    body.appendChild(meta);
-    row.appendChild(avatar);
-    row.appendChild(body);
-    log.appendChild(row);
-    scrollToBottom();
-    return bubble;
-  };
-
-  const ensureTypingRow = () => {
-    if (typingRow) {
-      return typingRow;
+  async function loadHints() {
+    try {
+      const response = await fetch('/api/knowledge/identity/hints');
+      if (response.ok) {
+        const payload = await response.json();
+        if (Array.isArray(payload)) {
+          availableHints = payload;
+        }
+      }
+    } catch (_) {
+      availableHints = [];
     }
-    const bubble = appendMessage({ author: 'AI', content: '...', channel: 'assistant', tone: 'typing-row' });
-    typingRow = bubble;
-    streamedTokens = [];
-    return typingRow;
-  };
+    renderQuickChips();
+  }
 
-  const clearTypingRow = () => {
-    if (!typingRow) {
+  function showAutocomplete(matches, currentWord) {
+    autocompleteList.innerHTML = '';
+    for (const match of matches) {
+      const item = document.createElement('div');
+      item.className = 'autocomplete-item';
+      const desc = match.startsWith('@') ? 'Engrama' : 'Comando';
+      item.innerHTML = `<span>${match}</span><span class="hint-desc">${desc}</span>`;
+      item.onclick = () => {
+        const text = inputField.value;
+        const cursorPosition = inputField.selectionStart;
+        const textBeforeCursor = text.substring(0, cursorPosition);
+        const textAfterCursor = text.substring(cursorPosition);
+        const lastIndex = textBeforeCursor.lastIndexOf(currentWord);
+        const newText = textBeforeCursor.substring(0, lastIndex) + match + ' ' + textAfterCursor;
+        inputField.value = newText;
+        autocompleteList.style.display = 'none';
+        inputField.focus();
+        adjustHeight(inputField);
+      };
+      autocompleteList.appendChild(item);
+    }
+    autocompleteList.style.display = 'block';
+  }
+
+  function checkAutocomplete(text) {
+    const cursorPosition = inputField.selectionStart;
+    const textBeforeCursor = text.substring(0, cursorPosition);
+    const words = textBeforeCursor.split(/\s+/);
+    const currentWord = words[words.length - 1];
+
+    if (!(currentWord.startsWith('/') || currentWord.startsWith('@'))) {
+      autocompleteList.style.display = 'none';
       return;
     }
-    const row = typingRow.closest('.chat-row');
-    if (row) {
-      row.remove();
-    }
-    typingRow = null;
-    streamedTokens = [];
-  };
 
-  const showPreview = () => {
-    const file = imageFile.files && imageFile.files[0];
-    if (!file) {
-      imagePreview.src = '';
-      imagePreview.classList.remove('is-visible');
+    const space = [...slashCommands, ...availableHints];
+    const matches = space.filter((entry) => entry.toLowerCase().includes(currentWord.toLowerCase())).slice(0, 8);
+    if (!matches.length) {
+      autocompleteList.style.display = 'none';
       return;
     }
-    imagePreview.src = URL.createObjectURL(file);
-    imagePreview.classList.add('is-visible');
-  };
+    showAutocomplete(matches, currentWord);
+  }
+
+  function setupInputListeners() {
+    inputField.addEventListener('input', () => {
+      adjustHeight(inputField);
+      checkAutocomplete(inputField.value);
+    });
+
+    inputField.addEventListener('keydown', async (event) => {
+      if (event.key === 'Enter' && !event.shiftKey) {
+        event.preventDefault();
+        if (autocompleteList.style.display === 'block') {
+          return;
+        }
+        await sendMessage();
+      }
+    });
+
+    document.addEventListener('click', (event) => {
+      if (event.target !== inputField && !autocompleteList.contains(event.target)) {
+        autocompleteList.style.display = 'none';
+      }
+
+      if (!event.target.closest('.msg-controls') && !event.target.closest('.message-row')) {
+        document.querySelectorAll('.msg-controls.mobile-active').forEach((element) => element.classList.remove('mobile-active'));
+      }
+    });
+  }
+
+  async function sendMessage() {
+    const text = inputField.value.trim();
+    if (!text) {
+      return;
+    }
+
+    if (text.startsWith('/')) {
+      const handled = await handleSlashCommand(text);
+      if (handled) {
+        inputField.value = '';
+        adjustHeight(inputField);
+        inputField.focus();
+        return;
+      }
+    }
+
+    if (!socket || socket.readyState !== WebSocket.OPEN) {
+      appendMessage('El websocket no esta listo. Recarga la pagina.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return;
+    }
+
+    if (isEditingMode && editMessageId && activeSessionId) {
+      const pivotRow = chatBox.querySelector(`.message-row[data-id="${editMessageId}"]`);
+      if (pivotRow) {
+        let next = pivotRow.nextElementSibling;
+        while (next) {
+          const current = next;
+          next = next.nextElementSibling;
+          current.remove();
+        }
+        pivotRow.remove();
+      }
+
+      await fetch(`/api/interaction/sessions/${encodeURIComponent(activeSessionId)}/rewind/${encodeURIComponent(editMessageId)}`, {
+        method: 'POST',
+      });
+      cancelEdit();
+    }
+
+    appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat');
+    inputField.value = '';
+    adjustHeight(inputField);
+    currentAiBubble = null;
+    startProcessingFeedback();
+
+    socket.send(JSON.stringify({
+      content: text,
+      context_limit: contextLimit,
+      history_limit: historyLimit,
+      channel: 'chat',
+      world_rules: worldRules,
+    }));
+  }
 
   socket.addEventListener('open', () => {
-    help.textContent = 'Sesion realtime conectada. El websocket del modulo interaction esta listo.';
+    statusDot.style.backgroundColor = currentEngramColor;
+    engramName.innerText = 'ONLINE';
+    setStatus('Conectado. Usa /help para comandos.', false);
+  });
+
+  socket.addEventListener('close', () => {
+    statusDot.style.backgroundColor = '#ff0000';
+    engramName.innerText = 'OFFLINE';
+    setStatus('Socket cerrado. Recarga para reconectar.', false);
+    sendBtn.disabled = true;
   });
 
   socket.addEventListener('message', (event) => {
     const packet = JSON.parse(event.data);
+
     switch (packet.type) {
       case 'session_started':
         persistSessionId(String(packet.session_id || ''));
         loadWorldRules(String(packet.session_id || ''));
-        help.textContent = `Sesion ${packet.session_id.slice(0, 8)} activa.`;
-        break;
+        setStatus(`Sesion ${String(packet.session_id || '').slice(0, 8)} activa.`, false);
+        return;
       case 'welcome':
-        appendMessage({ author: 'system', content: packet.content, channel: 'system', tone: 'assistant' });
-        break;
+        appendMessage(packet.content || 'Bienvenido.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return;
       case 'meta_update':
-        if (packet.color) {
-          document.documentElement.style.setProperty('--accent', packet.color);
-          if (chatTitle) {
-            chatTitle.style.color = String(packet.color);
-          }
-        }
-        break;
-      case 'history_message':
-        appendMessage({ author: packet.message.author, content: packet.message.content, channel: packet.message.channel });
-        break;
+        updateIdentityUI(packet);
+        return;
+      case 'history_message': {
+        const message = packet.message || {};
+        const isUser = String(message.author || '').toLowerCase() === 'user' || message.channel === 'chat';
+        appendMessage(message.content || '', isUser, isUser ? 'https://ui-avatars.com/api/?name=User&background=555&color=fff' : currentEngramAvatar, false, message.id || null, message.author || (isUser ? 'user' : 'assistant'), message.channel || (isUser ? 'chat' : 'assistant'));
+        return;
+      }
       case 'turn_started':
-        ensureTypingRow().textContent = 'pensando...';
-        send.disabled = true;
-        help.textContent = 'Recuperando contexto y preparando respuesta...';
-        break;
+        startProcessingFeedback();
+        currentAiBubble = appendMessage('pensando...', false, currentEngramAvatar, true, null, 'assistant', 'assistant');
+        sendBtn.disabled = true;
+        return;
       case 'assistant_token':
-        streamedTokens.push(packet.token);
-        ensureTypingRow().textContent = streamedTokens.join(' ');
-        scrollToBottom();
-        break;
-      case 'assistant_message':
-        clearTypingRow();
-        appendMessage({ author: packet.message.author, content: packet.message.content, channel: packet.message.channel });
-        break;
+        if (!currentAiBubble) {
+          currentAiBubble = appendMessage('', false, currentEngramAvatar, true, null, 'assistant', 'assistant');
+        }
+        currentAiBubble.innerHTML += `${String(packet.token || '')} `;
+        scrollToBottom(false);
+        return;
+      case 'assistant_message': {
+        const message = packet.message || {};
+        if (currentAiBubble) {
+          const row = currentAiBubble.closest('.message-row');
+          if (row) {
+            row.remove();
+          }
+          currentAiBubble = null;
+        }
+        appendMessage(message.content || '', false, currentEngramAvatar, true, message.id || null, message.author || 'assistant', message.channel || 'assistant');
+        return;
+      }
       case 'turn_complete':
-        clearTypingRow();
-        send.disabled = false;
+        stopProcessingFeedback();
+        sendBtn.disabled = false;
         if (packet.session_id) {
           persistSessionId(String(packet.session_id));
         }
-        help.textContent = `Turno completado. Historial persistido: ${packet.history_count} mensajes.`;
-        break;
+        setStatus(`Turno completado. Historial: ${packet.history_count || 0} mensajes.`, false);
+        return;
       case 'error':
-        clearTypingRow();
-        send.disabled = false;
-        help.textContent = packet.detail || 'Error en el gateway realtime.';
-        break;
+        stopProcessingFeedback();
+        sendBtn.disabled = false;
+        setStatus(packet.detail || 'Error en realtime.', false);
+        return;
       default:
-        break;
+        return;
     }
   });
 
-  socket.addEventListener('close', () => {
-    send.disabled = true;
-    help.textContent = 'El websocket se cerro. Recarga la pagina para reconectar.';
+  attachBtn.addEventListener('click', () => {
+    openAttachPicker();
   });
 
-  imageFile.addEventListener('change', showPreview);
+  fileUpload.addEventListener('change', () => {
+    attachedFile = fileUpload.files && fileUpload.files[0] ? fileUpload.files[0] : null;
+    renderAttachedFile();
+    if (attachedFile) {
+      setStatus(`Adjunto listo: ${attachedFile.name}`, false);
+    }
+  });
+
+  clearFileBtn.addEventListener('click', () => {
+    attachedFile = null;
+    fileUpload.value = '';
+    renderAttachedFile();
+    setStatus('Adjunto limpiado.', false);
+  });
+
   sessionCopyButton.addEventListener('click', async () => {
     if (!activeSessionId) {
       return;
     }
     await navigator.clipboard.writeText(activeSessionId);
-    help.textContent = 'Session ID copiado al portapapeles.';
-  });
-  worldRulesInput.addEventListener('change', () => {
-    saveWorldRules();
+    setStatus('Session ID copiado.', false);
   });
 
-  visionSend.addEventListener('click', async () => {
-    const file = imageFile.files && imageFile.files[0];
-    if (!file) {
-      help.textContent = 'Selecciona una imagen para usar el runtime de vision.';
-      return;
-    }
-    const formData = new FormData();
-    formData.append('image', file);
-    formData.append('prompt', visionPrompt.value.trim());
-    visionSend.disabled = true;
-    help.textContent = 'Analizando imagen con el runtime local de vision...';
-    appendMessage({ author: 'user', content: `[imagen] ${file.name}\n${visionPrompt.value.trim()}`, channel: 'vision' });
-    try {
-      const response = await fetch('/api/models/runtime/vision', {
-        method: 'POST',
-        body: formData,
-      });
-      const payload = await response.json();
-      appendMessage({
-        author: 'vision',
-        content: payload.content || payload.detail || payload.reason || 'Sin respuesta del runtime de vision.',
-        channel: 'assistant',
-      });
-      help.textContent = payload.ok ? 'Analisis de imagen completado.' : 'El runtime de vision devolvio un error controlado.';
-    } catch (error) {
-      appendMessage({ author: 'vision', content: String(error), channel: 'assistant' });
-      help.textContent = 'Fallo la llamada al runtime de vision.';
-    } finally {
-      visionSend.disabled = false;
-    }
+  sendBtn.addEventListener('click', async () => {
+    await sendMessage();
+    inputField.focus();
   });
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const content = input.value.trim();
-    if (!content || socket.readyState !== WebSocket.OPEN) {
-      return;
-    }
-    if (content.startsWith('/')) {
-      const handled = await handleSlashCommand(content);
-      if (handled) {
-        input.value = '';
-        input.focus();
-        return;
-      }
-    }
-    await saveWorldRules();
-    appendMessage({ author: 'user', content, channel: 'chat' });
-    socket.send(JSON.stringify({
-      content,
-      context_limit: 5,
-      history_limit: 20,
-      channel: 'chat',
-      world_rules: worldRulesInput.value.trim(),
-    }));
-    input.value = '';
-    input.focus();
+  cancelEditBtn.addEventListener('click', () => {
+    cancelEdit();
   });
+
+  preloadSession();
+  loadLimitsForSession(activeSessionId || null);
+  renderLimitsChip();
+  setupInputListeners();
+  loadHints();
+  document.querySelectorAll('.message-row').forEach((row) => setupMessageInteractions(row));
+  inputField.focus();
 })();
 </script>
 {% endblock %}

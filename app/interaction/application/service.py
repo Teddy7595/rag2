@@ -3,15 +3,23 @@ from __future__ import annotations
 from app.core.events import EventBus
 from app.interaction.domain import ConversationMessage
 from app.interaction.events import (
+    InteractionContextTraceRequest,
     InteractionHistoryRequest,
+    InteractionMessageActionRequest,
     InteractionMessageRecordRequest,
+    InteractionSessionRewindRequest,
     InteractionSessionRequest,
     InteractionSessionConditionsRequest,
     InteractionSummaryRequest,
     PUBLISH_INTERACTION_MESSAGE_RECORDED,
 )
 from app.interaction.application.ports import InteractionMessageRepositoryPort
-from app.knowledge.events import REQUEST_KNOWLEDGE_OVERVIEW, KnowledgeOverviewRequest
+from app.knowledge.events import (
+    REQUEST_KNOWLEDGE_ITEM_CREATE,
+    REQUEST_KNOWLEDGE_OVERVIEW,
+    KnowledgeItemCreateRequest,
+    KnowledgeOverviewRequest,
+)
 
 
 class InteractionService:
@@ -53,6 +61,47 @@ class InteractionService:
             metadata={"author": message.author, "channel": message.channel},
         )
         return payload
+
+    def hide_message(self, request: InteractionMessageActionRequest) -> dict[str, object]:
+        message = self.repository.hide_message(request.message_id)
+        return {
+            "ok": message is not None,
+            "action": "hide",
+            "message": message.as_dict() if message else None,
+        }
+
+    def memorize_message(self, request: InteractionMessageActionRequest) -> dict[str, object]:
+        message = self.repository.get_by_id(request.message_id)
+        if not message:
+            return {"ok": False, "action": "memorize", "reason": "message_not_found"}
+
+        title = f"Memoria chat {message.id[:8]}"
+        tags = ["chat", "memorized", message.channel]
+        if message.session_id:
+            tags.append(f"session:{message.session_id}")
+
+        created = self.event_bus.request(
+            REQUEST_KNOWLEDGE_ITEM_CREATE,
+            KnowledgeItemCreateRequest(title=title, content=message.content, tags=tags),
+            source_module="interaction.application.service",
+        )
+        return {
+            "ok": True,
+            "action": "memorize",
+            "message": message.as_dict(),
+            "knowledge": created,
+        }
+
+    def rewind_session(self, request: InteractionSessionRewindRequest) -> dict[str, object]:
+        return self.repository.rewind_session(request.session_id, request.message_id)
+
+    def context_traces(self, request: InteractionContextTraceRequest) -> list[dict[str, object]]:
+        return self.repository.list_context_traces(
+            trace_id=request.trace_id,
+            session_id=request.session_id,
+            trigger=request.trigger,
+            limit=request.limit,
+        )
 
     def session_memory(self, request: InteractionSessionRequest) -> dict[str, object]:
         return self.repository.get_session_memory(request.session_id) or {

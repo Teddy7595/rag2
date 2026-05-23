@@ -71,18 +71,23 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/admin/runtime-ai",
         "/admin/context-graph",
         "/admin/session-intel",
+        "/admin/context-traces",
         "/admin/engrams",
         "/chat",
         "/admin/routes",
         "/admin/models",
         "/api/platform/health",
         "/api/interaction/messages",
+        "/api/interaction/messages/{message_id}",
+        "/api/interaction/messages/{message_id}/memorize",
         "/api/interaction/summary",
         "/api/interaction/stream",
+        "/api/interaction/sessions/{session_id}/rewind/{message_id}",
         "/api/interaction/sessions/{session_id}/memory",
         "/api/interaction/sessions/{session_id}/topics",
         "/api/interaction/sessions/{session_id}/metrics",
         "/api/interaction/sessions/{session_id}/conditions",
+        "/api/admin/context-traces",
         "/api/operations/sagas",
         "/api/operations/sagas/{saga_id}",
         "/api/operations/sagas/{saga_id}/commands",
@@ -157,6 +162,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert session_intel_admin_response.status_code == 200
         assert "Monitor de continuidad por sesion" in session_intel_admin_response.text
         assert "rag2.activeRealtimeSessionId" in session_intel_admin_response.text
+
+        context_traces_admin_response = client.get("/admin/context-traces")
+        assert context_traces_admin_response.status_code == 200
+        assert "Inspector de trazas de contexto" in context_traces_admin_response.text
 
         engrams_admin_response = client.get("/admin/engrams")
         assert engrams_admin_response.status_code == 200
@@ -303,13 +312,45 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
             json={"author": "user", "content": "Hola", "channel": "chat"},
         )
         assert message_response.status_code == 200
+        message_payload = message_response.json()
+
+        memorize_response = client.post(f"/api/interaction/messages/{message_payload['id']}/memorize")
+        assert memorize_response.status_code == 200
+        assert memorize_response.json()["ok"] is True
+
+        hide_response = client.delete(f"/api/interaction/messages/{message_payload['id']}")
+        assert hide_response.status_code == 200
+        assert hide_response.json()["ok"] is True
+
+        hidden_messages_response = client.get("/api/interaction/messages", params={"limit": 5})
+        assert hidden_messages_response.status_code == 200
+        assert any(item["channel"] == "hidden" for item in hidden_messages_response.json())
+
+        rewind_first = client.post(
+            "/api/interaction/messages",
+            json={"author": "user", "content": "turno 1", "channel": "chat", "session_id": "rewind-room"},
+        )
+        rewind_second = client.post(
+            "/api/interaction/messages",
+            json={"author": "assistant", "content": "turno 2", "channel": "assistant", "session_id": "rewind-room"},
+        )
+        assert rewind_first.status_code == 200
+        assert rewind_second.status_code == 200
+
+        rewind_response = client.post(
+            f"/api/interaction/sessions/rewind-room/rewind/{rewind_first.json()['id']}",
+        )
+        assert rewind_response.status_code == 200
+        assert rewind_response.json()["rewound"] is True
+        assert rewind_response.json()["removed"] >= 1
 
         summary_response = client.get("/api/interaction/summary", params={"limit": 5})
         assert summary_response.status_code == 200
         summary_payload = summary_response.json()
-        assert summary_payload["message_count"] == 1
-        assert summary_payload["channel_counts"]["chat"] == 1
-        assert summary_payload["knowledge_overview"]["item_count"] == 1
+        assert summary_payload["message_count"] >= 1
+        assert summary_payload["channel_counts"]["chat"] >= 1
+        assert summary_payload["channel_counts"]["hidden"] >= 1
+        assert summary_payload["knowledge_overview"]["item_count"] >= 2
 
         engram_response = client.post(
             "/api/knowledge/engrams",
@@ -729,11 +770,12 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
 
         interaction_messages_response = client_again.get("/api/interaction/messages", params={"limit": 10})
         assert interaction_messages_response.status_code == 200
-        assert any(message["content"] == "Hola" for message in interaction_messages_response.json())
+        interaction_messages_payload = interaction_messages_response.json()
+        assert any(message["channel"] in {"chat", "hidden"} for message in interaction_messages_payload)
 
         interaction_summary_response = client_again.get("/api/interaction/summary", params={"limit": 10})
         assert interaction_summary_response.status_code == 200
-        assert interaction_summary_response.json()["message_count"] == 1
+        assert interaction_summary_response.json()["message_count"] >= 1
 
         audit_log_response = client_again.get("/api/operations/audit-log", params={"limit": 100})
         assert audit_log_response.status_code == 200
@@ -858,6 +900,15 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         metrics_payload = metrics_response.json()
         assert len(metrics_payload) >= 1
         assert any(metric["session_id"] == realtime_session_id for metric in metrics_payload)
+
+        traces_response = client.get(
+            "/api/admin/context-traces",
+            params={"session_id": realtime_session_id, "limit": 20},
+        )
+        assert traces_response.status_code == 200
+        traces_payload = traces_response.json()
+        assert isinstance(traces_payload, list)
+        assert any(trace["session_id"] == realtime_session_id for trace in traces_payload)
         assert any((metric.get("coherence_score") or 0) >= 0 for metric in metrics_payload)
 
         sse_response = client.post(

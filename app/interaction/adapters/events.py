@@ -4,8 +4,12 @@ from app.core.app_context import get_app_context_from_app
 from app.core.events import EventEnvelope
 from app.interaction.application import InteractionService
 from app.interaction.events import (
+    REQUEST_INTERACTION_CONTEXT_TRACES,
+    REQUEST_INTERACTION_MESSAGE_HIDE,
+    REQUEST_INTERACTION_MESSAGE_MEMORIZE,
     REQUEST_INTERACTION_MESSAGE_RECORD,
     REQUEST_INTERACTION_MESSAGES,
+    REQUEST_INTERACTION_SESSION_REWIND,
     REQUEST_INTERACTION_SESSION_MEMORY,
     REQUEST_INTERACTION_SESSION_CONDITIONS,
     REQUEST_INTERACTION_SESSION_CONDITIONS_SET,
@@ -30,6 +34,12 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     def handle_record(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.record_message(envelope.payload)
 
+    def handle_hide(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.hide_message(envelope.payload)
+
+    def handle_memorize(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.memorize_message(envelope.payload)
+
     def handle_session_memory(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.session_memory(envelope.payload)
 
@@ -45,11 +55,21 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     def handle_session_conditions_set(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.set_session_conditions(envelope.payload)
 
+    def handle_session_rewind(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.rewind_session(envelope.payload)
+
+    def handle_context_traces(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
+        return service.context_traces(envelope.payload)
+
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SUMMARY, handle_summary)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGES, handle_list)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_RECORD, handle_record)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_HIDE, handle_hide)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_MEMORIZE, handle_memorize)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_MEMORY, handle_session_memory)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_CONDITIONS, handle_session_conditions)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_CONDITIONS_SET, handle_session_conditions_set)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_REWIND, handle_session_rewind)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_TOPIC_GRAPH, handle_session_topic_graph)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_TURN_METRICS, handle_turn_metrics)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_CONTEXT_TRACES, handle_context_traces)

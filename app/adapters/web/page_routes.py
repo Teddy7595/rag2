@@ -305,6 +305,24 @@ async def session_intel_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/admin/context-traces")
+async def context_traces_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    runtime_context = _runtime_context(request)
+    return _render(
+        request,
+        "context_traces.html",
+        title=f"{context.settings.app_name} | Context Traces",
+        eyebrow="Context Traces",
+        headline="Inspector de trazas de contexto",
+        description=(
+            "Audita la traza de retrieval/rerank por turno para analizar decisiones del motor "
+            "de continuidad, filtrar triggers y depurar coherencia en tiempo real."
+        ),
+        **runtime_context,
+    )
+
+
 @router.get("/ui")
 async def frontend_shell_page(request: Request) -> HTMLResponse:
     context = get_app_context_from_request(request)

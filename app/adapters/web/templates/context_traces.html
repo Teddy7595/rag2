@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="stats">
+  <article class="stat-card">
+    <span class="stat-label">Runtime texto</span>
+    <strong class="stat-value">{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin modelo local activo' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Runtime vision</span>
+    <strong class="stat-value">{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
+  </article>
+  <article class="stat-card">
+    <span class="stat-label">Binding llama.cpp</span>
+    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
+    <span class="stat-copy">{{ runtime.binding_version or 'sin version detectada' }}</span>
+  </article>
+</section>
+
+<section class="panel-grid">
+  <article class="panel">
+    <h2 class="panel-title">Filtros</h2>
+    <div class="panel-body">
+      <form id="trace-filter-form" style="display: grid; gap: 10px;">
+        <label class="control-label" for="trace-id">Trace ID</label>
+        <input id="trace-id" class="control-input" type="text" placeholder="turn_id exacto" autocomplete="off">
+
+        <label class="control-label" for="session-id">Session ID</label>
+        <input id="session-id" class="control-input" type="text" placeholder="filtrar por sesion" autocomplete="off">
+
+        <label class="control-label" for="trigger">Trigger</label>
+        <input id="trigger" class="control-input" type="text" placeholder="ej: retrieval, chat, saga" autocomplete="off">
+
+        <label class="control-label" for="trace-limit">Limite</label>
+        <input id="trace-limit" class="control-input" type="number" min="1" max="500" value="100">
+
+        <div class="card-actions">
+          <button class="save-button" type="submit">Consultar trazas</button>
+          <a class="link-button" href="/admin/session-intel">Session intel</a>
+        </div>
+      </form>
+      <p class="small-note" id="trace-status">Sin consulta ejecutada.</p>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Leyenda</h2>
+    <div class="panel-body" style="display: grid; gap: 10px;">
+      <p><strong>Trace ID:</strong> corresponde al <code>turn_id</code> persistido para cada turno realtime.</p>
+      <p><strong>Trigger:</strong> deriva de <code>context_trace.intent</code> y permite aislar rutas de decisión.</p>
+      <p><strong>Score:</strong> valor de coherencia del turno, útil para detectar deriva narrativa.</p>
+    </div>
+  </article>
+</section>
+
+<section class="panel" style="margin-top: 16px;">
+  <h2 class="panel-title">Resultados</h2>
+  <div class="panel-body route-search" style="margin: 0;">
+    <div id="trace-rows" class="route-rows"></div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const form = document.getElementById('trace-filter-form');
+  const traceIdInput = document.getElementById('trace-id');
+  const sessionIdInput = document.getElementById('session-id');
+  const triggerInput = document.getElementById('trigger');
+  const limitInput = document.getElementById('trace-limit');
+  const statusText = document.getElementById('trace-status');
+  const rowsTarget = document.getElementById('trace-rows');
+
+  const renderRows = (rows) => {
+    rowsTarget.innerHTML = '';
+    if (!Array.isArray(rows) || !rows.length) {
+      rowsTarget.innerHTML = '<div class="route-row"><p class="route-path">Sin trazas para los filtros actuales.</p></div>';
+      return;
+    }
+
+    for (const item of rows) {
+      const trace = item.context_trace || {};
+      const route = trace.route || {};
+      const snippets = Array.isArray(trace.snippets) ? trace.snippets.length : 0;
+      const row = document.createElement('div');
+      row.className = 'route-row';
+      row.innerHTML =
+        `<p class="route-path">${item.trace_id || '-'} · ${item.session_id || '-'}</p>` +
+        `<div class="route-meta">` +
+          `<span class="pill" data-uppercase="false">trigger: ${item.trigger || '-'}</span>` +
+          `<span class="pill" data-uppercase="false">score: ${item.coherence_score ?? '-'}</span>` +
+          `<span class="pill" data-uppercase="false">topic: ${item.primary_topic || '-'}</span>` +
+          `<span class="pill" data-uppercase="false">snippets: ${snippets}</span>` +
+          `<span class="pill" data-uppercase="false">intent: ${route.intent || '-'}</span>` +
+        `</div>`;
+      rowsTarget.appendChild(row);
+    }
+  };
+
+  const loadTraces = async () => {
+    statusText.textContent = 'Consultando trazas...';
+    const params = new URLSearchParams();
+    const traceId = traceIdInput.value.trim();
+    const sessionId = sessionIdInput.value.trim();
+    const trigger = triggerInput.value.trim();
+    const limit = Math.max(1, Math.min(500, Number(limitInput.value || 100)));
+
+    if (traceId) {
+      params.set('trace_id', traceId);
+    }
+    if (sessionId) {
+      params.set('session_id', sessionId);
+    }
+    if (trigger) {
+      params.set('trigger', trigger);
+    }
+    params.set('limit', String(limit));
+
+    try {
+      const response = await fetch(`/api/admin/context-traces?${params.toString()}`);
+      const payload = await response.json();
+      renderRows(payload);
+      statusText.textContent = `Trazas cargadas: ${Array.isArray(payload) ? payload.length : 0}.`;
+    } catch (error) {
+      statusText.textContent = `No se pudo cargar trazas: ${String(error)}`;
+      renderRows([]);
+    }
+  };
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    loadTraces();
+  });
+})();
+</script>
+{% endblock %}

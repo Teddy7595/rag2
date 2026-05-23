@@ -1,5 +1,41 @@
 {% extends "base.html" %}
 
+{% block head_extra %}
+<style>
+  .headline {
+    max-width: 18ch;
+  }
+
+  .link-button {
+    border-color: #333;
+    background: #111;
+    color: #d1d5db;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .link-button:hover {
+    border-color: #555;
+    background: #1a1a1a;
+    color: #fff;
+  }
+
+  .card,
+  .stat-card,
+  .panel {
+    border-color: rgba(110, 110, 110, 0.28);
+    background: rgba(8, 8, 8, 0.92);
+  }
+
+  .card-label,
+  .stat-label {
+    color: #8b8b8b;
+    letter-spacing: 0.12em;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="hero">
   <p class="eyebrow">{{ eyebrow }}</p>
@@ -36,13 +72,13 @@
 </section>
 
 <section class="panel-grid">
-  <article class="card" style="--pill-accent: #86efac;">
+  <article class="card">
     <p class="card-label">Seguridad local</p>
     <div class="card-body">
       <p>El acceso al panel se mantiene restringido a la red local, con rate limiting y ban list activados.</p>
     </div>
   </article>
-  <article class="card" style="--pill-accent: #7dd3fc;">
+  <article class="card">
     <p class="card-label">Catálogo de modelos</p>
     <div class="card-body">
       <p>Administra los bundles locales y la selección activa de texto o visión.</p>
@@ -52,7 +88,7 @@
       </div>
     </div>
   </article>
-  <article class="card" style="--pill-accent: #f59e0b;">
+  <article class="card">
     <p class="card-label">Visualizador de rutas</p>
     <div class="card-body">
       <p>Inspecciona todas las rutas HTTP, websockets y mounts registradas en el arranque.</p>
@@ -60,10 +96,11 @@
         <a class="link-button" href="/admin/routes">Abrir visualizador</a>
         <a class="link-button" href="/admin/context-graph">Context graph</a>
         <a class="link-button" href="/admin/session-intel">Session intel</a>
+        <a class="link-button" href="/admin/context-traces">Context traces</a>
       </div>
     </div>
   </article>
-  <article class="card" style="--pill-accent: #c084fc;">
+  <article class="card">
     <p class="card-label">Shell frontend</p>
     <div class="card-body">
       <p>Abre una vista Jinja que puede apuntar a un build compilado de Angular, Vite o vanilla.</p>
@@ -73,7 +110,7 @@
       </div>
     </div>
   </article>
-  <article class="card" style="--pill-accent: #38bdf8;">
+  <article class="card">
     <p class="card-label">Chat realtime</p>
     <div class="card-body">
       <p>Vista mobile-first conectada al websocket actual del modulo interaction, preparada para recibir el runtime local cuando lo cableemos.</p>

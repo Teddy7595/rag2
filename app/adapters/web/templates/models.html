@@ -28,6 +28,11 @@
     <strong class="stat-value">{{ catalog.summary.vision_bundle_count }}</strong>
     <span class="stat-copy">con mmproj local</span>
   </article>
+  <article class="stat-card">
+    <span class="stat-label">Model dir</span>
+    <strong class="stat-value">{{ catalog.models_dir }}</strong>
+    <span class="stat-copy">usa AI_MODEL_DIR/AI_MODELS_DIR; fallback ai_model o ai_models</span>
+  </article>
 </section>
 
 <section class="panel-grid">
@@ -36,6 +41,7 @@
     <div class="card-body">
       <p style="margin-top: 0;">Texto: <strong>{{ catalog.resolved.text.provider }}</strong> · <strong>{{ catalog.resolved.text.bundle_id or catalog.resolved.text.model_name or 'sin selección' }}</strong></p>
       <p>Visión: <strong>{{ catalog.resolved.vision.provider }}</strong> · <strong>{{ catalog.resolved.vision.bundle_id or catalog.resolved.vision.model_name or 'sin selección' }}</strong></p>
+      <p>Ventana contexto LM Studio: <strong>{{ catalog.providers.text.lmstudio_n_ctx }}</strong></p>
       <p>LM Studio texto: <code>{{ catalog.providers.text.lmstudio_base_url }}</code></p>
       <p>Ollama visión: <code>{{ catalog.providers.vision.ollama_base_url }}</code></p>
       <p>LM Studio visión: <code>{{ catalog.providers.vision.lmstudio_base_url }}</code></p>
@@ -154,6 +160,14 @@
   {% else %}
   <p class="empty-state">No hay bundles GGUF en ai_models todavía.</p>
   {% endif %}
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Gestión de contexto</h2>
+  <div class="panel-body">
+    <p>En chat realtime puedes ajustar contexto por turno con <code>/ctx &lt;1-50&gt;</code> y <code>/history &lt;1-100&gt;</code>, y consultar con <code>/limits</code>.</p>
+    <p>Para proveedores remotos, LM Studio usa <code>LMSTUDIO_N_CTX</code> como ventana base de contexto.</p>
+  </div>
 </section>
 {% endblock %}
 

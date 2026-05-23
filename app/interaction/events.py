@@ -46,6 +46,25 @@ class InteractionSessionConditionsRequest:
     world_rules: str = ""
 
 
+@dataclass(frozen=True)
+class InteractionMessageActionRequest:
+    message_id: str
+
+
+@dataclass(frozen=True)
+class InteractionSessionRewindRequest:
+    session_id: str
+    message_id: str
+
+
+@dataclass(frozen=True)
+class InteractionContextTraceRequest:
+    trace_id: str | None = None
+    session_id: str | None = None
+    trigger: str | None = None
+    limit: int = 100
+
+
 REQUEST_INTERACTION_SUMMARY = EventSpec[InteractionSummaryRequest, dict](
     name="interaction.summary.request",
     kind=EventKind.REQUEST,
@@ -110,6 +129,38 @@ REQUEST_INTERACTION_SESSION_CONDITIONS_SET = EventSpec[InteractionSessionConditi
     output_type=dict,
 )
 
+REQUEST_INTERACTION_MESSAGE_HIDE = EventSpec[InteractionMessageActionRequest, dict](
+    name="interaction.message.hide.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionMessageActionRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_MESSAGE_MEMORIZE = EventSpec[InteractionMessageActionRequest, dict](
+    name="interaction.message.memorize.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionMessageActionRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_SESSION_REWIND = EventSpec[InteractionSessionRewindRequest, dict](
+    name="interaction.session.rewind.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionRewindRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_CONTEXT_TRACES = EventSpec[InteractionContextTraceRequest, list](
+    name="interaction.context_traces.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionContextTraceRequest,
+    output_type=list,
+)
+
 PUBLISH_INTERACTION_MESSAGE_RECORDED = EventSpec[dict, dict](
     name="interaction.message.recorded",
     kind=EventKind.PUBLISH,
@@ -161,8 +212,11 @@ PUBLISH_INTERACTION_REALTIME_SESSION_ENDED = EventSpec[dict, dict](
 
 __all__ = [
     "InteractionHistoryRequest",
+    "InteractionContextTraceRequest",
     "InteractionMessageRecordRequest",
+    "InteractionMessageActionRequest",
     "InteractionRealtimeInput",
+    "InteractionSessionRewindRequest",
     "InteractionSessionConditionsRequest",
     "InteractionSessionRequest",
     "InteractionSummaryRequest",
@@ -172,11 +226,15 @@ __all__ = [
     "PUBLISH_INTERACTION_REALTIME_SESSION_ENDED",
     "PUBLISH_INTERACTION_REALTIME_SESSION_STARTED",
     "PUBLISH_INTERACTION_REALTIME_TURN_COMPLETED",
+    "REQUEST_INTERACTION_CONTEXT_TRACES",
+    "REQUEST_INTERACTION_MESSAGE_HIDE",
+    "REQUEST_INTERACTION_MESSAGE_MEMORIZE",
     "REQUEST_INTERACTION_MESSAGE_RECORD",
     "REQUEST_INTERACTION_MESSAGES",
     "REQUEST_INTERACTION_SESSION_CONDITIONS",
     "REQUEST_INTERACTION_SESSION_CONDITIONS_SET",
     "REQUEST_INTERACTION_SESSION_MEMORY",
+    "REQUEST_INTERACTION_SESSION_REWIND",
     "REQUEST_INTERACTION_SESSION_TOPIC_GRAPH",
     "REQUEST_INTERACTION_TURN_METRICS",
     "REQUEST_INTERACTION_SUMMARY",

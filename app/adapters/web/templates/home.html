@@ -1,5 +1,41 @@
 {% extends "base.html" %}
 
+{% block head_extra %}
+<style>
+  .headline {
+    max-width: 18ch;
+  }
+
+  .link-button {
+    border-color: #333;
+    background: #111;
+    color: #d1d5db;
+    font-family: 'Consolas', 'Courier New', monospace;
+    font-weight: 500;
+    letter-spacing: 0.02em;
+  }
+
+  .link-button:hover {
+    border-color: #555;
+    background: #1a1a1a;
+    color: #fff;
+  }
+
+  .card,
+  .stat-card,
+  .panel {
+    border-color: rgba(110, 110, 110, 0.28);
+    background: rgba(8, 8, 8, 0.92);
+  }
+
+  .card-label,
+  .stat-label {
+    color: #8b8b8b;
+    letter-spacing: 0.12em;
+  }
+</style>
+{% endblock %}
+
 {% block content %}
 <section class="hero">
   <p class="eyebrow">{{ eyebrow }}</p>
@@ -31,24 +67,25 @@
 </section>
 
 <section class="panel-grid">
-  <article class="card" style="--pill-accent: #86efac;">
+  <article class="card">
     <p class="card-label">Panel de almacenamiento</p>
     <div class="card-body">
       <p>Explora los uploads, la raíz pública y el estado general del almacén local.</p>
     </div>
   </article>
-  <article class="card" style="--pill-accent: #f59e0b;">
+  <article class="card">
     <p class="card-label">Panel de administración</p>
     <div class="card-body">
       <p>Revisa seguridad, modelos locales, el mapa de rutas y el shell de frontend.</p>
     </div>
   </article>
-  <article class="card" style="--pill-accent: #7dd3fc;">
+  <article class="card">
     <p class="card-label">Accesos rápidos</p>
     <div class="card-body">
       <div class="card-actions">
         <a class="link-button" href="/admin">Abrir admin</a>
         <a class="link-button" href="/admin/routes">Ver rutas</a>
+        <a class="link-button" href="/admin/context-traces">Context traces</a>
         <a class="link-button" href="/admin/models">Ver modelos</a>
         <a class="link-button" href="/ui">Abrir frontend</a>
         <a class="link-button" href="/chat">Abrir chat</a>
