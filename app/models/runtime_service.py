@@ -43,10 +43,14 @@ def _build_multimodal_chat_handler(mmproj_path: str) -> object:
 
 
 class LocalInferenceService:
+    _MIN_GGUF_BYTES = 1024 * 1024
+
     def __init__(self, catalog_service: ModelCatalogService) -> None:
         self.catalog_service = catalog_service
         self._text_models: dict[str, object] = {}
         self._vision_models: dict[tuple[str, str], object] = {}
+        self._last_text_load_error: str | None = None
+        self._last_vision_load_error: str | None = None
 
     def binding_available(self) -> bool:
         return importlib.util.find_spec("llama_cpp") is not None
@@ -115,13 +119,25 @@ class LocalInferenceService:
                 "detail": "No hay modelo GGUF local resuelto para texto.",
             }
 
+        model_file_check = self._validate_local_gguf(str(model_path), label="modelo de texto")
+        if model_file_check is not None:
+            return {
+                "ok": False,
+                "provider": "local",
+                "reason": "model_invalid",
+                "detail": model_file_check,
+                "model_path": model_path,
+            }
+
+        self._last_text_load_error = None
         llm = self._load_text_model(str(model_path))
         if llm is None:
             return {
                 "ok": False,
                 "provider": "local",
                 "reason": "load_failed",
-                "detail": "No se pudo cargar el modelo local de texto.",
+                "detail": self._last_text_load_error or "No se pudo cargar el modelo local de texto.",
+                "model_path": model_path,
             }
 
         try:
@@ -129,6 +145,7 @@ class LocalInferenceService:
                 prompt=request.prompt,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
+                top_p=request.top_p,
                 stop=["<end_of_turn>", "<|eot_id|>"],
                 stream=False,
             )
@@ -183,13 +200,38 @@ class LocalInferenceService:
                 "detail": "Falta el modelo local o el mmproj para vision.",
             }
 
+        model_file_check = self._validate_local_gguf(str(model_path), label="modelo de vision")
+        if model_file_check is not None:
+            return {
+                "ok": False,
+                "provider": "local",
+                "reason": "model_invalid",
+                "detail": model_file_check,
+                "model_path": model_path,
+                "mmproj_path": mmproj_path,
+            }
+
+        mmproj_file_check = self._validate_local_gguf(str(mmproj_path), label="mmproj")
+        if mmproj_file_check is not None:
+            return {
+                "ok": False,
+                "provider": "local",
+                "reason": "mmproj_invalid",
+                "detail": mmproj_file_check,
+                "model_path": model_path,
+                "mmproj_path": mmproj_path,
+            }
+
+        self._last_vision_load_error = None
         llm = self._load_vision_model(str(model_path), str(mmproj_path))
         if llm is None:
             return {
                 "ok": False,
                 "provider": "local",
                 "reason": "load_failed",
-                "detail": "No se pudo cargar el runtime multimodal local.",
+                "detail": self._last_vision_load_error or "No se pudo cargar el runtime multimodal local.",
+                "model_path": model_path,
+                "mmproj_path": mmproj_path,
             }
 
         try:
@@ -274,7 +316,8 @@ class LocalInferenceService:
                 use_mmap=True,
                 verbose=False,
             )
-        except Exception:
+        except Exception as exc:
+            self._last_text_load_error = str(exc)
             return None
 
     def _build_llava_model(self, relative_model_path: str, relative_mmproj_path: str) -> object | None:
@@ -296,5 +339,24 @@ class LocalInferenceService:
                 use_mmap=True,
                 verbose=False,
             )
-        except Exception:
+        except Exception as exc:
+            self._last_vision_load_error = str(exc)
             return None
+
+    def _validate_local_gguf(self, relative_model_path: str, *, label: str) -> str | None:
+        full_path = self.catalog_service.models_dir / relative_model_path
+        if not full_path.exists():
+            return f"No existe el {label} en ruta local: {full_path}"
+        if not full_path.is_file():
+            return f"La ruta del {label} no es un archivo: {full_path}"
+        try:
+            size_bytes = full_path.stat().st_size
+        except OSError as exc:
+            return f"No se pudo leer el {label}: {exc}"
+
+        if size_bytes < self._MIN_GGUF_BYTES:
+            return (
+                f"El {label} parece invalido/truncado ({size_bytes} bytes) en {full_path}. "
+                "Verifica que la descarga GGUF este completa."
+            )
+        return None

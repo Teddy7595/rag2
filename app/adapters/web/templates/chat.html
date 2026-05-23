@@ -97,6 +97,12 @@
     align-items: center;
   }
 
+  .session-chip.warn {
+    border-color: #854d0e;
+    color: #fbbf24;
+    background: rgba(120, 53, 15, 0.2);
+  }
+
   .session-copy {
     background: transparent;
     border: 0;
@@ -380,6 +386,14 @@
     height: 20px;
   }
 
+  .input-wrapper.vision-muted {
+    border-color: #3f1d1d;
+  }
+
+  .input-wrapper.vision-muted #attach-btn {
+    color: #9a3412;
+  }
+
   #autocomplete-list {
     position: absolute;
     bottom: 100%;
@@ -504,6 +518,7 @@
       <button type="button" id="chat-session-copy" class="session-copy">copiar</button>
     </span>
     <span class="session-chip" id="chat-limits-chip">ctx=5 · hist=20</span>
+    <span class="session-chip" id="chat-model-chip">txt=pendiente · vis=off</span>
     <a href="/admin/session-intel" id="chat-session-intel-link" class="header-btn">Session Intel</a>
     <a href="/admin/context-traces" class="header-btn">Context Traces</a>
     <a href="/admin/engrams" class="header-btn">Engramas</a>
@@ -574,6 +589,7 @@
   const cancelEditBtn = document.getElementById('cancel-edit-btn');
   const sessionIdLabel = document.getElementById('chat-session-id');
   const limitsChip = document.getElementById('chat-limits-chip');
+  const modelChip = document.getElementById('chat-model-chip');
   const sessionCopyButton = document.getElementById('chat-session-copy');
   const sessionIntelLink = document.getElementById('chat-session-intel-link');
 
@@ -600,11 +616,16 @@
   let isEditingMode = false;
   let editMessageId = null;
   let longPressTimer = null;
+  let catalogState = null;
+  let runtimeState = null;
+  let visionEnabled = false;
+  let visionForcedOff = false;
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
     '/ingest <ruta_relativa_vault>', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
-    '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>',
+    '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
+    '/model text <bundle_id>', '/model vision <bundle_id|off>',
     '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
 
@@ -619,6 +640,88 @@
       return;
     }
     limitsChip.textContent = `ctx=${contextLimit} · hist=${historyLimit}`;
+  }
+
+  function renderModelChip() {
+    if (!modelChip) {
+      return;
+    }
+    const textSelection = catalogState && catalogState.selection
+      ? (catalogState.selection.text_bundle_id || catalogState.selection.text_model_name || 'sin modelo')
+      : 'pendiente';
+    const visionSelection = visionForcedOff
+      ? 'off'
+      : (catalogState && catalogState.selection
+      ? (catalogState.selection.vision_bundle_id || catalogState.selection.vision_model_name || 'off')
+      : 'off');
+    modelChip.textContent = `txt=${textSelection} · vis=${visionSelection}`;
+    modelChip.classList.toggle('warn', !visionEnabled);
+    inputBox.classList.toggle('vision-muted', !visionEnabled);
+  }
+
+  async function refreshModelState({ announce = false } = {}) {
+    try {
+      const [runtimeResponse, catalogResponse] = await Promise.all([
+        fetch('/api/models/runtime/status'),
+        fetch('/api/models/catalog'),
+      ]);
+      runtimeState = runtimeResponse.ok ? await runtimeResponse.json() : null;
+      catalogState = catalogResponse.ok ? await catalogResponse.json() : null;
+    } catch (_) {
+      runtimeState = null;
+      catalogState = null;
+    }
+
+    visionEnabled = Boolean(runtimeState && runtimeState.local_vision_ready) && !visionForcedOff;
+    renderModelChip();
+
+    if (!announce || !catalogState) {
+      return;
+    }
+
+    const selectableCount = Number(catalogState.summary && catalogState.summary.selectable_bundle_count) || 0;
+    const textMissing = !(runtimeState && runtimeState.selected_text_model_path);
+    if (selectableCount === 0 || textMissing) {
+      appendMessage(
+        'No hay modelo de texto activo en esta sala. Usa /models para ver opciones y /model text <bundle_id> para seleccionar.',
+        false,
+        currentEngramAvatar,
+        true,
+        null,
+        'system',
+        'system'
+      );
+    }
+
+    if (!visionEnabled) {
+      appendMessage(
+        'Visión local está desactivada. Para habilitarla usa /model vision <bundle_id>.',
+        false,
+        currentEngramAvatar,
+        true,
+        null,
+        'system',
+        'system'
+      );
+    }
+  }
+
+  async function updateModelSelection(patch) {
+    const response = await fetch('/api/models/selection', {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(patch),
+    });
+    const payload = await response.json();
+    if (!response.ok) {
+      appendMessage(`No se pudo actualizar modelos: ${JSON.stringify(payload)}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return false;
+    }
+    catalogState = payload;
+    runtimeState = payload.runtime || runtimeState;
+    visionEnabled = Boolean(runtimeState && runtimeState.local_vision_ready) && !visionForcedOff;
+    renderModelChip();
+    return true;
   }
 
   function readStoredLimits(sessionId) {
@@ -942,6 +1045,10 @@
       return;
     }
 
+    if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
+      appendMessage('Subiste una imagen pero visión está desactivada. Activa un modelo con /model vision <bundle_id>.', false, currentEngramAvatar, true, null, 'system', 'system');
+    }
+
     const formData = new FormData();
     formData.append('file', attachedFile);
     const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`, {
@@ -959,6 +1066,11 @@
   }
 
   async function runVisionCommand(promptText) {
+    if (!visionEnabled) {
+      appendMessage('No hay modelo de visión activo. Usa /model vision <bundle_id> para habilitarlo.', false, currentEngramAvatar, true, null, 'system', 'system');
+      return;
+    }
+
     if (!attachedFile) {
       appendMessage('Adjunta una imagen con /attach para usar /vision.', false, currentEngramAvatar, true, null, 'system', 'system');
       return;
@@ -979,7 +1091,7 @@
 
     if (command === '/help') {
       appendMessage(
-        'Comandos: /help · /attach · /clearfile · /upload · /assets list · /vault list · /ingest <ruta_relativa_vault> · /vision <prompt> · /mem [message_id] · /hide [message_id] · /rewind [message_id] · /trace [trigger] · /rules show · /rules <texto> · /ctx <1-50> · /history <1-100> · /limits. Usa @ para engramas.',
+        'Comandos: /help · /models · /model text <bundle_id> · /model vision <bundle_id|off> · /attach · /clearfile · /upload · /assets list · /vault list · /ingest <ruta_relativa_vault> · /vision <prompt> · /mem [message_id] · /hide [message_id] · /rewind [message_id] · /trace [trigger] · /rules show · /rules <texto> · /ctx <1-50> · /history <1-100> · /limits. Usa @ para engramas.',
         false,
         currentEngramAvatar,
         true,
@@ -987,6 +1099,59 @@
         'system',
         'system'
       );
+      return true;
+    }
+
+    if (command === '/models') {
+      await refreshModelState({ announce: false });
+      if (!catalogState) {
+        appendMessage('No se pudo leer el catálogo de modelos.', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+      const bundles = Array.isArray(catalogState.bundles) ? catalogState.bundles : [];
+      const localBundles = bundles.filter((bundle) => bundle && !bundle.is_embedding_cache).slice(0, 12);
+      const listText = localBundles.length
+        ? localBundles.map((bundle) => `${bundle.bundle_id} (${bundle.supports_vision ? 'texto+vision' : 'texto'})`).join('\n')
+        : 'sin bundles locales';
+      const selectedText = catalogState.selection.text_bundle_id || catalogState.selection.text_model_name || 'sin modelo';
+      const selectedVision = catalogState.selection.vision_bundle_id || catalogState.selection.vision_model_name || 'off';
+      appendMessage(`Modelos activos\ntexto: ${selectedText}\nvision: ${selectedVision}\n\nBundles:\n${listText}`, false, currentEngramAvatar, true, null, 'system', 'system');
+      return true;
+    }
+
+    if (command === '/model') {
+      const [target, ...tail] = args.split(/\s+/);
+      const value = tail.join(' ').trim();
+      if (!target || !value) {
+        appendMessage('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', false, currentEngramAvatar, true, null, 'system', 'system');
+        return true;
+      }
+
+      if (target === 'text') {
+        const ok = await updateModelSelection({ text_provider: 'local', text_bundle_id: value, text_model_name: null });
+        if (ok) {
+          appendMessage(`Modelo de texto activo: ${value}`, false, currentEngramAvatar, true, null, 'system', 'system');
+        }
+        return true;
+      }
+
+      if (target === 'vision') {
+        if (value.toLowerCase() === 'off') {
+          visionForcedOff = true;
+          visionEnabled = false;
+          renderModelChip();
+          appendMessage('Visión local desactivada en esta sala. Para reactivar: /model vision <bundle_id>.', false, currentEngramAvatar, true, null, 'system', 'system');
+          return true;
+        }
+        visionForcedOff = false;
+        const ok = await updateModelSelection({ vision_provider: 'local', vision_bundle_id: value, vision_model_name: null });
+        if (ok) {
+          appendMessage(`Modelo de visión activo: ${value}`, false, currentEngramAvatar, true, null, 'system', 'system');
+        }
+        return true;
+      }
+
+      appendMessage('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', false, currentEngramAvatar, true, null, 'system', 'system');
       return true;
     }
 
@@ -1327,6 +1492,7 @@
         persistSessionId(String(packet.session_id || ''));
         loadWorldRules(String(packet.session_id || ''));
         setStatus(`Sesion ${String(packet.session_id || '').slice(0, 8)} activa.`, false);
+        refreshModelState({ announce: true });
         return;
       case 'welcome':
         appendMessage(packet.content || 'Bienvenido.', false, currentEngramAvatar, true, null, 'system', 'system');
@@ -1391,6 +1557,9 @@
     renderAttachedFile();
     if (attachedFile) {
       setStatus(`Adjunto listo: ${attachedFile.name}`, false);
+      if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
+        appendMessage('Imagen adjunta detectada, pero visión está desactivada. Activa /model vision <bundle_id> para analizar imágenes.', false, currentEngramAvatar, true, null, 'system', 'system');
+      }
     }
   });
 
@@ -1421,6 +1590,7 @@
   preloadSession();
   loadLimitsForSession(activeSessionId || null);
   renderLimitsChip();
+  refreshModelState({ announce: true });
   setupInputListeners();
   loadHints();
   document.querySelectorAll('.message-row').forEach((row) => setupMessageInteractions(row));

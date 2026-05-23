@@ -552,24 +552,39 @@ class RealtimeChatService:
         prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
 
-        temperature = 0.35
+        identity_id = str(identity.get("id") or "").strip().upper()
+        has_custom_engram = identity_id not in {"", "DEFAULT", "SETUP", "ERR"}
+
+        # If no custom engram is configured, use conservative test defaults.
+        default_temperature = 0.35 if has_custom_engram else 0.2
+        default_top_p = 1.0 if has_custom_engram else 0.9
+        default_max_tokens = 768 if has_custom_engram else 512
+
+        temperature = default_temperature
         try:
-            temperature = float(identity.get("resolved_temperature") or identity.get("temperatura_base") or 0.35)
+            temperature = float(identity.get("resolved_temperature") or identity.get("temperatura_base") or default_temperature)
         except (TypeError, ValueError):
-            temperature = 0.35
+            temperature = default_temperature
         temperature = max(0.0, min(2.0, temperature))
 
-        max_tokens = 768
+        top_p = default_top_p
         try:
-            max_tokens = int(identity.get("resolved_max_tokens") or identity.get("max_tokens_respuesta") or 768)
+            top_p = float(identity.get("resolved_top_p") or identity.get("top_p_base") or default_top_p)
         except (TypeError, ValueError):
-            max_tokens = 768
+            top_p = default_top_p
+        top_p = max(0.0, min(1.0, top_p))
+
+        max_tokens = default_max_tokens
+        try:
+            max_tokens = int(identity.get("resolved_max_tokens") or identity.get("max_tokens_respuesta") or default_max_tokens)
+        except (TypeError, ValueError):
+            max_tokens = default_max_tokens
         max_tokens = max(128, min(2048, max_tokens))
 
         try:
             generated = self.event_bus.request(
                 REQUEST_MODEL_TEXT_GENERATION,
-                ModelTextGenerationRequest(prompt=prompt, temperature=temperature, max_tokens=max_tokens),
+                ModelTextGenerationRequest(prompt=prompt, temperature=temperature, top_p=top_p, max_tokens=max_tokens),
                 source_module="interaction.application.realtime",
             )
             content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""

@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi.testclient import TestClient
 
 from app.bootstrap import create_app
+from app.core.settings import load_settings
 
 
 def build_simple_pdf_bytes(text: str) -> bytes:
@@ -53,6 +54,20 @@ def build_test_app(tmp_path: Path, monkeypatch, extra_env: dict[str, str] | None
         monkeypatch.setenv(key, value)
 
     return create_app()
+
+
+def test_settings_prefers_ai_models_when_configured_ai_model_is_empty(tmp_path: Path, monkeypatch) -> None:
+    ai_models_dir = tmp_path / "ai_models"
+    ai_models_dir.mkdir(parents=True, exist_ok=True)
+    (ai_models_dir / "Phi-plain-root.gguf").write_bytes(b"model")
+
+    # Simulate stale local env that points to ai_model while actual artifacts live in ai_models.
+    (tmp_path / "ai_model").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("AI_MODEL_DIR", "./ai_model")
+    monkeypatch.delenv("AI_MODELS_DIR", raising=False)
+
+    settings = load_settings(tmp_path)
+    assert settings.ai_model_dir == ai_models_dir.resolve()
 
 
 def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatch, capsys) -> None:

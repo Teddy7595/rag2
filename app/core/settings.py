@@ -65,6 +65,33 @@ def _resolve_mount_path(value: str | None, default: str) -> str:
     return mount_path
 
 
+def _directory_contains_gguf(directory: Path) -> bool:
+    if not directory.exists() or not directory.is_dir():
+        return False
+    return any(directory.rglob("*.gguf"))
+
+
+def _resolve_models_dir(project_root: Path) -> Path:
+    configured = os.getenv("AI_MODELS_DIR") or os.getenv("AI_MODEL_DIR")
+    configured_path = _resolve_path(configured, project_root / "ai_models") if configured else None
+
+    ai_models_path = (project_root / "ai_models").resolve()
+    ai_model_path = (project_root / "ai_model").resolve()
+
+    if configured_path and _directory_contains_gguf(configured_path):
+        return configured_path
+
+    for candidate in (ai_models_path, ai_model_path):
+        if _directory_contains_gguf(candidate):
+            return candidate
+
+    if configured_path:
+        return configured_path
+    if ai_models_path.exists():
+        return ai_models_path
+    return ai_model_path
+
+
 @dataclass(frozen=True)
 class AppSettings:
     project_root: Path
@@ -94,13 +121,7 @@ class AppSettings:
 def load_settings(project_root: Path) -> AppSettings:
     project_root = project_root.resolve()
     env_path = project_root / ".env"
-    default_ai_models_dir = project_root / "ai_model"
-    if not default_ai_models_dir.exists():
-        default_ai_models_dir = project_root / "ai_models"
-    ai_model_dir = _resolve_path(
-        os.getenv("AI_MODELS_DIR") or os.getenv("AI_MODEL_DIR"),
-        default_ai_models_dir,
-    )
+    ai_model_dir = _resolve_models_dir(project_root)
     web_frontend_dir = _resolve_path(os.getenv("WEB_FRONTEND_DIR"), project_root / "frontend" / "dist")
     vault_dir = _resolve_path(os.getenv("VAULT_DIR"), project_root / ".vault")
 
