@@ -100,6 +100,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/interaction/stream",
         "/api/interaction/sessions/{session_id}/rewind/{message_id}",
         "/api/interaction/sessions/{session_id}/memory",
+        "/api/interaction/sessions/{session_id}/messages",
         "/api/interaction/sessions/{session_id}/topics",
         "/api/interaction/sessions/{session_id}/metrics",
         "/api/interaction/sessions/{session_id}/conditions",
@@ -379,6 +380,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert sessions_response.status_code == 200
         sessions_payload = sessions_response.json()
         assert any(item["session_id"] == "rewind-room" for item in sessions_payload)
+
+        session_messages_response = client.get("/api/interaction/sessions/rewind-room/messages", params={"limit": 20})
+        assert session_messages_response.status_code == 200
+        assert any(message["session_id"] == "rewind-room" for message in session_messages_response.json())
 
         summary_response = client.get("/api/interaction/summary", params={"limit": 5})
         assert summary_response.status_code == 200
@@ -913,7 +918,8 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
 
             assert "turn_started" in turn_types
             assert "assistant_message" in turn_types
-            assert "Contexto recuperado" in assistant_message_text
+            lowered_assistant = assistant_message_text.lower()
+            assert "contexto recuperado" in lowered_assistant
             assert "Base de conocimiento realtime" in assistant_message_text
 
         assert realtime_session_id
@@ -998,3 +1004,74 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         metrics_again = client_again.get(f"/api/interaction/sessions/{realtime_session_id}/metrics", params={"limit": 20})
         assert metrics_again.status_code == 200
         assert len(metrics_again.json()) >= 1
+
+
+def test_realtime_greeting_reply_avoids_internal_scaffolding(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/chat") as websocket:
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "welcome":
+                    break
+
+            websocket.send_json(
+                {
+                    "content": "hola",
+                    "context_limit": 5,
+                    "history_limit": 5,
+                }
+            )
+
+            assistant_message_text = ""
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "assistant_message":
+                    assistant_message_text = str(packet["message"]["content"])
+                if packet["type"] == "turn_complete":
+                    break
+
+            lowered = assistant_message_text.lower()
+            assert assistant_message_text
+            assert "analyze the request" not in lowered
+            assert "drafting the response" not in lowered
+            assert "[context routing]" not in lowered
+            assert "[relevant engrams]" not in lowered
+            assert len(assistant_message_text) < 180
+
+
+def test_realtime_identity_question_avoids_scaffolding(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/chat") as websocket:
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "welcome":
+                    break
+
+            websocket.send_json(
+                {
+                    "content": "Hola, Sabes quien eres?",
+                    "context_limit": 5,
+                    "history_limit": 5,
+                }
+            )
+
+            assistant_message_text = ""
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "assistant_message":
+                    assistant_message_text = str(packet["message"]["content"])
+                if packet["type"] == "turn_complete":
+                    break
+
+            lowered = assistant_message_text.lower()
+            assert assistant_message_text
+            assert "analyze the request" not in lowered
+            assert "drafting the response" not in lowered
+            assert "[context routing]" not in lowered
+            assert "[relevant engrams]" not in lowered
+            assert "soy" in lowered
+            assert "asistente" in lowered

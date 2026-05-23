@@ -90,6 +90,24 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
 
             return result
 
+    def list_session_messages(self, session_id: str, limit: int = 20) -> list[ConversationMessage]:
+        if limit <= 0:
+            return []
+
+        key = str(session_id or "").strip()
+        if not key:
+            return []
+
+        with self.database.session_factory() as session:
+            statement = (
+                select(ConversationMessageRecord)
+                .where(ConversationMessageRecord.session_id == key)
+                .order_by(ConversationMessageRecord.created_at.desc(), ConversationMessageRecord.id.desc())
+                .limit(limit)
+            )
+            records = session.scalars(statement).all()
+            return [record.to_domain() for record in reversed(records)]
+
     def hide_message(self, message_id: str) -> ConversationMessage | None:
         with self.database.session_scope() as session:
             record = session.get(ConversationMessageRecord, message_id)

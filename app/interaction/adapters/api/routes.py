@@ -25,6 +25,7 @@ from app.interaction.events import (
     REQUEST_INTERACTION_SESSIONS,
     REQUEST_INTERACTION_SESSION_CONDITIONS,
     REQUEST_INTERACTION_SESSION_CONDITIONS_SET,
+    REQUEST_INTERACTION_SESSION_MESSAGES,
     REQUEST_INTERACTION_SESSION_MEMORY,
     REQUEST_INTERACTION_SESSION_REWIND,
     REQUEST_INTERACTION_SESSION_TOPIC_GRAPH,
@@ -120,6 +121,16 @@ async def session_memory(request: Request, session_id: str, limit: int = 20) -> 
     context = get_app_context_from_request(request)
     return context.event_bus.request(
         REQUEST_INTERACTION_SESSION_MEMORY,
+        InteractionSessionRequest(session_id=session_id, limit=limit),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@interaction_router.get("/sessions/{session_id}/messages")
+async def session_messages(request: Request, session_id: str, limit: int = 50) -> list[dict[str, object]]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_SESSION_MESSAGES,
         InteractionSessionRequest(session_id=session_id, limit=limit),
         source_module="interaction.adapters.api.routes",
     )

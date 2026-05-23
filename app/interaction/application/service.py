@@ -49,6 +49,10 @@ class InteractionService:
     def list_sessions(self, request: InteractionSessionsRequest) -> list[dict[str, object]]:
         return self.repository.list_sessions(limit=request.limit)
 
+    def list_session_messages(self, request: InteractionSessionRequest) -> list[dict[str, object]]:
+        messages = self.repository.list_session_messages(request.session_id, request.limit)
+        return [message.as_dict() for message in messages]
+
     def record_message(self, request: InteractionMessageRecordRequest) -> dict[str, object]:
         message = ConversationMessage(
             author=request.author,

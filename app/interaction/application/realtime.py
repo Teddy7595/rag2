@@ -8,9 +8,9 @@ from uuid import uuid4
 from app.core.events import EventBus
 from app.interaction.application.service import InteractionService
 from app.interaction.events import (
-    InteractionHistoryRequest,
     InteractionMessageRecordRequest,
     InteractionRealtimeInput,
+    InteractionSessionRequest,
     PUBLISH_INTERACTION_REALTIME_MESSAGE_RECEIVED,
     PUBLISH_INTERACTION_REALTIME_REPLY_STREAMED,
     PUBLISH_INTERACTION_REALTIME_SESSION_ENDED,
@@ -32,6 +32,12 @@ def _format_history(messages: list[dict[str, object]]) -> str:
     for message in messages:
         author = str(message.get("author") or "unknown")
         content = str(message.get("content") or "")
+        if _looks_like_internal_reasoning(content):
+            # Avoid feeding leaked scaffolding back into the next prompt/history cycle.
+            content = "[respuesta interna omitida por seguridad]"
+        content = content.strip()
+        if len(content) > 500:
+            content = content[:500].rstrip() + "..."
         lines.append(f"{author}: {content}")
     return "\n".join(lines).strip()
 
@@ -50,6 +56,114 @@ def _unique(items: list[str]) -> list[str]:
         seen.add(normalized)
         ordered.append(item.strip())
     return ordered
+
+
+def _dedupe_rule_lines(raw: str, *, max_lines: int = 10) -> str:
+    seen: set[str] = set()
+    cleaned: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        normalized = re.sub(r"^[-*\d\s.()]+", "", stripped)
+        normalized = re.sub(r"\s+", " ", normalized).strip(" .:;,-").lower()
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(stripped)
+        if len(cleaned) >= max_lines:
+            break
+    return "\n".join(cleaned).strip()
+
+
+def _compact_context_for_prompt(raw: str, *, max_lines: int = 8) -> str:
+    kept: list[str] = []
+    for line in raw.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        lower = stripped.lower()
+        if stripped.startswith("[") and stripped.endswith("]"):
+            continue
+        if lower.startswith("intent:") or lower.startswith("keywords:") or "score=" in lower:
+            continue
+        kept.append(stripped)
+        if len(kept) >= max_lines:
+            break
+    return "\n".join(kept).strip()
+
+
+def _is_simple_greeting(text: str) -> bool:
+    normalized = re.sub(r"[^a-z0-9\s]", " ", text.lower())
+    tokens = [token for token in normalized.split() if token]
+    if not tokens:
+        return False
+
+    greeting_tokens = {
+        "hola",
+        "holi",
+        "hello",
+        "hi",
+        "hey",
+        "buenas",
+        "buenos",
+        "dias",
+        "tardes",
+        "noches",
+        "que",
+        "tal",
+    }
+    if len(tokens) > 4:
+        return False
+    non_greeting = [token for token in tokens if token not in greeting_tokens]
+    return len(non_greeting) <= 1 and any(token in greeting_tokens for token in tokens)
+
+
+def _is_identity_question(text: str) -> bool:
+    normalized = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
+    patterns = (
+        r"\bquien\s+eres\b",
+        r"\bsabes\s+quien\s+eres\b",
+        r"\bcual\s+es\s+tu\s+nombre\b",
+        r"\bcomo\s+te\s+llamas\b",
+    )
+    return any(re.search(pattern, normalized) for pattern in patterns)
+
+
+def _looks_like_internal_reasoning(text: str) -> bool:
+    lower = text.lower()
+    markers = (
+        "analyze the request",
+        "drafting the response",
+        "specific instructions",
+        "specific rule",
+        "relevant engrams",
+        "relevant knowledge",
+        "context routing",
+        "idea principal",
+    )
+    if any(marker in lower for marker in markers):
+        return True
+    if re.search(r"\d+\.\s+\*\*", text):
+        return True
+    return False
+
+
+def _sanitize_generated_reply(text: str) -> str:
+    cleaned = text.strip()
+    if not cleaned:
+        return ""
+    if _looks_like_internal_reasoning(cleaned):
+        return ""
+    lines = [line.strip() for line in cleaned.splitlines() if line.strip()]
+    filtered = [
+        line
+        for line in lines
+        if not (line.startswith("[") and line.endswith("]"))
+        and "score=" not in line.lower()
+        and not line.lower().startswith(("intent:", "keywords:"))
+    ]
+    return "\n".join(filtered).strip() or ""
 
 
 def _incremental_summary(previous: str, user_text: str, assistant_text: str, *, max_chars: int = 1400) -> str:
@@ -192,7 +306,9 @@ class RealtimeChatService:
     def open_session(self, session_id: str | None = None, *, history_limit: int = 20) -> RealtimeSessionSnapshot:
         session_id = session_id or str(uuid4())
         identity = self._current_identity()
-        history_messages = self.interaction_service.list_messages(InteractionHistoryRequest(limit=history_limit))
+        history_messages = self.interaction_service.list_session_messages(
+            InteractionSessionRequest(session_id=session_id, limit=history_limit)
+        )
         snapshot = RealtimeSessionSnapshot(session_id=session_id, identity=identity, history_messages=history_messages)
         self.event_bus.publish(
             PUBLISH_INTERACTION_REALTIME_SESSION_STARTED,
@@ -247,7 +363,9 @@ class RealtimeChatService:
 
     def build_turn(self, session_id: str, input_data: InteractionRealtimeInput) -> RealtimeTurnResult:
         turn_id = str(uuid4())
-        history_messages = self.interaction_service.list_messages(InteractionHistoryRequest(limit=input_data.history_limit))
+        history_messages = self.interaction_service.list_session_messages(
+            InteractionSessionRequest(session_id=session_id, limit=input_data.history_limit)
+        )
         history_text = _format_history(history_messages)
         stored_conditions = self.interaction_service.repository.get_session_conditions(session_id) or {}
         world_rules = (input_data.world_rules or str(stored_conditions.get("world_rules") or "")).strip()
@@ -454,13 +572,15 @@ class RealtimeChatService:
     ) -> str:
         identity = context_preview.get("identity", {})
         identity_name = str(identity.get("name") or "assistant")
-        behavior_prompt = str(identity.get("behavior_prompt") or "").strip()
-        meta_rule = str(identity.get("meta_rule") or "").strip()
+        behavior_prompt = _dedupe_rule_lines(str(identity.get("behavior_prompt") or ""), max_lines=8)
+        meta_rule = _dedupe_rule_lines(str(identity.get("meta_rule") or ""), max_lines=8)
         intellectual_profile = str(identity.get("intellectual_profile") or "").strip()
         context_pack = context_preview.get("context_pack", {})
         knowledge_matches = list(context_pack.get("knowledge_matches", []))
         engram_matches = list(context_pack.get("engram_matches", []))
         context_text = str(context_preview.get("context_text") or "").strip()
+        compact_context_text = _compact_context_for_prompt(context_text)
+        world_rules = _dedupe_rule_lines(world_rules, max_lines=10)
         route_payload = context_pack.get("route", {}) if isinstance(context_pack, dict) else {}
         route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
 
@@ -489,36 +609,22 @@ class RealtimeChatService:
         if not main_idea:
             main_idea = input_data.content.strip()[:80]
 
-        lines: list[str] = [f"{identity_name}: recibí '{input_data.content.strip()}'."]
+        if _is_simple_greeting(input_data.content):
+            return f"Hola, soy {identity_name}. En que te ayudo hoy?"
+        if _is_identity_question(input_data.content):
+            return f"Si, soy {identity_name}, tu asistente activo en este chat. Puedo ayudarte con dudas tecnicas, RAG y tareas operativas."
 
         if knowledge_matches:
-            lines.append("Contexto recuperado:")
-            for match in knowledge_matches[:3]:
-                label = str(match.get("label") or "contexto")
-                excerpt = str(match.get("excerpt") or "").strip()
-                if excerpt:
-                    lines.append(f"- {label}: {excerpt}")
-                else:
-                    lines.append(f"- {label}")
+            primary_label = str(knowledge_matches[0].get("label") or main_idea).strip() if isinstance(knowledge_matches[0], dict) else main_idea
+            fallback_reply = (
+                f"Entendido. Soy {identity_name}. Segun el contexto recuperado, el punto principal es '{primary_label}'. "
+                "Si quieres, te lo explico en breve o lo aplicamos a un caso concreto."
+            )
         else:
-            lines.append("No encontré contexto relevante todavía.")
-
-        if engram_matches:
-            lines.append("Identidad activa:")
-            for match in engram_matches[:2]:
-                label = str(match.get("label") or identity_name)
-                lines.append(f"- {label}")
-
-        if context_text:
-            lines.append("Resumen de contexto:")
-            lines.append(context_text)
-
-        lines.append(f"Idea principal detectada: {main_idea}")
-        if secondary_ideas:
-            lines.append("Ideas secundarias detectadas: " + ", ".join(secondary_ideas))
-
-        lines.append("Siguiente paso: sigo el contexto recuperado y mantengo el historial persistente.")
-        fallback_reply = "\n".join(lines).strip()
+            fallback_reply = (
+                f"Soy {identity_name}. Te leo: '{input_data.content.strip()}'. "
+                "Dime que necesitas y te respondo directo y en corto."
+            )
 
         prompt_sections = [
             f"Identidad activa: {identity_name}.",
@@ -536,8 +642,8 @@ class RealtimeChatService:
             prompt_sections.append(f"Meta-regla del engrama: {meta_rule}")
         if world_rules:
             prompt_sections.append(f"Reglas del mundo activas para esta sesion:\n{world_rules}")
-        if context_text:
-            prompt_sections.append(f"Contexto recuperado:\n{context_text}")
+        if compact_context_text:
+            prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
         if knowledge_matches:
             prompt_sections.append(
                 "Coincidencias relevantes:\n" + "\n".join(
@@ -546,8 +652,11 @@ class RealtimeChatService:
                 )
             )
         prompt_sections.append(
-            "Estructura la respuesta en este orden: "
-            "1) idea principal, 2) ideas secundarias conectadas, 3) respuesta integrada, 4) siguiente accion sugerida."
+            "Responde al usuario de forma directa, breve y util en espanol."
+        )
+        prompt_sections.append(
+            "No muestres analisis interno, listas de planificacion, ni encabezados tecnicos como "
+            "[CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS]."
         )
         prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
@@ -588,8 +697,9 @@ class RealtimeChatService:
                 source_module="interaction.application.realtime",
             )
             content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
-            if isinstance(generated, dict) and generated.get("ok") and content:
-                return content
+            sanitized = _sanitize_generated_reply(content)
+            if isinstance(generated, dict) and generated.get("ok") and sanitized:
+                return sanitized
         except Exception:
             pass
 

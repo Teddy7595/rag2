@@ -12,6 +12,7 @@ from app.interaction.events import (
     REQUEST_INTERACTION_SESSIONS,
     REQUEST_INTERACTION_SESSION_REWIND,
     REQUEST_INTERACTION_SESSION_MEMORY,
+    REQUEST_INTERACTION_SESSION_MESSAGES,
     REQUEST_INTERACTION_SESSION_CONDITIONS,
     REQUEST_INTERACTION_SESSION_CONDITIONS_SET,
     REQUEST_INTERACTION_SESSION_TOPIC_GRAPH,
@@ -47,6 +48,9 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     def handle_session_memory(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.session_memory(envelope.payload)
 
+    def handle_session_messages(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
+        return service.list_session_messages(envelope.payload)
+
     def handle_session_topic_graph(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.session_topic_graph(envelope.payload)
 
@@ -72,6 +76,7 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_HIDE, handle_hide)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGE_MEMORIZE, handle_memorize)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_MEMORY, handle_session_memory)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_MESSAGES, handle_session_messages)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_CONDITIONS, handle_session_conditions)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_CONDITIONS_SET, handle_session_conditions_set)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_REWIND, handle_session_rewind)

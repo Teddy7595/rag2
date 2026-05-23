@@ -102,7 +102,8 @@ async def _run_websocket_session(websocket: WebSocket, service: RealtimeChatServ
 async def websocket_chat(websocket: WebSocket) -> None:
     await websocket.accept()
     service = _get_realtime_service(websocket.app)
-    session_id = str(uuid4())
+    requested_session_id = str(websocket.query_params.get("session_id") or "").strip()
+    session_id = requested_session_id or str(uuid4())
     try:
         await _run_websocket_session(websocket, service, session_id)
     except WebSocketDisconnect:

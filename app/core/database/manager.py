@@ -4,7 +4,7 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -21,6 +21,35 @@ class DatabaseManager:
 
     def create_schema(self) -> None:
         DatabaseBase.metadata.create_all(bind=self.engine)
+        self._ensure_legacy_compatibility()
+
+    def _ensure_legacy_compatibility(self) -> None:
+        """Apply additive schema upgrades for existing installations.
+
+        Tests use fresh databases so these changes target long-lived local/postgres
+        deployments where create_all does not alter existing tables.
+        """
+        try:
+            inspector = inspect(self.engine)
+            tables = set(inspector.get_table_names())
+            if "interaction_messages" not in tables:
+                return
+
+            columns = {str(column.get("name") or "") for column in inspector.get_columns("interaction_messages")}
+            statements: list[str] = []
+
+            if "session_id" not in columns:
+                statements.append("ALTER TABLE interaction_messages ADD COLUMN session_id VARCHAR(64)")
+
+            if not statements:
+                return
+
+            with self.engine.begin() as connection:
+                for statement in statements:
+                    connection.execute(text(statement))
+        except Exception as exc:
+            # Keep app startup resilient and surface actionable diagnostics.
+            print(f"[DATABASE] Legacy compatibility migration skipped: {exc}")
 
     @contextmanager
     def session_scope(self) -> Generator[Session, None, None]:

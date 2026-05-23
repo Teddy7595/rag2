@@ -642,6 +642,11 @@
     gap: 6px;
   }
 
+  .hud-session-item.active {
+    border-color: var(--chat-accent-color);
+    box-shadow: inset 0 0 0 1px rgba(0, 255, 65, 0.18);
+  }
+
   .hud-rule-main,
   .hud-session-main {
     margin: 0;
@@ -968,7 +973,10 @@
     </section>
 
     <section class="hud-block">
-      <p class="hud-title">Chats en el sistema</p>
+      <div class="hud-row-actions" style="justify-content: space-between; align-items: center;">
+        <p class="hud-title" style="margin: 0;">Chats en el sistema</p>
+        <button id="hud-new-chat" class="hud-btn" type="button">Nuevo chat</button>
+      </div>
       <ul id="hud-sessions-list" class="hud-list"></ul>
     </section>
   </div>
@@ -1049,9 +1057,10 @@
   const hudRulesSave = document.getElementById('hud-rules-save');
   const hudRulesClear = document.getElementById('hud-rules-clear');
   const hudSessionsList = document.getElementById('hud-sessions-list');
+  const hudNewChat = document.getElementById('hud-new-chat');
 
   const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
-  const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
+  const wsBaseUrl = `${protocol}://${window.location.host}/ws/chat`;
   const SESSION_STORAGE_KEY = 'rag2.activeRealtimeSessionId';
   const WORLD_RULES_PREFIX = 'rag2.worldRules.';
   const LIMITS_PREFIX = 'rag2.sessionLimits.';
@@ -1078,6 +1087,11 @@
   let visionEnabled = false;
   let visionForcedOff = false;
   let worldRuleItems = [];
+  let socket = null;
+  let reconnectTimer = null;
+  let reconnectAttempts = 0;
+  let manualSocketClose = false;
+  let preferredSessionId = '';
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
@@ -1086,6 +1100,171 @@
     '/model text <bundle_id>', '/model vision <bundle_id|off>',
     '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
+
+  function renderBootstrapMessage() {
+    return `
+      <div class="message-row ai">
+        <img src="https://ui-avatars.com/api/?name=OS&background=333&color=fff" class="avatar" alt="avatar">
+        <div>
+          <div class="bubble">Sistema Online. Usa /help para ver comandos y @ para invocar engramas.</div>
+          <div class="meta">CORE-OS</div>
+        </div>
+      </div>
+    `;
+  }
+
+  function resetChatTimeline() {
+    chatBox.innerHTML = renderBootstrapMessage();
+    document.querySelectorAll('.message-row').forEach((row) => setupMessageInteractions(row));
+    scrollToBottom(true);
+  }
+
+  function buildSocketUrl() {
+    if (!preferredSessionId) {
+      return wsBaseUrl;
+    }
+    const params = new URLSearchParams({ session_id: preferredSessionId });
+    return `${wsBaseUrl}?${params.toString()}`;
+  }
+
+  function scheduleReconnect() {
+    if (reconnectTimer) {
+      return;
+    }
+    const delay = Math.min(6000, 800 * (2 ** reconnectAttempts));
+    reconnectAttempts += 1;
+    setStatus(`Socket cerrado. Reintentando en ${Math.round(delay / 1000)}s...`, false);
+    reconnectTimer = window.setTimeout(() => {
+      reconnectTimer = null;
+      openSocketConnection();
+    }, delay);
+  }
+
+  function openSocketConnection() {
+    if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    socket = new WebSocket(buildSocketUrl());
+
+    socket.addEventListener('open', () => {
+      reconnectAttempts = 0;
+      if (reconnectTimer) {
+        window.clearTimeout(reconnectTimer);
+        reconnectTimer = null;
+      }
+      statusDot.style.backgroundColor = currentEngramColor;
+      engramName.innerText = 'ONLINE';
+      setStatus('Conectado. Usa /help para comandos.', false);
+      updateSendButtonState();
+    });
+
+    socket.addEventListener('close', () => {
+      statusDot.style.backgroundColor = '#ff0000';
+      engramName.innerText = 'OFFLINE';
+      sendBtn.disabled = true;
+      updateSendButtonState();
+
+      if (manualSocketClose) {
+        manualSocketClose = false;
+        return;
+      }
+      scheduleReconnect();
+    });
+
+    socket.addEventListener('message', (event) => {
+      const packet = JSON.parse(event.data);
+
+      switch (packet.type) {
+        case 'session_started':
+          persistSessionId(String(packet.session_id || ''));
+          preferredSessionId = String(packet.session_id || preferredSessionId || '');
+          loadWorldRules(String(packet.session_id || ''));
+          setStatus(`Sesion ${String(packet.session_id || '').slice(0, 8)} activa.`, false);
+          refreshModelState({ announce: true });
+          return;
+        case 'welcome':
+          appendMessage(packet.content || 'Bienvenido.', false, currentEngramAvatar, true, null, 'system', 'system');
+          return;
+        case 'meta_update':
+          updateIdentityUI(packet);
+          return;
+        case 'history_message': {
+          const message = packet.message || {};
+          const isUser = String(message.author || '').toLowerCase() === 'user' || message.channel === 'chat';
+          appendMessage(message.content || '', isUser, isUser ? 'https://ui-avatars.com/api/?name=User&background=555&color=fff' : currentEngramAvatar, false, message.id || null, message.author || (isUser ? 'user' : 'assistant'), message.channel || (isUser ? 'chat' : 'assistant'));
+          return;
+        }
+        case 'turn_started':
+          startProcessingFeedback();
+          currentAiBubble = appendMessage(renderThinkingBubble(), false, currentEngramAvatar, true, null, 'assistant', 'assistant');
+          updateSendButtonState();
+          return;
+        case 'assistant_token':
+          if (!currentAiBubble) {
+            currentAiBubble = appendMessage('', false, currentEngramAvatar, true, null, 'assistant', 'assistant');
+          }
+          currentAiBubble.innerHTML += `${String(packet.token || '')} `;
+          scrollToBottom(false);
+          return;
+        case 'assistant_message': {
+          const message = packet.message || {};
+          if (currentAiBubble) {
+            const row = currentAiBubble.closest('.message-row');
+            if (row) {
+              row.remove();
+            }
+            currentAiBubble = null;
+          }
+          appendMessage(message.content || '', false, currentEngramAvatar, true, message.id || null, message.author || 'assistant', message.channel || 'assistant');
+          return;
+        }
+        case 'turn_complete':
+          stopProcessingFeedback();
+          updateSendButtonState();
+          if (packet.session_id) {
+            persistSessionId(String(packet.session_id));
+          }
+          setStatus(`Turno completado. Historial: ${packet.history_count || 0} mensajes.`, false);
+          return;
+        case 'error':
+          stopProcessingFeedback();
+          updateSendButtonState();
+          setStatus(packet.detail || 'Error en realtime.', false);
+          return;
+        default:
+          return;
+      }
+    });
+  }
+
+  function reconnectSocket({ clearTimeline = false } = {}) {
+    if (clearTimeline) {
+      resetChatTimeline();
+    }
+
+    if (reconnectTimer) {
+      window.clearTimeout(reconnectTimer);
+      reconnectTimer = null;
+    }
+
+    reconnectAttempts = 0;
+    if (socket && socket.readyState === WebSocket.CONNECTING) {
+      try {
+        manualSocketClose = true;
+        socket.close();
+      } catch (_) {
+        manualSocketClose = false;
+      }
+    } else if (socket && socket.readyState === WebSocket.OPEN) {
+      manualSocketClose = true;
+      socket.close();
+    }
+
+    window.setTimeout(() => {
+      openSocketConnection();
+    }, 60);
+  }
 
   function updateSendButtonState() {
     const hasText = Boolean(inputField.value.trim());
@@ -1218,21 +1397,35 @@
   }
 
   function renderSessionList(sessions) {
+    const items = Array.isArray(sessions) ? [...sessions] : [];
+    if (activeSessionId && !items.some((row) => String(row.session_id || '') === activeSessionId)) {
+      items.unshift({
+        session_id: activeSessionId,
+        message_count: 0,
+        last_author: '-',
+        last_excerpt: 'Sesion activa sin mensajes persistidos aun.',
+      });
+    }
+
     hudSessionsList.innerHTML = '';
-    if (!sessions.length) {
+    if (!items.length) {
       hudSessionsList.innerHTML = '<li class="hud-list-empty">No hay chats guardados todavia.</li>';
       return;
     }
 
-    for (const row of sessions) {
+    for (const row of items) {
       const sessionId = String(row.session_id || '');
       const rowNode = document.createElement('li');
       rowNode.className = 'hud-session-item';
+      if (sessionId && sessionId === activeSessionId) {
+        rowNode.classList.add('active');
+      }
       rowNode.innerHTML = `
         <p class="hud-session-main">${sessionId}</p>
         <p class="hud-session-meta">mensajes=${Number(row.message_count || 0)} · autor=${String(row.last_author || '-')}</p>
         <p class="hud-session-meta">${String(row.last_excerpt || '').replace(/</g, '&lt;')}</p>
         <div class="hud-row-actions">
+          <button type="button" class="hud-btn" data-open-session="${sessionId}">Abrir chat</button>
           <a class="hud-link" href="/admin/session-intel?session_id=${encodeURIComponent(sessionId)}" target="_blank" rel="noopener noreferrer">Abrir Session Intel</a>
         </div>
       `;
@@ -1594,6 +1787,26 @@
     loadSessionList();
   }
 
+  async function activateSession(sessionId, { clearTimeline = true } = {}) {
+    const key = String(sessionId || '').trim();
+    if (!key) {
+      return;
+    }
+
+    preferredSessionId = key;
+    persistSessionId(key);
+    await loadWorldRules(key);
+    reconnectSocket({ clearTimeline });
+    setStatus(`Cambiando a sesion ${key.slice(0, 8)}...`, false);
+  }
+
+  function startNewChat() {
+    const nextSessionId = (window.crypto && typeof window.crypto.randomUUID === 'function')
+      ? window.crypto.randomUUID()
+      : `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+    activateSession(nextSessionId, { clearTimeline: true });
+  }
+
   async function loadWorldRules(sessionId) {
     if (!sessionId) {
       return;
@@ -1636,6 +1849,7 @@
     if (!remembered) {
       return;
     }
+    preferredSessionId = remembered;
     persistSessionId(remembered);
     loadWorldRules(remembered);
     loadLimitsForSession(remembered);
@@ -2064,7 +2278,8 @@
     }
 
     if (!socket || socket.readyState !== WebSocket.OPEN) {
-      appendMessage('El websocket no esta listo. Recarga la pagina.', false, currentEngramAvatar, true, null, 'system', 'system');
+      appendMessage('El websocket no esta listo. Reconectando...', false, currentEngramAvatar, true, null, 'system', 'system');
+      reconnectSocket({ clearTimeline: false });
       return;
     }
 
@@ -2101,84 +2316,6 @@
       world_rules: worldRules,
     }));
   }
-
-  socket.addEventListener('open', () => {
-    statusDot.style.backgroundColor = currentEngramColor;
-    engramName.innerText = 'ONLINE';
-    setStatus('Conectado. Usa /help para comandos.', false);
-    updateSendButtonState();
-  });
-
-  socket.addEventListener('close', () => {
-    statusDot.style.backgroundColor = '#ff0000';
-    engramName.innerText = 'OFFLINE';
-    setStatus('Socket cerrado. Recarga para reconectar.', false);
-    sendBtn.disabled = true;
-  });
-
-  socket.addEventListener('message', (event) => {
-    const packet = JSON.parse(event.data);
-
-    switch (packet.type) {
-      case 'session_started':
-        persistSessionId(String(packet.session_id || ''));
-        loadWorldRules(String(packet.session_id || ''));
-        setStatus(`Sesion ${String(packet.session_id || '').slice(0, 8)} activa.`, false);
-        refreshModelState({ announce: true });
-        return;
-      case 'welcome':
-        appendMessage(packet.content || 'Bienvenido.', false, currentEngramAvatar, true, null, 'system', 'system');
-        return;
-      case 'meta_update':
-        updateIdentityUI(packet);
-        return;
-      case 'history_message': {
-        const message = packet.message || {};
-        const isUser = String(message.author || '').toLowerCase() === 'user' || message.channel === 'chat';
-        appendMessage(message.content || '', isUser, isUser ? 'https://ui-avatars.com/api/?name=User&background=555&color=fff' : currentEngramAvatar, false, message.id || null, message.author || (isUser ? 'user' : 'assistant'), message.channel || (isUser ? 'chat' : 'assistant'));
-        return;
-      }
-      case 'turn_started':
-        startProcessingFeedback();
-        currentAiBubble = appendMessage(renderThinkingBubble(), false, currentEngramAvatar, true, null, 'assistant', 'assistant');
-        updateSendButtonState();
-        return;
-      case 'assistant_token':
-        if (!currentAiBubble) {
-          currentAiBubble = appendMessage('', false, currentEngramAvatar, true, null, 'assistant', 'assistant');
-        }
-        currentAiBubble.innerHTML += `${String(packet.token || '')} `;
-        scrollToBottom(false);
-        return;
-      case 'assistant_message': {
-        const message = packet.message || {};
-        if (currentAiBubble) {
-          const row = currentAiBubble.closest('.message-row');
-          if (row) {
-            row.remove();
-          }
-          currentAiBubble = null;
-        }
-        appendMessage(message.content || '', false, currentEngramAvatar, true, message.id || null, message.author || 'assistant', message.channel || 'assistant');
-        return;
-      }
-      case 'turn_complete':
-        stopProcessingFeedback();
-        updateSendButtonState();
-        if (packet.session_id) {
-          persistSessionId(String(packet.session_id));
-        }
-        setStatus(`Turno completado. Historial: ${packet.history_count || 0} mensajes.`, false);
-        return;
-      case 'error':
-        stopProcessingFeedback();
-        updateSendButtonState();
-        setStatus(packet.detail || 'Error en realtime.', false);
-        return;
-      default:
-        return;
-    }
-  });
 
   attachBtn.addEventListener('click', () => {
     openAttachPicker();
@@ -2280,12 +2417,29 @@
     setStatus('Reglas de sesion limpiadas.', false);
   });
 
+  hudSessionsList.addEventListener('click', (event) => {
+    const button = event.target.closest('button[data-open-session]');
+    if (!button) {
+      return;
+    }
+    const sessionId = String(button.dataset.openSession || '').trim();
+    if (!sessionId) {
+      return;
+    }
+    activateSession(sessionId, { clearTimeline: true });
+  });
+
+  hudNewChat.addEventListener('click', () => {
+    startNewChat();
+  });
+
   preloadSession();
   loadLimitsForSession(activeSessionId || null);
   renderLimitsChip();
   renderHudSummary();
   renderWorldRulesHud();
   loadSessionList();
+  openSocketConnection();
   refreshModelState({ announce: true });
   setupInputListeners();
   loadHints();

@@ -110,6 +110,14 @@ REQUEST_INTERACTION_SESSION_MEMORY = EventSpec[InteractionSessionRequest, dict](
     output_type=dict,
 )
 
+REQUEST_INTERACTION_SESSION_MESSAGES = EventSpec[InteractionSessionRequest, list](
+    name="interaction.session.messages.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=InteractionSessionRequest,
+    output_type=list,
+)
+
 REQUEST_INTERACTION_SESSION_TOPIC_GRAPH = EventSpec[InteractionSessionRequest, dict](
     name="interaction.session.topic_graph.request",
     kind=EventKind.REQUEST,
@@ -248,6 +256,7 @@ __all__ = [
     "REQUEST_INTERACTION_SESSIONS",
     "REQUEST_INTERACTION_SESSION_CONDITIONS",
     "REQUEST_INTERACTION_SESSION_CONDITIONS_SET",
+    "REQUEST_INTERACTION_SESSION_MESSAGES",
     "REQUEST_INTERACTION_SESSION_MEMORY",
     "REQUEST_INTERACTION_SESSION_REWIND",
     "REQUEST_INTERACTION_SESSION_TOPIC_GRAPH",
