@@ -1,0 +1,437 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+  body.chat-body {
+    overflow: hidden;
+  }
+  .chat-shell {
+    max-width: 860px;
+    margin: 0 auto;
+    min-height: calc(100dvh - 96px);
+    display: grid;
+    grid-template-rows: auto 1fr auto;
+    gap: 14px;
+  }
+  .chat-header,
+  .chat-log,
+  .chat-composer {
+    background: rgba(8, 15, 32, 0.9);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    border-radius: 24px;
+    box-shadow: 0 24px 72px rgba(2, 6, 23, 0.32);
+    backdrop-filter: blur(18px);
+  }
+  .chat-header {
+    padding: 18px;
+    display: grid;
+    gap: 14px;
+  }
+  .chat-header-top {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+  }
+  .chat-title {
+    margin: 0;
+    font-size: clamp(1.6rem, 5vw, 2.6rem);
+    line-height: 1;
+  }
+  .chat-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    border-radius: 999px;
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    color: #dbeafe;
+    background: rgba(56, 189, 248, 0.08);
+    font-size: 0.85rem;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+  .chat-status[data-tone="warn"] {
+    color: #fde68a;
+    border-color: rgba(245, 158, 11, 0.22);
+    background: rgba(245, 158, 11, 0.12);
+  }
+  .chat-kpis {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+  .chat-kpi {
+    padding: 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(2, 6, 23, 0.46);
+  }
+  .chat-kpi strong {
+    display: block;
+    font-size: 1.15rem;
+    margin-top: 6px;
+    color: #f8fafc;
+  }
+  .chat-log {
+    padding: 16px;
+    overflow-y: auto;
+    display: grid;
+    gap: 12px;
+    align-content: start;
+  }
+  .chat-row {
+    display: flex;
+    gap: 10px;
+    max-width: 88%;
+  }
+  .chat-row.user {
+    margin-left: auto;
+    flex-direction: row-reverse;
+  }
+  .chat-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+    display: grid;
+    place-items: center;
+    background: rgba(56, 189, 248, 0.14);
+    border: 1px solid rgba(125, 211, 252, 0.18);
+    color: #f8fafc;
+    font-size: 0.75rem;
+    font-weight: 700;
+    flex: 0 0 auto;
+  }
+  .chat-row.user .chat-avatar {
+    background: rgba(34, 197, 94, 0.14);
+    border-color: rgba(34, 197, 94, 0.18);
+  }
+  .chat-bubble {
+    padding: 12px 14px;
+    border-radius: 18px;
+    border: 1px solid rgba(148, 163, 184, 0.14);
+    background: rgba(2, 6, 23, 0.58);
+    color: #dbe5f4;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .chat-row.user .chat-bubble {
+    background: rgba(22, 101, 52, 0.22);
+  }
+  .chat-meta {
+    margin-top: 6px;
+    font-size: 0.74rem;
+    color: #94a3b8;
+  }
+  .chat-composer {
+    padding: 14px;
+    display: grid;
+    gap: 12px;
+  }
+  .chat-toolbar {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .chat-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.16);
+    background: rgba(2, 6, 23, 0.5);
+    color: #cbd5e1;
+    font-size: 0.82rem;
+  }
+  .chat-form {
+    display: grid;
+    gap: 12px;
+  }
+  .chat-input {
+    width: 100%;
+    min-height: 104px;
+    resize: vertical;
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 18px;
+    background: rgba(2, 6, 23, 0.72);
+    color: #f8fafc;
+    padding: 14px;
+    font: inherit;
+    outline: none;
+  }
+  .chat-input:focus {
+    border-color: rgba(125, 211, 252, 0.72);
+    box-shadow: 0 0 0 4px rgba(56, 189, 248, 0.14);
+  }
+  .chat-actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    align-items: center;
+  }
+  .chat-help {
+    font-size: 0.82rem;
+    color: #94a3b8;
+  }
+  .chat-send {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: 999px;
+    padding: 11px 18px;
+    font: inherit;
+    font-weight: 700;
+    color: #eff6ff;
+    background: linear-gradient(135deg, rgba(56, 189, 248, 0.78), rgba(14, 165, 233, 0.92));
+    cursor: pointer;
+  }
+  .chat-send:disabled {
+    opacity: 0.65;
+    cursor: progress;
+  }
+  .chat-empty {
+    padding: 20px;
+    border-radius: 18px;
+    border: 1px dashed rgba(148, 163, 184, 0.16);
+    color: #94a3b8;
+    text-align: center;
+  }
+  .typing-row .chat-bubble {
+    color: #7dd3fc;
+  }
+  @media (max-width: 720px) {
+    .shell {
+      padding: 18px 12px 18px;
+    }
+    .chat-shell {
+      min-height: calc(100dvh - 36px);
+      grid-template-rows: auto 1fr auto;
+    }
+    .chat-header,
+    .chat-log,
+    .chat-composer {
+      border-radius: 20px;
+    }
+    .chat-header {
+      padding: 16px;
+    }
+    .chat-header-top {
+      flex-direction: column;
+    }
+    .chat-kpis {
+      grid-template-columns: 1fr;
+    }
+    .chat-row {
+      max-width: 100%;
+    }
+    .chat-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+    .chat-send {
+      width: 100%;
+    }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<section class="chat-shell">
+  <header class="chat-header">
+    <div class="chat-header-top">
+      <div>
+        <p class="eyebrow">{{ eyebrow }}</p>
+        <h1 class="chat-title">{{ headline }}</h1>
+        <p class="description">{{ description }}</p>
+      </div>
+      <span class="chat-status" data-runtime-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}" data-tone="{{ 'ok' if runtime.local_text_ready else 'warn' }}">
+        {% if runtime.local_text_ready %}
+        runtime local listo
+        {% else %}
+        runtime local pendiente
+        {% endif %}
+      </span>
+    </div>
+    <div class="chat-kpis">
+      <article class="chat-kpi">
+        <span class="stat-label">Texto local</span>
+        <strong>{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
+        <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin bundle seleccionado' }}</span>
+      </article>
+      <article class="chat-kpi">
+        <span class="stat-label">Vision local</span>
+        <strong>{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
+        <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
+      </article>
+      <article class="chat-kpi">
+        <span class="stat-label">Canal</span>
+        <strong>WebSocket</strong>
+        <span class="stat-copy">/ws/chat · fallback SSE disponible</span>
+      </article>
+    </div>
+  </header>
+
+  <section class="chat-log" id="chat-log" aria-live="polite">
+    <article class="chat-empty" id="chat-empty">
+      El historial se carga al abrir la sesion. Esta vista esta optimizada para telefono y usa el gateway realtime actual.
+    </article>
+  </section>
+
+  <section class="chat-composer">
+    <div class="chat-toolbar">
+      <span class="chat-chip">Historia persistente</span>
+      <span class="chat-chip">Contexto por knowledge</span>
+      <span class="chat-chip">Futuro runtime local llama.cpp</span>
+    </div>
+    <form class="chat-form" id="chat-form">
+      <textarea id="chat-input" class="chat-input" placeholder="Escribe un mensaje. Ej: Atlas resume el contexto actual y prepara el siguiente paso."></textarea>
+      <div class="chat-actions">
+        <span class="chat-help" id="chat-help">Sesion realtime iniciando...</span>
+        <button type="submit" class="chat-send" id="chat-send">Enviar</button>
+      </div>
+    </form>
+  </section>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const log = document.getElementById('chat-log');
+  const empty = document.getElementById('chat-empty');
+  const form = document.getElementById('chat-form');
+  const input = document.getElementById('chat-input');
+  const help = document.getElementById('chat-help');
+  const send = document.getElementById('chat-send');
+  const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+  const socket = new WebSocket(`${protocol}://${window.location.host}/ws/chat`);
+  let typingRow = null;
+  let streamedTokens = [];
+
+  const scrollToBottom = () => {
+    log.scrollTop = log.scrollHeight;
+  };
+
+  const initials = (value) => (value || 'AI').trim().slice(0, 2).toUpperCase();
+
+  const removeEmpty = () => {
+    if (empty && !empty.hidden) {
+      empty.hidden = true;
+    }
+  };
+
+  const appendMessage = ({ author, content, channel, tone }) => {
+    removeEmpty();
+    const row = document.createElement('article');
+    row.className = `chat-row ${tone || (channel === 'assistant' ? 'assistant' : 'user')}`;
+
+    const avatar = document.createElement('div');
+    avatar.className = 'chat-avatar';
+    avatar.textContent = initials(author);
+
+    const body = document.createElement('div');
+    const bubble = document.createElement('div');
+    bubble.className = 'chat-bubble';
+    bubble.textContent = content;
+    const meta = document.createElement('div');
+    meta.className = 'chat-meta';
+    meta.textContent = `${author} · ${channel}`;
+
+    body.appendChild(bubble);
+    body.appendChild(meta);
+    row.appendChild(avatar);
+    row.appendChild(body);
+    log.appendChild(row);
+    scrollToBottom();
+    return bubble;
+  };
+
+  const ensureTypingRow = () => {
+    if (typingRow) {
+      return typingRow;
+    }
+    const bubble = appendMessage({ author: 'AI', content: '...', channel: 'assistant', tone: 'typing-row' });
+    typingRow = bubble;
+    streamedTokens = [];
+    return typingRow;
+  };
+
+  const clearTypingRow = () => {
+    if (!typingRow) {
+      return;
+    }
+    const row = typingRow.closest('.chat-row');
+    if (row) {
+      row.remove();
+    }
+    typingRow = null;
+    streamedTokens = [];
+  };
+
+  socket.addEventListener('open', () => {
+    help.textContent = 'Sesion realtime conectada. El websocket del modulo interaction esta listo.';
+  });
+
+  socket.addEventListener('message', (event) => {
+    const packet = JSON.parse(event.data);
+    switch (packet.type) {
+      case 'session_started':
+        help.textContent = `Sesion ${packet.session_id.slice(0, 8)} activa.`;
+        break;
+      case 'welcome':
+        appendMessage({ author: 'system', content: packet.content, channel: 'system', tone: 'assistant' });
+        break;
+      case 'history_message':
+        appendMessage({ author: packet.message.author, content: packet.message.content, channel: packet.message.channel });
+        break;
+      case 'turn_started':
+        ensureTypingRow().textContent = 'pensando...';
+        send.disabled = true;
+        help.textContent = 'Recuperando contexto y preparando respuesta...';
+        break;
+      case 'assistant_token':
+        streamedTokens.push(packet.token);
+        ensureTypingRow().textContent = streamedTokens.join(' ');
+        scrollToBottom();
+        break;
+      case 'assistant_message':
+        clearTypingRow();
+        appendMessage({ author: packet.message.author, content: packet.message.content, channel: packet.message.channel });
+        break;
+      case 'turn_complete':
+        clearTypingRow();
+        send.disabled = false;
+        help.textContent = `Turno completado. Historial persistido: ${packet.history_count} mensajes.`;
+        break;
+      case 'error':
+        clearTypingRow();
+        send.disabled = false;
+        help.textContent = packet.detail || 'Error en el gateway realtime.';
+        break;
+      default:
+        break;
+    }
+  });
+
+  socket.addEventListener('close', () => {
+    send.disabled = true;
+    help.textContent = 'El websocket se cerro. Recarga la pagina para reconectar.';
+  });
+
+  form.addEventListener('submit', (event) => {
+    event.preventDefault();
+    const content = input.value.trim();
+    if (!content || socket.readyState !== WebSocket.OPEN) {
+      return;
+    }
+    appendMessage({ author: 'user', content, channel: 'chat' });
+    socket.send(JSON.stringify({ content, context_limit: 5, history_limit: 20, channel: 'chat' }));
+    input.value = '';
+    input.focus();
+  });
+})();
+</script>
+{% endblock %}

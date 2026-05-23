@@ -17,6 +17,7 @@ from app.interaction.events import (
     PUBLISH_INTERACTION_REALTIME_TURN_COMPLETED,
 )
 from app.knowledge.events import ContextBuildRequest, CurrentIdentityRequest, REQUEST_KNOWLEDGE_CONTEXT_PROMPT, REQUEST_KNOWLEDGE_CURRENT_IDENTITY
+from app.models.events import ModelTextGenerationRequest, REQUEST_MODEL_TEXT_GENERATION
 
 
 def _message_role(author: str, channel: str) -> str:
@@ -291,4 +292,35 @@ class RealtimeChatService:
             lines.append(context_text)
 
         lines.append("Siguiente paso: sigo el contexto recuperado y mantengo el historial persistente.")
-        return "\n".join(lines).strip()
+        fallback_reply = "\n".join(lines).strip()
+
+        prompt_sections = [
+            f"Identidad activa: {identity_name}.",
+            "Responde en espanol, de forma clara y concisa.",
+            f"Mensaje del usuario: {input_data.content.strip()}",
+        ]
+        if context_text:
+            prompt_sections.append(f"Contexto recuperado:\n{context_text}")
+        if knowledge_matches:
+            prompt_sections.append(
+                "Coincidencias relevantes:\n" + "\n".join(
+                    f"- {str(match.get('label') or 'contexto')}: {str(match.get('excerpt') or '').strip()}"
+                    for match in knowledge_matches[:4]
+                )
+            )
+        prompt_sections.append("Responde como el asistente activo y no menciones detalles internos del runtime.")
+        prompt = "\n\n".join(section for section in prompt_sections if section.strip())
+
+        try:
+            generated = self.event_bus.request(
+                REQUEST_MODEL_TEXT_GENERATION,
+                ModelTextGenerationRequest(prompt=prompt, temperature=0.35, max_tokens=768),
+                source_module="interaction.application.realtime",
+            )
+            content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
+            if isinstance(generated, dict) and generated.get("ok") and content:
+                return content
+        except Exception:
+            pass
+
+        return fallback_reply

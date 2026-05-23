@@ -68,6 +68,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
     expected_paths = {
         "/",
         "/admin",
+        "/chat",
         "/admin/routes",
         "/admin/models",
         "/api/platform/health",
@@ -116,6 +117,10 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert admin_response.status_code == 200
         assert "Panel de administración" in admin_response.text
 
+        chat_response = client.get("/chat")
+        assert chat_response.status_code == 200
+        assert "Chat realtime" in chat_response.text
+
         models_response = client.get("/admin/models")
         assert models_response.status_code == 200
         assert "Modelos y proveedores" in models_response.text
@@ -162,13 +167,21 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         text_model_path.write_bytes(b"text-model")
         projector_path.write_bytes(b"vision-model")
 
+        flat_model_path = app.state.context.settings.ai_model_dir / "Phi-plain-root.gguf"
+        flat_model_path.write_bytes(b"flat-root-model")
+
         catalog_response = client.get("/api/models/catalog")
         assert catalog_response.status_code == 200
         catalog_payload = catalog_response.json()
         assert catalog_payload["summary"]["bundle_count"] >= 1
+        assert catalog_payload["runtime"]["runtime_adapter_status"] == "wired"
+        assert catalog_payload["runtime"]["flat_file_support"] is True
         bundle_payload = next(bundle for bundle in catalog_payload["bundles"] if bundle["bundle_id"] == "Gemma-4-E4B-Uncensored-HauhauCS-Aggressive")
         assert bundle_payload["supports_text"] is True
         assert bundle_payload["supports_vision"] is True
+        flat_bundle_payload = next(bundle for bundle in catalog_payload["bundles"] if bundle["bundle_id"] == "Phi-plain-root")
+        assert flat_bundle_payload["supports_text"] is True
+        assert flat_bundle_payload["supports_vision"] is False
 
         selection_response = client.patch(
             "/api/models/selection",

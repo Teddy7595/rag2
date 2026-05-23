@@ -28,6 +28,11 @@
     <strong class="stat-value">{{ frontend.mount_path }}</strong>
     <span class="stat-copy">shell y assets compilados</span>
   </article>
+  <article class="stat-card">
+    <span class="stat-label">LlamaCpp</span>
+    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
+    <span class="stat-copy">binding local para texto y vision</span>
+  </article>
 </section>
 
 <section class="panel-grid">
@@ -65,12 +70,32 @@
       </div>
     </div>
   </article>
+  <article class="card" style="--pill-accent: #38bdf8;">
+    <p class="card-label">Chat realtime</p>
+    <div class="card-body">
+      <p>Vista mobile-first conectada al websocket actual del modulo interaction, preparada para recibir el runtime local cuando lo cableemos.</p>
+      <div class="card-actions">
+        <a class="link-button" href="/chat">Abrir chat</a>
+        <a class="link-button" href="/ws/chat">WS endpoint</a>
+      </div>
+    </div>
+  </article>
 </section>
 
 <section class="panel" style="margin-top: 18px;">
   <h2 class="panel-title">Rutas de storage</h2>
   <div class="panel-body">
     La API de storage expone <code>/api/storage/overview</code>, <code>/api/storage/public</code> y <code>/api/storage/uploads</code>. La vista raíz, el panel y el frontend shell se centralizan en el módulo web dedicado.
+  </div>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Estado del runtime local</h2>
+  <div class="panel-body">
+    <p><strong>Binding llama.cpp:</strong> {{ 'disponible' if runtime.llama_cpp_binding_available else 'no instalado o no visible al runtime' }}</p>
+    <p><strong>Texto local:</strong> {{ 'listo' if runtime.local_text_ready else 'pendiente' }} · <code>{{ runtime.selected_text_model_path or 'sin seleccion local' }}</code></p>
+    <p><strong>Vision local:</strong> {{ 'lista' if runtime.local_vision_ready else 'pendiente' }} · <code>{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</code></p>
+    <p><strong>Integracion del adaptador:</strong> {{ runtime.runtime_adapter_status }}. {{ runtime.runtime_adapter_note }}</p>
   </div>
 </section>
 {% endblock %}

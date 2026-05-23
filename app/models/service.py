@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import os
 from dataclasses import dataclass
@@ -109,13 +110,15 @@ class ModelCatalogService:
     def catalog(self) -> dict[str, object]:
         bundles = self.discover_bundles()
         selection = self.load_selection(bundles)
+        resolved = self._resolve_selection(selection, bundles)
         return {
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "models_dir": str(self.models_dir),
             "summary": self._build_summary(bundles),
             "providers": self._build_provider_overview(),
             "selection": selection,
-            "resolved": self._resolve_selection(selection, bundles),
+            "resolved": resolved,
+            "runtime": self._build_runtime_status(selection, resolved, bundles),
             "bundles": [bundle.as_dict() for bundle in bundles],
         }
 
@@ -143,7 +146,7 @@ class ModelCatalogService:
         for file_path in sorted(self.models_dir.rglob("*.gguf")):
             if not file_path.is_file():
                 continue
-            bundle_id = file_path.relative_to(self.models_dir).parent.as_posix()
+            bundle_id = self._bundle_id_for(file_path)
             bundle_map.setdefault(bundle_id, []).append(file_path)
 
         bundles: list[ModelBundle] = []
@@ -175,12 +178,47 @@ class ModelCatalogService:
         text_bundles = [bundle for bundle in bundles if bundle.supports_text and not bundle.is_embedding_cache]
         vision_bundles = [bundle for bundle in bundles if bundle.supports_vision and not bundle.is_embedding_cache]
         projector_count = sum(1 for bundle in bundles if bundle.primary_projector_artifact is not None and not bundle.is_embedding_cache)
+        root_bundle_count = sum(1 for bundle in bundles if "/" not in bundle.bundle_id and bundle.bundle_id not in {"", "."})
         return {
             "bundle_count": len(bundles),
             "selectable_bundle_count": len(selectable_bundles),
             "text_bundle_count": len(text_bundles),
             "vision_bundle_count": len(vision_bundles),
             "projector_count": projector_count,
+            "root_bundle_count": root_bundle_count,
+        }
+
+    def _build_runtime_status(
+        self,
+        selection: dict[str, object],
+        resolved: dict[str, object],
+        bundles: tuple[ModelBundle, ...],
+    ) -> dict[str, object]:
+        llama_cpp_available = importlib.util.find_spec("llama_cpp") is not None
+        text = resolved["text"]
+        vision = resolved["vision"]
+        local_text_requested = selection.get("text_provider") == "local"
+        local_vision_requested = selection.get("vision_provider") == "local"
+        local_text_ready = bool(local_text_requested and text.get("model_path") and llama_cpp_available)
+        local_vision_ready = bool(local_vision_requested and vision.get("model_path") and vision.get("mmproj_path") and llama_cpp_available)
+        return {
+            "llama_cpp_binding_available": llama_cpp_available,
+            "local_text_requested": local_text_requested,
+            "local_vision_requested": local_vision_requested,
+            "local_text_ready": local_text_ready,
+            "local_vision_ready": local_vision_ready,
+            "selected_text_model_path": text.get("model_path"),
+            "selected_vision_model_path": vision.get("model_path"),
+            "selected_vision_mmproj_path": vision.get("mmproj_path"),
+            "flat_file_support": True,
+            "nested_bundle_support": True,
+            "embedding_cache_support": True,
+            "runtime_adapter_status": "wired",
+            "runtime_adapter_note": (
+                "El servicio de inferencia local ya esta cableado por el modulo models. "
+                "Si llama_cpp no esta disponible o faltan paths locales, el chat mantiene el fallback contextual actual."
+            ),
+            "bundle_count": len(bundles),
         }
 
     def _build_provider_overview(self) -> dict[str, object]:
@@ -361,6 +399,17 @@ class ModelCatalogService:
     def _write_selection(self, selection: dict[str, object]) -> None:
         self.selection_path.parent.mkdir(parents=True, exist_ok=True)
         self.selection_path.write_text(json.dumps(selection, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _bundle_id_for(self, file_path: Path) -> str:
+        relative_path = file_path.relative_to(self.models_dir)
+        parent = relative_path.parent.as_posix()
+        if parent not in {"", "."}:
+            return parent
+
+        stem = file_path.stem
+        if self._is_projector_file(file_path.name):
+            return f"projector/{stem}"
+        return stem
 
     def _bundle_display_name(self, bundle_id: str) -> str:
         if bundle_id in {"", "."}:

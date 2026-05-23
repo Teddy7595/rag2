@@ -220,6 +220,7 @@ async def admin_page(request: Request) -> HTMLResponse:
     context = get_app_context_from_request(request)
     storage = _get_storage(request)
     overview = storage.overview()
+    catalog_context = _model_catalog_context(request)
     return _render(
         request,
         "admin.html",
@@ -229,6 +230,22 @@ async def admin_page(request: Request) -> HTMLResponse:
         description="Concentra las funciones operativas del sistema en una sola vista.",
         overview=overview,
         module_count=len(context.module_groups),
+        runtime=catalog_context["catalog"]["runtime"],
+    )
+
+
+@router.get("/chat")
+async def chat_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    catalog_context = _model_catalog_context(request)
+    return _render(
+        request,
+        "chat.html",
+        title=f"{context.settings.app_name} | Chat realtime",
+        eyebrow="Realtime chat",
+        headline="Chat realtime",
+        description="Interfaz mobile-first conectada al websocket del modulo interaction, lista para enchufar el motor local cuando el runtime de inferencia quede cableado.",
+        runtime=catalog_context["catalog"]["runtime"],
     )
 
 
