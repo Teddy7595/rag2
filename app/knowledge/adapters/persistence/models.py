@@ -2,11 +2,11 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, JSON, String, Text
+from sqlalchemy import DateTime, Float, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import DatabaseBase
-from app.knowledge.domain import KnowledgeEntry
+from app.knowledge.domain import Identity, KnowledgeEntry
 
 
 def utcnow() -> datetime:
@@ -40,6 +40,68 @@ class KnowledgeEntryRecord(DatabaseBase):
             title=self.title,
             content=self.content,
             tags=list(self.tags or []),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
+
+
+class IdentityRecord(DatabaseBase):
+    __tablename__ = "knowledge_engrams"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    avatar: Mapped[str] = mapped_column(String(1024), nullable=False, default="")
+    color_hex: Mapped[str] = mapped_column(String(32), nullable=False, default="#00ff41")
+    intellectual_profile: Mapped[str] = mapped_column(String(255), nullable=False, default="General")
+    behavior_prompt: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    meta_rule: Mapped[str] = mapped_column(Text, nullable=False, default="Stay consistent with the selected identity.")
+    moral_threshold: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    interaction_mode: Mapped[str] = mapped_column(String(64), nullable=False, default="Directo")
+    dialogue_examples: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    backstory: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    temperatura_base: Mapped[float] = mapped_column(Float, nullable=False, default=0.8)
+    top_p_base: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    max_tokens_respuesta: Mapped[int] = mapped_column(Integer, nullable=False, default=2048)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    @classmethod
+    def from_domain(cls, identity: Identity) -> "IdentityRecord":
+        return cls(
+            id=str(identity.id),
+            name=identity.name,
+            avatar=identity.avatar,
+            color_hex=identity.color_hex,
+            intellectual_profile=identity.intellectual_profile,
+            behavior_prompt=identity.behavior_prompt,
+            meta_rule=identity.meta_rule,
+            moral_threshold=identity.moral_threshold,
+            interaction_mode=identity.interaction_mode,
+            dialogue_examples=list(identity.dialogue_examples),
+            backstory=identity.backstory,
+            temperatura_base=identity.temperatura_base,
+            top_p_base=identity.top_p_base,
+            max_tokens_respuesta=identity.max_tokens_respuesta,
+            created_at=identity.created_at,
+            updated_at=identity.updated_at,
+        )
+
+    def to_domain(self) -> Identity:
+        return Identity(
+            id=str(self.id),
+            name=self.name,
+            avatar=self.avatar,
+            color_hex=self.color_hex,
+            intellectual_profile=self.intellectual_profile,
+            behavior_prompt=self.behavior_prompt,
+            meta_rule=self.meta_rule,
+            moral_threshold=self.moral_threshold,
+            interaction_mode=self.interaction_mode,
+            dialogue_examples=list(self.dialogue_examples or []),
+            backstory=self.backstory,
+            temperatura_base=self.temperatura_base,
+            top_p_base=self.top_p_base,
+            max_tokens_respuesta=self.max_tokens_respuesta,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )

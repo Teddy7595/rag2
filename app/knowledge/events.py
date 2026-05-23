@@ -23,6 +23,67 @@ class KnowledgeItemCreateRequest:
     tags: tuple[str, ...] = ()
 
 
+@dataclass(frozen=True)
+class EngramListRequest:
+    limit: int = 20
+
+
+@dataclass(frozen=True)
+class EngramCreateRequest:
+    name: str
+    avatar: str = ""
+    color_hex: str = "#00ff41"
+    intellectual_profile: str = "General"
+    behavior_prompt: str = ""
+    meta_rule: str = "Stay consistent with the selected identity."
+    moral_threshold: int = 0
+    interaction_mode: str = "Directo"
+    dialogue_examples: tuple[str, ...] = ()
+    backstory: str = ""
+    temperatura_base: float = 0.8
+    top_p_base: float = 1.0
+    max_tokens_respuesta: int = 2048
+
+
+@dataclass(frozen=True)
+class EngramUpdateRequest:
+    engram_id: str
+    name: str | None = None
+    avatar: str | None = None
+    color_hex: str | None = None
+    intellectual_profile: str | None = None
+    behavior_prompt: str | None = None
+    meta_rule: str | None = None
+    moral_threshold: int | None = None
+    interaction_mode: str | None = None
+    dialogue_examples: tuple[str, ...] | None = None
+    backstory: str | None = None
+    temperatura_base: float | None = None
+    top_p_base: float | None = None
+    max_tokens_respuesta: int | None = None
+
+
+@dataclass(frozen=True)
+class EngramDeleteRequest:
+    engram_id: str
+
+
+@dataclass(frozen=True)
+class CurrentIdentityRequest:
+    pass
+
+
+@dataclass(frozen=True)
+class IdentityResolveRequest:
+    raw_text: str
+    identity_id: str | None = None
+
+
+@dataclass(frozen=True)
+class EngramHintsRequest:
+    pass
+
+
 REQUEST_KNOWLEDGE_OVERVIEW = EventSpec[KnowledgeOverviewRequest, dict](
     name="knowledge.overview.request",
     kind=EventKind.REQUEST,
@@ -47,8 +108,80 @@ REQUEST_KNOWLEDGE_ITEM_CREATE = EventSpec[KnowledgeItemCreateRequest, dict](
     output_type=dict,
 )
 
+REQUEST_KNOWLEDGE_ENGRAMS = EventSpec[EngramListRequest, list](
+    name="knowledge.engrams.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramListRequest,
+    output_type=list,
+)
+
+REQUEST_KNOWLEDGE_ENGRAM_CREATE = EventSpec[EngramCreateRequest, dict](
+    name="knowledge.engram.create.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramCreateRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_ENGRAM_UPDATE = EventSpec[EngramUpdateRequest, dict](
+    name="knowledge.engram.update.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramUpdateRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_ENGRAM_DELETE = EventSpec[EngramDeleteRequest, dict](
+    name="knowledge.engram.delete.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramDeleteRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_CURRENT_IDENTITY = EventSpec[CurrentIdentityRequest, dict](
+    name="knowledge.identity.current.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=CurrentIdentityRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_IDENTITY_RESOLVE = EventSpec[IdentityResolveRequest, dict](
+    name="knowledge.identity.resolve.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=IdentityResolveRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_IDENTITY_HINTS = EventSpec[EngramHintsRequest, list](
+    name="knowledge.identity.hints.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramHintsRequest,
+    output_type=list,
+)
+
 PUBLISH_KNOWLEDGE_ITEM_CREATED = EventSpec[dict, dict](
     name="knowledge.item.created",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
+PUBLISH_KNOWLEDGE_ENGRAM_CHANGED = EventSpec[dict, dict](
+    name="knowledge.engram.changed",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=dict,
+    output_type=dict,
+)
+
+PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED = EventSpec[dict, dict](
+    name="knowledge.identity.resolved",
     kind=EventKind.PUBLISH,
     channel=EventChannel.DOMAIN,
     input_type=dict,
@@ -60,7 +193,23 @@ __all__ = [
     "KnowledgeItemCreateRequest",
     "KnowledgeItemsRequest",
     "KnowledgeOverviewRequest",
+    "CurrentIdentityRequest",
+    "EngramCreateRequest",
+    "EngramDeleteRequest",
+    "EngramHintsRequest",
+    "EngramListRequest",
+    "EngramUpdateRequest",
+    "IdentityResolveRequest",
     "PUBLISH_KNOWLEDGE_ITEM_CREATED",
+    "PUBLISH_KNOWLEDGE_ENGRAM_CHANGED",
+    "PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED",
+    "REQUEST_KNOWLEDGE_CURRENT_IDENTITY",
+    "REQUEST_KNOWLEDGE_ENGRAM_CREATE",
+    "REQUEST_KNOWLEDGE_ENGRAM_DELETE",
+    "REQUEST_KNOWLEDGE_ENGRAM_UPDATE",
+    "REQUEST_KNOWLEDGE_ENGRAMS",
+    "REQUEST_KNOWLEDGE_IDENTITY_HINTS",
+    "REQUEST_KNOWLEDGE_IDENTITY_RESOLVE",
     "REQUEST_KNOWLEDGE_ITEM_CREATE",
     "REQUEST_KNOWLEDGE_ITEMS",
     "REQUEST_KNOWLEDGE_OVERVIEW",

@@ -1,3 +1,3 @@
-from app.knowledge.adapters.persistence.repository import SqlAlchemyKnowledgeRepository
+from app.knowledge.adapters.persistence.repository import SqlAlchemyEngramRepository, SqlAlchemyKnowledgeRepository
 
-__all__ = ["SqlAlchemyKnowledgeRepository"]
+__all__ = ["SqlAlchemyEngramRepository", "SqlAlchemyKnowledgeRepository"]
