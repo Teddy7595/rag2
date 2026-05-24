@@ -62,28 +62,28 @@ def build_turn_policy(
     if intent == "greeting":
         return ConversationTurnPolicy(
             intent=intent,
-            max_tokens=96,
-            temperature=0.2,
-            top_p=0.9,
-            deadline_ms=1200,
+            max_tokens=140,
+            temperature=0.45,
+            top_p=0.95,
+            deadline_ms=1700,
             prefer_short=True,
         )
     if intent == "identity":
         return ConversationTurnPolicy(
             intent=intent,
-            max_tokens=140,
-            temperature=0.2,
-            top_p=0.9,
-            deadline_ms=1400,
+            max_tokens=220,
+            temperature=0.4,
+            top_p=0.95,
+            deadline_ms=2200,
             prefer_short=True,
         )
     if intent == "conversational":
         return ConversationTurnPolicy(
             intent=intent,
-            max_tokens=180 if has_custom_engram else 160,
-            temperature=0.35 if has_custom_engram else 0.25,
+            max_tokens=300 if has_custom_engram else 240,
+            temperature=0.6 if has_custom_engram else 0.5,
             top_p=0.95,
-            deadline_ms=2800,
+            deadline_ms=3600,
             prefer_short=True,
         )
     if intent == "technical":
@@ -301,6 +301,9 @@ def looks_like_internal_reasoning(text: str) -> bool:
         "reglas del mundo activas para esta sesion:",
         "tono conversacional:",
         "resto del mensaje en ingles",
+        "regla interna (no repetir)",
+        "respuesta directa, breve y util en espanol",
+        "**salida**",
     )
     if any(marker in lower for marker in markers):
         return True
@@ -340,6 +343,10 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
         if line.startswith("[") and line.endswith("]"):
             continue
         if lower.startswith(("intent:", "keywords:", "history:", "contexto recuperado:")):
+            continue
+        if lower.startswith(("regla interna", "respuesta directa, breve y util")):
+            continue
+        if "**salida**" in lower:
             continue
         if "score=" in lower:
             continue

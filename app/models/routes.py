@@ -45,6 +45,11 @@ class ModelRuntimeConfigUpdate(BaseModel):
     text_generation_temperature: float | None = None
     text_generation_top_p: float | None = None
     text_generation_max_tokens: int | None = None
+    text_generation_min_p: float | None = None
+    text_generation_repeat_penalty: float | None = None
+    text_generation_presence_penalty: float | None = None
+    text_generation_frequency_penalty: float | None = None
+    text_generation_seed: int | None = None
 
 
 class ModelApplyAndRestartRequest(BaseModel):

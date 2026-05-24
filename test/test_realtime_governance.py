@@ -208,7 +208,7 @@ def test_compose_reply_chatty_query_uses_conversational_fallback_without_interna
     assert "smoke-doc" not in reply
     assert "contexto" not in reply.lower()
     assert "Soy Asistente Base" in reply
-    assert "sin plantilla" in reply.lower() or "sin rodeos" in reply.lower() or "directo" in reply.lower()
+    assert "directo" in reply.lower() or "breve" in reply.lower() or "natural" in reply.lower()
 
 
 def test_compose_reply_typoed_greeting_never_uses_smoke_doc_fallback(monkeypatch) -> None:
@@ -233,6 +233,53 @@ def test_compose_reply_typoed_greeting_never_uses_smoke_doc_fallback(monkeypatch
     assert "punto principal" not in reply.lower()
     assert "contexto" not in reply.lower()
     assert "Soy Asistente Base" in reply or "Hola" in reply
+
+
+def test_compose_reply_slang_greeting_returns_human_style_reply(monkeypatch) -> None:
+    event_bus = FakeEventBus({"ok": True, "content": ""})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=10),
+    )
+
+    ticks = iter([33.0, 33.03])
+    monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Que lo que, bro? Todo bien o que?"),
+        _base_context_preview(),
+        session_id="session-slang-greeting",
+    )
+
+    assert quality["fallback_used"] is True
+    assert "contexto" not in reply.lower()
+    assert "smoke-doc" not in reply.lower()
+    assert "soy asistente base" in reply.lower() or "hola" in reply.lower()
+
+
+def test_compose_reply_story_request_never_leaks_internal_labels(monkeypatch) -> None:
+    event_bus = FakeEventBus({"ok": True, "content": ""})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(conversation_deadline_scale_percent=10),
+    )
+
+    ticks = iter([34.0, 34.02])
+    monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Hazme una historia corta de ciencia ficcion en tono calle."),
+        _base_context_preview(),
+        session_id="session-story-request",
+    )
+
+    assert quality["fallback_used"] is True
+    assert "contexto recuperado" not in reply.lower()
+    assert "coincidencias relevantes" not in reply.lower()
+    assert "smoke-doc" not in reply.lower()
+    assert len(reply.strip()) > 20
 
 
 def test_custom_engram_greeting_uses_model_generation_not_default_guard() -> None:

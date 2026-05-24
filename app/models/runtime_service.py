@@ -81,6 +81,11 @@ class LocalInferenceService:
             "temperature": max(0.0, min(2.0, float(config.get("text_generation_temperature") or 0.35))),
             "top_p": max(0.0, min(1.0, float(config.get("text_generation_top_p") or 1.0))),
             "max_tokens": max(64, min(4096, int(config.get("text_generation_max_tokens") or 768))),
+            "min_p": max(0.0, min(1.0, float(config.get("text_generation_min_p") or 0.05))),
+            "repeat_penalty": max(1.0, min(2.0, float(config.get("text_generation_repeat_penalty") or 1.15))),
+            "presence_penalty": max(-2.0, min(2.0, float(config.get("text_generation_presence_penalty") or 0.0))),
+            "frequency_penalty": max(-2.0, min(2.0, float(config.get("text_generation_frequency_penalty") or 0.0))),
+            "seed": int(config.get("text_generation_seed") or -1),
         }
 
     def restart_runtime(self, *, reason: str = "model_update") -> dict[str, object]:
@@ -237,6 +242,7 @@ class LocalInferenceService:
         catalog = cast(dict[str, Any], self.catalog_service.catalog())
         runtime = cast(dict[str, Any], catalog["runtime"])
         resolved = cast(dict[str, dict[str, Any]], catalog["resolved"])
+        runtime_config = cast(dict[str, Any], catalog.get("runtime_config") or {})
         if not self.binding_available():
             return {
                 "ok": False,
@@ -284,12 +290,23 @@ class LocalInferenceService:
             }
 
         try:
+            min_p = max(0.0, min(1.0, float(runtime_config.get("text_generation_min_p") or 0.05)))
+            repeat_penalty = max(1.0, min(2.0, float(runtime_config.get("text_generation_repeat_penalty") or 1.15)))
+            presence_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_presence_penalty") or 0.0)))
+            frequency_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_frequency_penalty") or 0.0)))
+            seed = int(runtime_config.get("text_generation_seed") or -1)
+
             response = cast(Any, llm).create_completion(
                 prompt=request.prompt,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
                 top_p=request.top_p,
-                stop=["<end_of_turn>", "<|eot_id|>"],
+                min_p=min_p,
+                repeat_penalty=repeat_penalty,
+                presence_penalty=presence_penalty,
+                frequency_penalty=frequency_penalty,
+                stop=["<end_of_turn>", "<|eot_id|>", "</assistant_response>", "<|im_end|>", "</s>", "Human:", "User:"],
+                seed=seed if seed >= 0 else None,
                 stream=False,
             )
             response_payload = cast(dict[str, Any], response) if isinstance(response, dict) else {}

@@ -918,6 +918,39 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert any(entry["event_name"] == "operations.saga.deleted" for entry in audit_log_payload)
 
 
+def test_realtime_handles_slang_greetings_and_story_requests(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    prompts = [
+        "Que lo que, bro? Saludos desde el barrio.",
+        "Ey loco, tirame un saludo corto bien humano.",
+        "Ahora hazme una historia cyberpunk corta, con tono calle y final contundente.",
+    ]
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/chat") as websocket:
+            for _ in range(8):
+                packet = websocket.receive_json()
+                if packet["type"] == "welcome":
+                    break
+
+            for prompt in prompts:
+                websocket.send_json({"content": prompt, "context_limit": 5, "history_limit": 5})
+                assistant_text = ""
+                while True:
+                    packet = websocket.receive_json()
+                    if packet["type"] == "assistant_message":
+                        assistant_text = str(packet["message"]["content"] or "")
+                    if packet["type"] == "turn_complete":
+                        break
+
+                lowered = assistant_text.lower()
+                assert assistant_text.strip()
+                assert "contexto recuperado" not in lowered
+                assert "coincidencias relevantes" not in lowered
+                assert "smoke-doc" not in lowered
+
+
 def test_security_middleware_applies_rate_limit_and_ban_list(tmp_path: Path, monkeypatch) -> None:
     limited_app = build_test_app(
         tmp_path / "limited",

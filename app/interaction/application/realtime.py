@@ -149,16 +149,25 @@ def _looks_mostly_english(text: str) -> bool:
 
 def _choose_conversational_fallback(user_text: str, identity_name: str, *, repeat_variant: bool = False) -> str:
     normalized = re.sub(r"\s+", " ", user_text.lower()).strip()
+    if re.search(r"\b(hola|buenas|hey|hi|hello|que tal)\b", normalized):
+        return f"Hola, soy {identity_name}. Te leo. Si quieres, empezamos por lo que necesitas ahora mismo y lo resolvemos en corto."
+
+    if re.search(r"\b(resume|explica|dime|ayuda|quiero|necesito|puedes|podrias|podrías)\b", normalized):
+        return (
+            f"Soy {identity_name}. Entendido: {user_text.strip()[:120]}. "
+            "Te respondo directo y en claro a continuacion."
+        )
+
     tone_index = sum(ord(char) for char in normalized) % 3 if normalized else 0
     variants = [
-        f"Soy {identity_name}. Te respondo directo y corto: hazme la pregunta concreta y voy al punto.",
-        f"Soy {identity_name}. Vamos sin rodeos: dime exactamente qué quieres resolver y te doy una respuesta clara.",
-        f"Soy {identity_name}. Puedo responderte en 2-3 lineas, sin plantilla ni relleno. Dispara tu pregunta puntual.",
+        f"Soy {identity_name}. Te respondo claro y natural, sin rodeos.",
+        f"Soy {identity_name}. Vamos al punto, con una respuesta concreta.",
+        f"Soy {identity_name}. Te doy una respuesta breve y util ahora mismo.",
     ]
     repeat_variants = [
-        f"Soy {identity_name}. Cambio de enfoque: respuesta breve, directa y sin vueltas.",
-        f"Soy {identity_name}. Entendido: voy al grano en la siguiente respuesta.",
-        f"Soy {identity_name}. Queda claro: pregunta puntual, respuesta puntual.",
+        f"Soy {identity_name}. Cambio de enfoque: te respondo mas directo y humano.",
+        f"Soy {identity_name}. Entendido, voy al grano.",
+        f"Soy {identity_name}. Perfecto, respuesta puntual sin plantilla.",
     ]
     pool = repeat_variants if repeat_variant else variants
     return pool[tone_index % len(pool)]

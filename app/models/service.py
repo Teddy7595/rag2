@@ -35,7 +35,12 @@ _RUNTIME_CONFIG_DEFAULTS = {
     "vision_timeout_seconds": 120,
     "text_generation_temperature": 0.35,
     "text_generation_top_p": 1.0,
-    "text_generation_max_tokens": 768,
+    "text_generation_max_tokens": 1024,
+    "text_generation_min_p": 0.05,
+    "text_generation_repeat_penalty": 1.15,
+    "text_generation_presence_penalty": 0.0,
+    "text_generation_frequency_penalty": 0.0,
+    "text_generation_seed": -1,
 }
 
 
@@ -191,6 +196,24 @@ class ModelCatalogService:
         )
         config["vision_timeout_seconds"] = int(
             _read_env("VISION_TIMEOUT_SECONDS", str(config["vision_timeout_seconds"])) or config["vision_timeout_seconds"]
+        )
+        config["text_generation_min_p"] = float(
+            _read_env("TEXT_GENERATION_MIN_P", str(config["text_generation_min_p"])) or config["text_generation_min_p"]
+        )
+        config["text_generation_repeat_penalty"] = float(
+            _read_env("TEXT_GENERATION_REPEAT_PENALTY", str(config["text_generation_repeat_penalty"]))
+            or config["text_generation_repeat_penalty"]
+        )
+        config["text_generation_presence_penalty"] = float(
+            _read_env("TEXT_GENERATION_PRESENCE_PENALTY", str(config["text_generation_presence_penalty"]))
+            or config["text_generation_presence_penalty"]
+        )
+        config["text_generation_frequency_penalty"] = float(
+            _read_env("TEXT_GENERATION_FREQUENCY_PENALTY", str(config["text_generation_frequency_penalty"]))
+            or config["text_generation_frequency_penalty"]
+        )
+        config["text_generation_seed"] = int(
+            _read_env("TEXT_GENERATION_SEED", str(config["text_generation_seed"])) or config["text_generation_seed"]
         )
 
         file_payload = self._load_runtime_config_file()
@@ -531,6 +554,11 @@ class ModelCatalogService:
         normalized["text_generation_temperature"] = max(0.0, min(2.0, float(normalized.get("text_generation_temperature") or 0.35)))
         normalized["text_generation_top_p"] = max(0.0, min(1.0, float(normalized.get("text_generation_top_p") or 1.0)))
         normalized["text_generation_max_tokens"] = max(64, min(4096, int(normalized.get("text_generation_max_tokens") or 768)))
+        normalized["text_generation_min_p"] = max(0.0, min(1.0, float(normalized.get("text_generation_min_p") or 0.05)))
+        normalized["text_generation_repeat_penalty"] = max(1.0, min(2.0, float(normalized.get("text_generation_repeat_penalty") or 1.15)))
+        normalized["text_generation_presence_penalty"] = max(-2.0, min(2.0, float(normalized.get("text_generation_presence_penalty") or 0.0)))
+        normalized["text_generation_frequency_penalty"] = max(-2.0, min(2.0, float(normalized.get("text_generation_frequency_penalty") or 0.0)))
+        normalized["text_generation_seed"] = int(normalized.get("text_generation_seed") or -1)
         return normalized
 
     def _bundle_id_for(self, file_path: Path) -> str:

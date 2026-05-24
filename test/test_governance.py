@@ -17,13 +17,13 @@ def test_build_turn_policy_prefers_short_for_greeting_and_identity() -> None:
 
     assert greeting_policy.intent == "greeting"
     assert greeting_policy.prefer_short is True
-    assert greeting_policy.max_tokens <= 120
-    assert greeting_policy.deadline_ms <= 1500
+    assert greeting_policy.max_tokens <= 160
+    assert greeting_policy.deadline_ms <= 2000
 
     assert identity_policy.intent == "identity"
     assert identity_policy.prefer_short is True
-    assert identity_policy.max_tokens <= 160
-    assert identity_policy.deadline_ms <= 1800
+    assert identity_policy.max_tokens <= 240
+    assert identity_policy.deadline_ms <= 2400
 
 
 def test_build_turn_policy_allocates_more_budget_for_technical_queries() -> None:
@@ -84,6 +84,15 @@ def test_sanitize_generated_reply_strips_internal_tags_reserve_prefix() -> None:
     assert cleaned == ""
 
 
+def test_sanitize_generated_reply_strips_internal_regla_and_salida_markers() -> None:
+    noisy = (
+        'Regla interna (no repetir): nunca mencionar al usuario en primera persona.\n'
+        'Respuesta directa, breve y util en espanol. **Salida** ¡Que onda, compa!'
+    )
+    cleaned = sanitize_generated_reply(noisy)
+    assert cleaned == ""
+
+
 def test_sanitize_history_content_masks_internal_reasoning() -> None:
     masked = sanitize_history_content("1. **Analyze the Request:** user input")
     assert "omitida por seguridad" in masked
@@ -108,7 +117,7 @@ def test_classify_intent_detects_conversational_queries() -> None:
 def test_build_turn_policy_for_conversational_queries() -> None:
     policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
     assert policy.intent == "conversational"
-    assert policy.max_tokens <= 180
+    assert policy.max_tokens <= 260
     assert policy.deadline_ms >= 2400
     assert policy.prefer_short is True
 
