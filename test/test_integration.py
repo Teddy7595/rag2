@@ -79,6 +79,7 @@ def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) 
     monkeypatch.setenv("APP_CONVERSATION_DEADLINE_SCALE_PERCENT", "175")
     monkeypatch.setenv("APP_CONVERSATION_INTENT_BUNDLE_ID", "intent-small")
     monkeypatch.setenv("APP_CONVERSATION_INTENT_MAX_TOKENS", "6")
+    monkeypatch.setenv("APP_KERNEL_META_RULE", "Responde solo contenido final, sin pensamientos internos.")
 
     settings = load_settings(tmp_path)
     assert settings.conversation_guard_enabled is False
@@ -89,6 +90,7 @@ def test_settings_loads_conversation_rollout_flags(tmp_path: Path, monkeypatch) 
     assert settings.conversation_deadline_scale_percent == 175
     assert settings.conversation_intent_bundle_id == "intent-small"
     assert settings.conversation_intent_max_tokens == 6
+    assert settings.conversation_kernel_meta_rule == "Responde solo contenido final, sin pensamientos internos."
 
 
 def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatch, capsys) -> None:

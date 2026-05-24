@@ -78,6 +78,12 @@ def test_sanitize_generated_reply_strips_metacommentary_directive_prefix() -> No
     assert cleaned.startswith("Hola, que gusto leerte")
 
 
+def test_sanitize_generated_reply_strips_no_etiquetas_directive_prefix() -> None:
+    noisy = "No uses etiquetas como [COMENTARIOS] o [META-INFO]. No repitas el enunciado del usuario. Hola, como sigues hoy?"
+    cleaned = sanitize_generated_reply(noisy)
+    assert cleaned.startswith("Hola, como sigues")
+
+
 def test_sanitize_generated_reply_strips_internal_tags_reserve_prefix() -> None:
     noisy = "Reserve el uso de etiquetas internas al procesamiento de informacion. Ahora, escribe una historia completa."
     cleaned = sanitize_generated_reply(noisy)

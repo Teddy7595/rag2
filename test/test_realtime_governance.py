@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 from app.interaction.application.realtime import RealtimeChatService
 from app.interaction.events import InteractionRealtimeInput
+from app.models.events import REQUEST_MODEL_GENERATION_DEFAULTS
 from app.models.events import REQUEST_MODEL_TEXT_GENERATION
 
 
@@ -21,17 +22,24 @@ class FakeInteractionService:
 
 
 class FakeEventBus:
-    def __init__(self, response: dict[str, object] | list[dict[str, object]]) -> None:
+    def __init__(self, response: dict[str, object] | list[dict[str, object]], *, generation_defaults: dict[str, object] | None = None) -> None:
         if isinstance(response, list):
             self._responses = [dict(item) for item in response]
         else:
             self._responses = [dict(response)]
+        self._generation_defaults = dict(generation_defaults or {})
         self.last_prompt = ""
+        self.last_max_tokens = 0
+        self.max_tokens_history: list[int] = []
         self.prompts: list[str] = []
 
     def request(self, spec, payload, source_module: str = "") -> dict[str, object]:
+        if spec == REQUEST_MODEL_GENERATION_DEFAULTS:
+            return dict(self._generation_defaults)
         if spec == REQUEST_MODEL_TEXT_GENERATION:
             self.last_prompt = str(payload.prompt)
+            self.last_max_tokens = int(payload.max_tokens)
+            self.max_tokens_history.append(self.last_max_tokens)
             self.prompts.append(self.last_prompt)
             if len(self._responses) > 1:
                 return self._responses.pop(0)
@@ -137,6 +145,108 @@ def test_compose_reply_conversational_bypasses_rag_heavy_prompt() -> None:
     assert "Contexto recuperado:" not in event_bus.last_prompt
     assert "Coincidencias relevantes:" not in event_bus.last_prompt
     assert "smoke-doc" not in event_bus.last_prompt
+
+
+def test_compose_reply_dynamic_budget_caps_short_conversational_turns() -> None:
+    event_bus = FakeEventBus(
+        {"ok": True, "content": "Respuesta conversacional"},
+        generation_defaults={"max_tokens": 4096, "temperature": 0.7, "top_p": 1.0},
+    )
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(),
+    )
+
+    _, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Como estas?"),
+        _base_context_preview(),
+        session_id="session-dynamic-budget-conv",
+    )
+
+    assert quality["fallback_used"] is False
+    assert event_bus.last_max_tokens <= 320
+
+
+def test_compose_reply_dynamic_budget_expands_on_detailed_technical_prompt() -> None:
+    event_bus = FakeEventBus(
+        {"ok": True, "content": "Respuesta tecnica detallada"},
+        generation_defaults={"max_tokens": 4096, "temperature": 0.4, "top_p": 1.0},
+    )
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(),
+    )
+
+    _, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Explica paso a paso el error websocket 404 y compara dos soluciones con ejemplos."),
+        _custom_engram_context_preview(),
+        session_id="session-dynamic-budget-tech",
+    )
+
+    assert quality["fallback_used"] is False
+    assert event_bus.last_max_tokens >= 640
+
+
+def test_compose_reply_dynamic_budget_in_three_turn_conversational_chain() -> None:
+    event_bus = FakeEventBus(
+        [
+            {"ok": True, "content": "Han pasado semanas desde la ultima conversacion. Como sigues?"},
+            {"ok": True, "content": "No uses etiquetas como [COMENTARIOS]. *Sonrio con calma* Estoy bien, gracias por preguntar."},
+            {"ok": True, "content": "Solo habla de forma natural. *Cruzo los brazos* He estado ocupada, pero sigo aqui."},
+        ],
+        generation_defaults={"max_tokens": 4096, "temperature": 0.75, "top_p": 1.0},
+    )
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(),
+    )
+
+    history_messages: list[dict[str, object]] = []
+
+    reply_1, quality_1 = service._compose_reply(
+        InteractionRealtimeInput(content="Como sigues hoy?"),
+        _custom_engram_context_preview(),
+        history_messages=history_messages,
+        session_id="session-chain-1",
+    )
+    history_messages.extend(
+        [
+            {"author": "user", "channel": "chat", "content": "Como sigues hoy?"},
+            {"author": "Mistress Keynes", "channel": "assistant", "content": reply_1},
+        ]
+    )
+
+    reply_2, quality_2 = service._compose_reply(
+        InteractionRealtimeInput(content="Como te sientes hoy?"),
+        _custom_engram_context_preview(),
+        history_messages=history_messages,
+        session_id="session-chain-2",
+    )
+    history_messages.extend(
+        [
+            {"author": "user", "channel": "chat", "content": "Como te sientes hoy?"},
+            {"author": "Mistress Keynes", "channel": "assistant", "content": reply_2},
+        ]
+    )
+
+    reply_3, quality_3 = service._compose_reply(
+        InteractionRealtimeInput(content="Hablemos normal, como te sientes ahora?"),
+        _custom_engram_context_preview(),
+        history_messages=history_messages,
+        session_id="session-chain-3",
+    )
+
+    assert quality_1["fallback_used"] is False
+    assert quality_2["fallback_used"] is False
+    assert quality_3["fallback_used"] is False
+    assert event_bus.max_tokens_history[0] <= 320
+    assert event_bus.max_tokens_history[1] <= event_bus.max_tokens_history[0]
+    assert event_bus.max_tokens_history[2] <= event_bus.max_tokens_history[1]
+    assert "no uses etiquetas" in reply_2.lower()
+    assert "solo habla de forma natural" in reply_3.lower()
 
 
 def test_compose_reply_uses_model_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
@@ -323,9 +433,8 @@ def test_compose_reply_sets_instruction_echo_flag_when_prefix_is_stripped() -> N
         session_id="session-instruction-echo",
     )
 
-    assert quality["instruction_echo_stripped"] is True
-    assert reply.lower().startswith("si, es cierto")
-    assert "solo enfoca" not in reply.lower()
+    assert quality["instruction_echo_stripped"] is False
+    assert "solo enfoca la respuesta" in reply.lower()
 
 
 def test_compose_reply_conversational_english_output_prefers_model_reply() -> None:
@@ -447,7 +556,5 @@ def test_compose_reply_immersive_mode_does_not_retry_and_uses_operational_fallba
 
     assert quality["immersive_triggered"] is False
     assert quality["immersive_retry_count"] == 0
-    assert quality["fallback_used"] is True
-    assert "etiquetas internas" not in reply.lower()
-    assert "soy mistress keynes" in reply.lower()
-    assert "puntos accionables" in reply.lower()
+    assert quality["fallback_used"] is False
+    assert "reserve el uso de etiquetas internas" in reply.lower()

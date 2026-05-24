@@ -437,6 +437,9 @@ def instruction_echo_prefix_detected(text: str) -> bool:
     instruction_echo_patterns = (
         r"\bsolo\s+(enfoca|muestra|coloca)\b.*\b(respuesta|usuario|bloque|texto)\b",
         r"\b(enfoca(?:te)?|enf[oó]cate|coloca|pon|escribe|redacta|responde|contesta)\b.*\b(respuesta|usuario|tono|bloque|texto|separaciones)\b",
+        r"\bsolo\s+habla\s+de\s+forma\s+natural\b",
+        r"\bno\s+uses?\s+etiquetas?\s+como\b",
+        r"\bno\s+repitas?\s+el\s+enunciado\s+del\s+usuario\b",
         r"\bevitar\s+lenguaje\b.*\bformal\b",
         r"\bevitar?\s+metacomentarios\b",
         r"\bevitar?\s+.*\bexplicaciones?\b.*\bengrama",
