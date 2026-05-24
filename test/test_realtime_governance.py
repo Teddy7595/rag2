@@ -160,7 +160,7 @@ def test_compose_reply_uses_model_intent_hint_for_ambiguous_turn(monkeypatch) ->
 
     assert intent_runtime.calls
     assert quality["fallback_used"] is False
-    assert "Tono conversacional" in event_bus.last_prompt
+    assert "Responde en espanol natural, cercano y humano." in event_bus.last_prompt
 
 
 def test_compose_reply_uses_embedding_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
@@ -184,7 +184,7 @@ def test_compose_reply_uses_embedding_intent_hint_for_ambiguous_turn(monkeypatch
 
     assert embedding_runtime.calls
     assert quality["fallback_used"] is False
-    assert "Tono conversacional" in event_bus.last_prompt
+    assert "Responde en espanol natural, cercano y humano." in event_bus.last_prompt
 
 
 def test_compose_reply_chatty_query_uses_conversational_fallback_without_internal_labels(monkeypatch) -> None:

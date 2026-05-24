@@ -998,16 +998,11 @@ class RealtimeChatService:
                 )
             )
         if conversational_mode:
-            prompt_sections.append("Tono conversacional (interno, no repetir): natural, cercano y sin sonar mecanico.")
-            prompt_sections.append("Regla interna (no repetir): si el usuario habla de ti o de tu tono, responde en primera persona breve y humana.")
-            prompt_sections.append("Regla interna (no repetir): no mencionar contexto recuperado, etiquetas internas ni nombres de documentos o rutas.")
+            prompt_sections.append("Responde en espanol natural, cercano y humano.")
+            prompt_sections.append("No menciones contexto interno, etiquetas, rutas ni nombres de documentos.")
         else:
-            prompt_sections.append("Estilo de salida (interno, no repetir): respuesta directa, breve y util en espanol.")
-            prompt_sections.append(
-                "Regla interna (no repetir): no mostrar analisis interno, listas de planificacion ni encabezados tecnicos como "
-                "[CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS]."
-            )
-            prompt_sections.append("Regla interna (no repetir): responder como el asistente activo sin detalles internos del runtime.")
+            prompt_sections.append("Responde en espanol claro y util, sin mostrar analisis interno ni encabezados tecnicos.")
+            prompt_sections.append("No uses etiquetas como [CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS].")
         prompt = "\n\n".join(section for section in prompt_sections if section.strip())
 
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))

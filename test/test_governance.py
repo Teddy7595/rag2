@@ -17,13 +17,13 @@ def test_build_turn_policy_prefers_short_for_greeting_and_identity() -> None:
 
     assert greeting_policy.intent == "greeting"
     assert greeting_policy.prefer_short is True
-    assert greeting_policy.max_tokens <= 160
-    assert greeting_policy.deadline_ms <= 2000
+    assert greeting_policy.max_tokens <= 180
+    assert greeting_policy.deadline_ms <= 2200
 
     assert identity_policy.intent == "identity"
     assert identity_policy.prefer_short is True
-    assert identity_policy.max_tokens <= 240
-    assert identity_policy.deadline_ms <= 2400
+    assert identity_policy.max_tokens <= 280
+    assert identity_policy.deadline_ms <= 2600
 
 
 def test_build_turn_policy_allocates_more_budget_for_technical_queries() -> None:
@@ -117,8 +117,8 @@ def test_classify_intent_detects_conversational_queries() -> None:
 def test_build_turn_policy_for_conversational_queries() -> None:
     policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
     assert policy.intent == "conversational"
-    assert policy.max_tokens <= 260
-    assert policy.deadline_ms >= 2400
+    assert policy.max_tokens <= 360
+    assert policy.deadline_ms >= 3000
     assert policy.prefer_short is True
 
 

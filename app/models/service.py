@@ -6,6 +6,7 @@ import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import cast
 
 from app.core.settings import AppSettings
 
@@ -19,7 +20,7 @@ _PROVIDER_ALIASES = {
 _TEXT_PROVIDER_OPTIONS = ("local", "lmstudio")
 _VISION_PROVIDER_OPTIONS = ("local", "ollama", "lmstudio")
 
-_RUNTIME_CONFIG_DEFAULTS = {
+_RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "llm_provider": "local",
     "llm_model_path": "",
     "lmstudio_base_url": "http://localhost:8000",
@@ -33,11 +34,11 @@ _RUNTIME_CONFIG_DEFAULTS = {
     "vision_lmstudio_base_url": "http://localhost:8000",
     "vision_lmstudio_model": "",
     "vision_timeout_seconds": 120,
-    "text_generation_temperature": 0.35,
-    "text_generation_top_p": 1.0,
-    "text_generation_max_tokens": 1024,
-    "text_generation_min_p": 0.05,
-    "text_generation_repeat_penalty": 1.15,
+    "text_generation_temperature": 0.55,
+    "text_generation_top_p": 0.97,
+    "text_generation_max_tokens": 1536,
+    "text_generation_min_p": 0.03,
+    "text_generation_repeat_penalty": 1.08,
     "text_generation_presence_penalty": 0.0,
     "text_generation_frequency_penalty": 0.0,
     "text_generation_seed": -1,
@@ -69,6 +70,40 @@ def _coerce_text(value: object) -> str | None:
         return None
     text = str(value).strip()
     return text or None
+
+
+def _coerce_runtime_int(value: object, default: int, *, minimum: int | None = None, maximum: int | None = None) -> int:
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        if isinstance(value, (int, float, str)):
+            result = int(value)
+        else:
+            raise TypeError
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
+
+
+def _coerce_runtime_float(value: object, default: float, *, minimum: float | None = None, maximum: float | None = None) -> float:
+    try:
+        if isinstance(value, bool):
+            raise TypeError
+        if isinstance(value, (int, float, str)):
+            result = float(value)
+        else:
+            raise TypeError
+    except (TypeError, ValueError):
+        result = default
+    if minimum is not None:
+        result = max(minimum, result)
+    if maximum is not None:
+        result = min(maximum, result)
+    return result
 
 
 @dataclass(frozen=True)
@@ -175,12 +210,12 @@ class ModelCatalogService:
         return self.load_selection(self.discover_bundles())
 
     def load_runtime_config(self) -> dict[str, object]:
-        config = dict(_RUNTIME_CONFIG_DEFAULTS)
+        config: dict[str, object] = dict(_RUNTIME_CONFIG_DEFAULTS)
         config["llm_provider"] = _normalize_provider(_read_env("LLM_PROVIDER", str(config["llm_provider"])), "local")
         config["llm_model_path"] = _read_env("LLM_MODEL_PATH", str(config["llm_model_path"]))
         config["lmstudio_base_url"] = _read_env("LMSTUDIO_BASE_URL", str(config["lmstudio_base_url"]))
         config["lmstudio_model"] = _read_env("LMSTUDIO_MODEL", str(config["lmstudio_model"]))
-        config["lmstudio_n_ctx"] = int(_read_env("LMSTUDIO_N_CTX", str(config["lmstudio_n_ctx"])) or config["lmstudio_n_ctx"])
+        config["lmstudio_n_ctx"] = _coerce_runtime_int(_read_env("LMSTUDIO_N_CTX", str(config["lmstudio_n_ctx"])), int(config["lmstudio_n_ctx"]) if isinstance(config["lmstudio_n_ctx"], int) else 32768, minimum=512)
         config["vision_provider"] = _normalize_provider(_read_env("VISION_PROVIDER", str(config["vision_provider"])), "local")
         config["vision_model_path"] = _read_env("VISION_MODEL_PATH", str(config["vision_model_path"]))
         config["vision_mm_projector_path"] = _read_env("VISION_MM_PROJECTOR_PATH", str(config["vision_mm_projector_path"]))
@@ -194,26 +229,38 @@ class ModelCatalogService:
             "VISION_LMSTUDIO_MODEL",
             _read_env("LMSTUDIO_MODEL", str(config["vision_lmstudio_model"])),
         )
-        config["vision_timeout_seconds"] = int(
-            _read_env("VISION_TIMEOUT_SECONDS", str(config["vision_timeout_seconds"])) or config["vision_timeout_seconds"]
+        config["vision_timeout_seconds"] = _coerce_runtime_int(
+            _read_env("VISION_TIMEOUT_SECONDS", str(config["vision_timeout_seconds"])),
+            int(config["vision_timeout_seconds"]) if isinstance(config["vision_timeout_seconds"], int) else 120,
+            minimum=5,
         )
-        config["text_generation_min_p"] = float(
-            _read_env("TEXT_GENERATION_MIN_P", str(config["text_generation_min_p"])) or config["text_generation_min_p"]
+        config["text_generation_min_p"] = _coerce_runtime_float(
+            _read_env("TEXT_GENERATION_MIN_P", str(config["text_generation_min_p"])),
+            float(config["text_generation_min_p"]) if isinstance(config["text_generation_min_p"], (int, float)) else 0.03,
+            minimum=0.0,
+            maximum=1.0,
         )
-        config["text_generation_repeat_penalty"] = float(
-            _read_env("TEXT_GENERATION_REPEAT_PENALTY", str(config["text_generation_repeat_penalty"]))
-            or config["text_generation_repeat_penalty"]
+        config["text_generation_repeat_penalty"] = _coerce_runtime_float(
+            _read_env("TEXT_GENERATION_REPEAT_PENALTY", str(config["text_generation_repeat_penalty"])),
+            float(config["text_generation_repeat_penalty"]) if isinstance(config["text_generation_repeat_penalty"], (int, float)) else 1.08,
+            minimum=1.0,
+            maximum=2.0,
         )
-        config["text_generation_presence_penalty"] = float(
-            _read_env("TEXT_GENERATION_PRESENCE_PENALTY", str(config["text_generation_presence_penalty"]))
-            or config["text_generation_presence_penalty"]
+        config["text_generation_presence_penalty"] = _coerce_runtime_float(
+            _read_env("TEXT_GENERATION_PRESENCE_PENALTY", str(config["text_generation_presence_penalty"])),
+            float(config["text_generation_presence_penalty"]) if isinstance(config["text_generation_presence_penalty"], (int, float)) else 0.0,
+            minimum=-2.0,
+            maximum=2.0,
         )
-        config["text_generation_frequency_penalty"] = float(
-            _read_env("TEXT_GENERATION_FREQUENCY_PENALTY", str(config["text_generation_frequency_penalty"]))
-            or config["text_generation_frequency_penalty"]
+        config["text_generation_frequency_penalty"] = _coerce_runtime_float(
+            _read_env("TEXT_GENERATION_FREQUENCY_PENALTY", str(config["text_generation_frequency_penalty"])),
+            float(config["text_generation_frequency_penalty"]) if isinstance(config["text_generation_frequency_penalty"], (int, float)) else 0.0,
+            minimum=-2.0,
+            maximum=2.0,
         )
-        config["text_generation_seed"] = int(
-            _read_env("TEXT_GENERATION_SEED", str(config["text_generation_seed"])) or config["text_generation_seed"]
+        config["text_generation_seed"] = _coerce_runtime_int(
+            _read_env("TEXT_GENERATION_SEED", str(config["text_generation_seed"])),
+            int(config["text_generation_seed"]) if isinstance(config["text_generation_seed"], int) else -1,
         )
 
         file_payload = self._load_runtime_config_file()
@@ -310,8 +357,8 @@ class ModelCatalogService:
         bundles: tuple[ModelBundle, ...],
     ) -> dict[str, object]:
         llama_cpp_available = importlib.util.find_spec("llama_cpp") is not None
-        text = resolved["text"]
-        vision = resolved["vision"]
+        text = cast(dict[str, object], resolved["text"])
+        vision = cast(dict[str, object], resolved["vision"])
         local_text_requested = selection.get("text_provider") == "local"
         local_vision_requested = selection.get("vision_provider") == "local"
         local_text_ready = bool(local_text_requested and text.get("model_path") and llama_cpp_available)
@@ -343,7 +390,7 @@ class ModelCatalogService:
                 "supported_providers": list(_TEXT_PROVIDER_OPTIONS),
                 "lmstudio_base_url": _coerce_text(runtime_config.get("lmstudio_base_url")) or "http://localhost:8000",
                 "lmstudio_model": _coerce_text(runtime_config.get("lmstudio_model")),
-                "lmstudio_n_ctx": int(runtime_config.get("lmstudio_n_ctx") or 32768),
+                "lmstudio_n_ctx": _coerce_runtime_int(runtime_config.get("lmstudio_n_ctx"), 32768, minimum=512),
             },
             "vision": {
                 "configured_provider": _normalize_provider(_coerce_text(runtime_config.get("vision_provider")) or "local", "local"),
@@ -352,7 +399,7 @@ class ModelCatalogService:
                 "ollama_model": _coerce_text(runtime_config.get("vision_ollama_model")) or "llava",
                 "lmstudio_base_url": _coerce_text(runtime_config.get("vision_lmstudio_base_url")) or "http://localhost:8000",
                 "lmstudio_model": _coerce_text(runtime_config.get("vision_lmstudio_model")),
-                "timeout_seconds": max(5, int(runtime_config.get("vision_timeout_seconds") or 120)),
+                "timeout_seconds": _coerce_runtime_int(runtime_config.get("vision_timeout_seconds"), 120, minimum=5),
             },
         }
 
@@ -424,7 +471,7 @@ class ModelCatalogService:
             return None
         if not isinstance(loaded, dict):
             return None
-        return loaded
+        return cast(dict[str, object], loaded)
 
     def _normalize_selection(self, selection: dict[str, object], bundles: tuple[ModelBundle, ...]) -> dict[str, object]:
         bundle_lookup = {bundle.bundle_id: bundle for bundle in bundles}
@@ -526,14 +573,14 @@ class ModelCatalogService:
             return None
         if not isinstance(loaded, dict):
             return None
-        return loaded
+        return cast(dict[str, object], loaded)
 
     def _write_runtime_config(self, config: dict[str, object]) -> None:
         self.runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
         self.runtime_config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
 
     def _normalize_runtime_config(self, config: dict[str, object]) -> dict[str, object]:
-        normalized = dict(_RUNTIME_CONFIG_DEFAULTS)
+        normalized: dict[str, object] = dict(_RUNTIME_CONFIG_DEFAULTS)
         for key in normalized:
             if key in config:
                 normalized[key] = config[key]
@@ -542,23 +589,23 @@ class ModelCatalogService:
         normalized["vision_provider"] = _normalize_provider(_coerce_text(normalized.get("vision_provider")) or "local", "local")
         normalized["lmstudio_base_url"] = _coerce_text(normalized.get("lmstudio_base_url")) or "http://localhost:8000"
         normalized["lmstudio_model"] = _coerce_text(normalized.get("lmstudio_model")) or ""
-        normalized["lmstudio_n_ctx"] = max(512, int(normalized.get("lmstudio_n_ctx") or 32768))
+        normalized["lmstudio_n_ctx"] = _coerce_runtime_int(normalized.get("lmstudio_n_ctx"), 32768, minimum=512)
         normalized["vision_ollama_base_url"] = _coerce_text(normalized.get("vision_ollama_base_url")) or "http://localhost:11434"
         normalized["vision_ollama_model"] = _coerce_text(normalized.get("vision_ollama_model")) or "llava"
         normalized["vision_lmstudio_base_url"] = _coerce_text(normalized.get("vision_lmstudio_base_url")) or "http://localhost:8000"
         normalized["vision_lmstudio_model"] = _coerce_text(normalized.get("vision_lmstudio_model")) or ""
-        normalized["vision_timeout_seconds"] = max(5, int(normalized.get("vision_timeout_seconds") or 120))
+        normalized["vision_timeout_seconds"] = _coerce_runtime_int(normalized.get("vision_timeout_seconds"), 120, minimum=5)
         normalized["llm_model_path"] = _coerce_text(normalized.get("llm_model_path")) or ""
         normalized["vision_model_path"] = _coerce_text(normalized.get("vision_model_path")) or ""
         normalized["vision_mm_projector_path"] = _coerce_text(normalized.get("vision_mm_projector_path")) or ""
-        normalized["text_generation_temperature"] = max(0.0, min(2.0, float(normalized.get("text_generation_temperature") or 0.35)))
-        normalized["text_generation_top_p"] = max(0.0, min(1.0, float(normalized.get("text_generation_top_p") or 1.0)))
-        normalized["text_generation_max_tokens"] = max(64, min(4096, int(normalized.get("text_generation_max_tokens") or 768)))
-        normalized["text_generation_min_p"] = max(0.0, min(1.0, float(normalized.get("text_generation_min_p") or 0.05)))
-        normalized["text_generation_repeat_penalty"] = max(1.0, min(2.0, float(normalized.get("text_generation_repeat_penalty") or 1.15)))
-        normalized["text_generation_presence_penalty"] = max(-2.0, min(2.0, float(normalized.get("text_generation_presence_penalty") or 0.0)))
-        normalized["text_generation_frequency_penalty"] = max(-2.0, min(2.0, float(normalized.get("text_generation_frequency_penalty") or 0.0)))
-        normalized["text_generation_seed"] = int(normalized.get("text_generation_seed") or -1)
+        normalized["text_generation_temperature"] = _coerce_runtime_float(normalized.get("text_generation_temperature"), 0.55, minimum=0.0, maximum=2.0)
+        normalized["text_generation_top_p"] = _coerce_runtime_float(normalized.get("text_generation_top_p"), 0.97, minimum=0.0, maximum=1.0)
+        normalized["text_generation_max_tokens"] = _coerce_runtime_int(normalized.get("text_generation_max_tokens"), 1536, minimum=64, maximum=4096)
+        normalized["text_generation_min_p"] = _coerce_runtime_float(normalized.get("text_generation_min_p"), 0.03, minimum=0.0, maximum=1.0)
+        normalized["text_generation_repeat_penalty"] = _coerce_runtime_float(normalized.get("text_generation_repeat_penalty"), 1.08, minimum=1.0, maximum=2.0)
+        normalized["text_generation_presence_penalty"] = _coerce_runtime_float(normalized.get("text_generation_presence_penalty"), 0.0, minimum=-2.0, maximum=2.0)
+        normalized["text_generation_frequency_penalty"] = _coerce_runtime_float(normalized.get("text_generation_frequency_penalty"), 0.0, minimum=-2.0, maximum=2.0)
+        normalized["text_generation_seed"] = _coerce_runtime_int(normalized.get("text_generation_seed"), -1)
         return normalized
 
     def _bundle_id_for(self, file_path: Path) -> str:
@@ -593,13 +640,15 @@ class ModelCatalogService:
         if text_artifact is None:
             issues.append("missing_text_model")
         elif text_validation and not bool(text_validation.get("ok")):
-            issues.extend([f"text:{item}" for item in list(text_validation.get("issues") or [])])
+            text_issues = cast(list[object], text_validation.get("issues") or [])
+            issues.extend([f"text:{item}" for item in text_issues])
 
         if bundle.supports_vision:
             if projector_artifact is None:
                 issues.append("missing_mmproj")
             elif projector_validation and not bool(projector_validation.get("ok")):
-                issues.extend([f"mmproj:{item}" for item in list(projector_validation.get("issues") or [])])
+                projector_issues = cast(list[object], projector_validation.get("issues") or [])
+                issues.extend([f"mmproj:{item}" for item in projector_issues])
 
         text_ready = bool(text_validation and text_validation.get("ok"))
         vision_ready = bool(text_ready and projector_validation and projector_validation.get("ok"))
