@@ -1136,7 +1136,7 @@ class RealtimeChatService:
         if compact_context_text:
             prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
         if knowledge_matches:
-            match_limit = 7 if narrative_mode else 4
+            match_limit = 8 if narrative_mode else 6
             prompt_sections.append(
                 "Coincidencias relevantes:\n" + "\n".join(
                     f"- {str(match.get('label') or 'contexto')}: {str(match.get('excerpt') or '').strip()}"
@@ -1153,24 +1153,29 @@ class RealtimeChatService:
 
         # BLOCK 4: The actual request.
         prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
-        if main_idea:
-            prompt_sections.append(f"Tema central: {main_idea}")
-        if secondary_ideas:
-            prompt_sections.append("Temas secundarios: " + ", ".join(secondary_ideas))
 
-        # BLOCK 5: Format instruction (last — brief).
+        # BLOCK 5: Output directive — explicit length and style, closest to the lead-in for maximum weight.
         if conversational_mode:
-            prompt_sections.append("Responde de forma natural y directa, como lo haría este personaje en una conversación real.")
-        elif narrative_mode:
             prompt_sections.append(
-                "Continúa o desarrolla la historia de forma coherente con el historial y el contexto recuperado. "
-                "Mantén los personajes, la escena, el tono y los eventos ya establecidos. "
-                "No reinicies ni ignores lo que ya ocurrió. "
-                "Escribe con riqueza narrativa, detalle sensorial y voz consistente del personaje. "
+                "Responde de forma natural y directa en el tono propio de este personaje. "
                 "No uses encabezados ni razonamiento interno."
             )
+        elif narrative_mode:
+            prompt_sections.append(
+                "Escribe un pasaje narrativo extenso y detallado — mínimo 5 párrafos densos. "
+                "Desarrolla la escena mostrando: diálogos reales entre personajes, descripciones físicas del ambiente y los cuerpos, "
+                "sensaciones táctiles, visuales y auditivas, pensamientos y emociones internas de los personajes. "
+                "Muestra cada acción en tiempo real — nunca la resumas con una frase. "
+                "Mantén los nombres, la relación y los eventos ya establecidos en el historial. "
+                "Usa el vocabulario, el tono y la voz propios de este personaje. "
+                "No uses encabezados, listas, asteriscos ni meta-comentarios. Solo texto narrativo continuo."
+            )
         else:
-            prompt_sections.append("Responde en español claro y útil, sin mostrar razonamiento interno ni encabezados técnicos.")
+            prompt_sections.append(
+                "Responde de forma completa y elaborada como lo haría este personaje — desarrolla la idea con detalle, "
+                "no la resumás. Usa al menos 3-4 párrafos si el tema lo permite. "
+                "No uses encabezados ni razonamiento interno."
+            )
 
         prompt = "\n\n".join(s for s in prompt_sections if s.strip())
         # Lead-in: tells the model where its turn starts, prevents meta-rule echo.
