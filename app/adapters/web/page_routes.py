@@ -18,6 +18,7 @@ from app.storage.service import UploadStorage
 router = APIRouter(tags=["web"])
 TEMPLATES_DIR = Path(__file__).with_name("templates")
 templates = Jinja2Templates(directory=str(TEMPLATES_DIR))
+templates.env.policies.setdefault("json.dumps_kwargs", {})["sort_keys"] = False
 _IGNORED_ROUTE_PATHS = {"/openapi.json", "/docs", "/docs/oauth2-redirect", "/redoc"}
 
 

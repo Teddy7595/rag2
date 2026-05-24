@@ -583,7 +583,7 @@ class ModelCatalogService:
 
     def _write_runtime_config(self, config: dict[str, object]) -> None:
         self.runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
-        self.runtime_config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+        self.runtime_config_path.write_text(json.dumps(config, indent=2), encoding="utf-8")
 
     def _normalize_runtime_config(self, config: dict[str, object]) -> dict[str, object]:
         normalized: dict[str, object] = dict(_RUNTIME_CONFIG_DEFAULTS)

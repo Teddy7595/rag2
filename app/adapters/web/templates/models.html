@@ -262,6 +262,10 @@
     <p class="card-label">Configuracion runtime completa</p>
     <div class="card-body">
       <p>Edita todas las propiedades runtime en JSON. Al aplicar, el sistema guarda y reinicia el runtime de modelos en tiempo real.</p>
+      <p class="secondary-note" style="margin-top: 6px;">
+        Claves de contexto para texto: <code>llama_cpp_n_ctx</code> (LlamaCPP local) y <code>lmstudio_n_ctx</code> (LM Studio remoto).<br>
+        <code>text_generation_max_tokens</code> solo limita la salida por respuesta; no reemplaza la ventana de contexto.
+      </p>
       <textarea id="runtime-config-json" class="control-input" style="min-height: 240px; width: 100%; resize: vertical;">{{ catalog.runtime_config | tojson(indent=2) }}</textarea>
       <div class="card-actions">
         <button id="apply-restart-button" type="button" class="save-button">Aplicar cambios y reiniciar runtime</button>

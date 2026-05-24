@@ -520,14 +520,14 @@ class LocalInferenceService:
                 },
                 {
                     "label": "gpu_partial",
-                    "n_ctx": max(1024, min(requested_n_ctx, 4096)),
+                    "n_ctx": requested_n_ctx,
                     "n_gpu_layers": 24,
                     "n_batch": max(64, min(n_batch, 512)),
                     "flash_attn": True,
                 },
                 {
                     "label": "cpu_fallback",
-                    "n_ctx": max(1024, min(requested_n_ctx, 4096)),
+                    "n_ctx": requested_n_ctx,
                     "n_gpu_layers": 0,
                     "n_batch": max(32, min(n_batch, 256)),
                     "flash_attn": False,
