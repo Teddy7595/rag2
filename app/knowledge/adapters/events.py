@@ -16,6 +16,7 @@ from app.knowledge.events import (
     EngramImportCsvRequest,
     EngramHintsRequest,
     EngramListRequest,
+    EngramMemoryStatsRequest,
     EngramUpdateRequest,
     IdentityResolveRequest,
     KnowledgeItemCreateRequest,
@@ -32,6 +33,7 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
     REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV,
+    REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
     REQUEST_KNOWLEDGE_ENGRAMS,
     REQUEST_KNOWLEDGE_IDENTITY_HINTS,
@@ -68,6 +70,9 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
 
     def handle_identity_hints(envelope: EventEnvelope[EngramHintsRequest]) -> list[str]:
         return service.list_hint_handles(envelope.payload)
+
+    def handle_engram_memory_stats(envelope: EventEnvelope[EngramMemoryStatsRequest]) -> dict[str, object]:
+        return service.engram_memory_stats(envelope.payload)
 
     def handle_create_engram(envelope: EventEnvelope[EngramCreateRequest]) -> dict[str, object]:
         return service.create_engram(envelope.payload)
@@ -109,6 +114,7 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_CURRENT_IDENTITY, handle_current_identity)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_IDENTITY_RESOLVE, handle_resolve_identity)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_IDENTITY_HINTS, handle_identity_hints)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS, handle_engram_memory_stats)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_CREATE, handle_create_engram)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_UPDATE, handle_update_engram)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ENGRAM_DELETE, handle_delete_engram)

@@ -31,6 +31,7 @@ from app.knowledge.events import (
     EngramImportCsvRequest,
     EngramHintsRequest,
     EngramListRequest,
+    EngramMemoryStatsRequest,
     EngramUpdateRequest,
     IdentityResolveRequest,
     KnowledgeItemCreateRequest,
@@ -210,6 +211,40 @@ class KnowledgeService:
     def list_hint_handles(self, request: EngramHintsRequest) -> list[str]:
         self._ensure_engrams_loaded()
         return self.directory.list_hint_handles()
+
+    def engram_memory_stats(self, request: EngramMemoryStatsRequest) -> dict[str, object]:
+        engram_id = re.sub(r"[^a-zA-Z0-9._-]+", "-", str(request.engram_id or "").strip()).strip("-._")
+        if not engram_id:
+            return {
+                "engram_id": "",
+                "tag": "",
+                "total_memories": 0,
+                "by_source_type": {},
+                "document_count": 0,
+            }
+
+        target_tag = f"engram:{engram_id}".lower()
+        by_source_type: dict[str, int] = {}
+        document_ids: set[str] = set()
+        total = 0
+
+        for entry in self.repository.list_all():
+            tags = [str(tag or "").strip().lower() for tag in list(entry.tags or [])]
+            if target_tag not in tags:
+                continue
+            source_type = str(entry.source_type or "manual")
+            by_source_type[source_type] = int(by_source_type.get(source_type, 0)) + 1
+            if str(entry.document_id or "").strip():
+                document_ids.add(str(entry.document_id).strip())
+            total += 1
+
+        return {
+            "engram_id": engram_id,
+            "tag": target_tag,
+            "total_memories": total,
+            "by_source_type": dict(sorted(by_source_type.items(), key=lambda item: item[0])),
+            "document_count": len(document_ids),
+        }
 
     def create_engram(self, request: EngramCreateRequest) -> dict[str, object]:
         engram_repository = self._require_engram_repository()

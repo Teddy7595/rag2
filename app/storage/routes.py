@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import re
 
 from fastapi import APIRouter, Request
 from fastapi import File, HTTPException, Query, UploadFile
@@ -10,6 +11,11 @@ from app.storage.service import UploadStorage
 from app.knowledge.events import DocumentIngestRequest, REQUEST_KNOWLEDGE_DOCUMENT_INGEST
 
 router = APIRouter(tags=["storage"])
+
+
+def _sanitize_engram_id(value: str) -> str:
+    cleaned = re.sub(r"[^a-zA-Z0-9._-]+", "-", (value or "").strip()).strip("-._")
+    return cleaned or ""
 
 
 def _get_storage(request: Request) -> UploadStorage:
@@ -54,6 +60,20 @@ async def upload_chat_asset(request: Request, session_id: str, file: UploadFile 
     return storage.save_chat_asset(session_id, original_name=file.filename or "asset.bin", payload=content)
 
 
+@router.get("/api/storage/engrams/{engram_id}/content")
+async def list_engram_content_assets(request: Request, engram_id: str) -> list[str]:
+    return list(_get_storage(request).list_engram_content_assets(engram_id))
+
+
+@router.post("/api/storage/engrams/{engram_id}/content")
+async def upload_engram_content_asset(request: Request, engram_id: str, file: UploadFile = File(...)) -> dict[str, object]:
+    storage = _get_storage(request)
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Uploaded file is empty")
+    return storage.save_engram_content_asset(engram_id, original_name=file.filename or "asset.bin", payload=content)
+
+
 @router.post("/api/storage/engrams/avatar")
 async def upload_engram_avatar(request: Request, file: UploadFile = File(...)) -> dict[str, object]:
     storage = _get_storage(request)
@@ -67,6 +87,7 @@ async def upload_engram_avatar(request: Request, file: UploadFile = File(...)) -
 async def ingest_vault_file(
     request: Request,
     relative_path: str = Query(..., min_length=1),
+    engram_id: str | None = Query(default=None),
     title: str | None = Query(default=None),
     chunk_size: int = Query(default=180, ge=32, le=1200),
     chunk_overlap: int = Query(default=40, ge=0, le=300),
@@ -78,12 +99,17 @@ async def ingest_vault_file(
         raise HTTPException(status_code=404, detail="Vault file not found")
 
     suffix = resolved.suffix.lower()
+    tags: list[str] = ["vault", "chat_ingest"]
+    safe_engram = _sanitize_engram_id(str(engram_id or "")) if engram_id else ""
+    if safe_engram:
+        tags.append(f"engram:{safe_engram}")
+
     if suffix == ".pdf":
         payload = DocumentIngestRequest(
             title=title or resolved.stem,
             pdf_path=str(resolved),
             source_uri=f"vault://{relative_path}",
-            tags=("vault", "chat_ingest", "pdf"),
+            tags=tuple(tags + ["pdf"]),
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
         )
@@ -93,7 +119,7 @@ async def ingest_vault_file(
             title=title or resolved.stem,
             raw_text=text,
             source_uri=f"vault://{relative_path}",
-            tags=("vault", "chat_ingest", "text"),
+            tags=tuple(tags + ["text"]),
             chunk_size=chunk_size,
             chunk_overlap=chunk_overlap,
         )
@@ -105,5 +131,6 @@ async def ingest_vault_file(
     )
     return {
         "relative_path": Path(relative_path).as_posix(),
+        "engram_id": safe_engram or None,
         "ingested": ingested,
     }

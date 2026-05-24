@@ -91,6 +91,11 @@ class EngramHintsRequest:
 
 
 @dataclass(frozen=True)
+class EngramMemoryStatsRequest:
+    engram_id: str
+
+
+@dataclass(frozen=True)
 class ContextRouteRequest:
     raw_text: str
     limit: int = 5
@@ -219,6 +224,14 @@ REQUEST_KNOWLEDGE_IDENTITY_HINTS = EventSpec[EngramHintsRequest, list](
     channel=EventChannel.DOMAIN,
     input_type=EngramHintsRequest,
     output_type=list,
+)
+
+REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS = EventSpec[EngramMemoryStatsRequest, dict](
+    name="knowledge.engram.memory_stats.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=EngramMemoryStatsRequest,
+    output_type=dict,
 )
 
 REQUEST_KNOWLEDGE_CONTEXT_ROUTE = EventSpec[ContextRouteRequest, dict](
@@ -356,6 +369,7 @@ __all__ = [
     "EngramCreateRequest",
     "EngramDeleteRequest",
     "EngramHintsRequest",
+    "EngramMemoryStatsRequest",
     "EngramListRequest",
     "EngramUpdateRequest",
     "IdentityResolveRequest",
@@ -379,6 +393,7 @@ __all__ = [
     "REQUEST_KNOWLEDGE_ENGRAM_DELETE",
     "REQUEST_KNOWLEDGE_ENGRAM_UPDATE",
     "REQUEST_KNOWLEDGE_ENGRAMS",
+    "REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS",
     "REQUEST_KNOWLEDGE_IDENTITY_HINTS",
     "REQUEST_KNOWLEDGE_IDENTITY_RESOLVE",
     "REQUEST_KNOWLEDGE_ITEM_CREATE",

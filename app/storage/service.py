@@ -97,6 +97,16 @@ class UploadStorage:
         directory = self.chat_assets_dir(session_id)
         return tuple(sorted(item.name for item in directory.iterdir() if item.is_file()))
 
+    def engram_content_dir(self, engram_id: str) -> Path:
+        safe_engram = self._sanitize_segment(engram_id)
+        directory = self.uploads_dir / "engrams" / safe_engram / "content"
+        directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def list_engram_content_assets(self, engram_id: str) -> tuple[str, ...]:
+        directory = self.engram_content_dir(engram_id)
+        return tuple(sorted(item.name for item in directory.iterdir() if item.is_file()))
+
     def save_chat_asset(self, session_id: str, *, original_name: str, payload: bytes) -> dict[str, object]:
         directory = self.chat_assets_dir(session_id)
         target = self._resolve_unique_path(directory, original_name)
@@ -104,6 +114,20 @@ class UploadStorage:
         relative = target.relative_to(self.vault_dir).as_posix()
         return {
             "session_id": self._sanitize_segment(session_id),
+            "file_name": target.name,
+            "relative_path": relative,
+            "public_url": f"/uploads/{target.relative_to(self.uploads_dir).as_posix()}",
+            "size_bytes": target.stat().st_size,
+        }
+
+    def save_engram_content_asset(self, engram_id: str, *, original_name: str, payload: bytes) -> dict[str, object]:
+        safe_engram = self._sanitize_segment(engram_id)
+        directory = self.engram_content_dir(safe_engram)
+        target = self._resolve_unique_path(directory, original_name)
+        target.write_bytes(payload)
+        relative = target.relative_to(self.vault_dir).as_posix()
+        return {
+            "engram_id": safe_engram,
             "file_name": target.name,
             "relative_path": relative,
             "public_url": f"/uploads/{target.relative_to(self.uploads_dir).as_posix()}",

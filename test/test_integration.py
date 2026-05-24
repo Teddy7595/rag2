@@ -144,6 +144,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/storage/uploads",
         "/api/storage/vault/files",
         "/api/storage/chats/{session_id}/assets",
+        "/api/storage/engrams/{engram_id}/content",
         "/api/storage/engrams/avatar",
         "/api/storage/vault/ingest",
         "/api/knowledge/items",
@@ -156,6 +157,7 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/knowledge/documents/ingest",
         "/api/knowledge/engrams",
         "/api/knowledge/engrams/{engram_id}",
+        "/api/knowledge/engrams/{engram_id}/memory-stats",
         "/api/knowledge/engrams/import/csv",
         "/api/knowledge/overview",
         "/api/knowledge/identity/current",
@@ -444,6 +446,19 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         engram_payload = engram_response.json()
         assert engram_payload["name"] == "Atlas"
 
+        engram_content_upload = client.post(
+            f"/api/storage/engrams/{engram_payload['id']}/content",
+            files={"file": ("atlas-nota.txt", b"contenido reusable", "text/plain")},
+        )
+        assert engram_content_upload.status_code == 200
+        engram_content_payload = engram_content_upload.json()
+        assert engram_content_payload["file_name"] == "atlas-nota.txt"
+        assert f"uploads/engrams/{engram_payload['id']}/content/atlas-nota.txt" in engram_content_payload["relative_path"]
+
+        engram_content_list = client.get(f"/api/storage/engrams/{engram_payload['id']}/content")
+        assert engram_content_list.status_code == 200
+        assert "atlas-nota.txt" in engram_content_list.json()
+
         update_response = client.patch(
             f"/api/knowledge/engrams/{engram_payload['id']}",
             json={"backstory": "Base de identidad persistente"},
@@ -577,6 +592,24 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         documents_list_response = client.get("/api/knowledge/documents", params={"limit": 5})
         assert documents_list_response.status_code == 200
         assert any(item["title"] == "Documento base" for item in documents_list_response.json())
+
+        digest_response = client.post(
+            "/api/storage/vault/ingest",
+            params={
+                "relative_path": engram_content_payload["relative_path"],
+                "engram_id": engram_payload["id"],
+            },
+        )
+        assert digest_response.status_code == 200
+        digest_payload = digest_response.json()
+        assert digest_payload["engram_id"] == engram_payload["id"]
+
+        memory_stats_response = client.get(f"/api/knowledge/engrams/{engram_payload['id']}/memory-stats")
+        assert memory_stats_response.status_code == 200
+        memory_stats_payload = memory_stats_response.json()
+        assert memory_stats_payload["engram_id"] == engram_payload["id"]
+        assert memory_stats_payload["total_memories"] >= 1
+        assert "document" in memory_stats_payload["by_source_type"]
 
         document_context_response = client.post(
             "/api/knowledge/context/pack",
@@ -828,7 +861,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
     app_again = build_test_app(tmp_path, monkeypatch)
 
     with TestClient(app_again) as client_again:
-        knowledge_items_response = client_again.get("/api/knowledge/items", params={"limit": 10})
+        knowledge_items_response = client_again.get("/api/knowledge/items", params={"limit": 200})
         assert knowledge_items_response.status_code == 200
         assert any(item["title"] == "Primer conocimiento" for item in knowledge_items_response.json())
 
@@ -838,7 +871,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
 
         documents_overview_again = client_again.get("/api/knowledge/documents/overview", params={"limit": 10})
         assert documents_overview_again.status_code == 200
-        assert documents_overview_again.json()["document_count"] == 1
+        assert documents_overview_again.json()["document_count"] >= 2
 
         engrams_response = client_again.get("/api/knowledge/engrams", params={"limit": 10})
         assert engrams_response.status_code == 200

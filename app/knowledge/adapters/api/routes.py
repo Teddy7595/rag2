@@ -16,6 +16,7 @@ from app.knowledge.events import (
     EngramImportCsvRequest,
     EngramHintsRequest,
     EngramListRequest,
+    EngramMemoryStatsRequest,
     EngramUpdateRequest,
     IdentityResolveRequest,
     KnowledgeItemCreateRequest,
@@ -32,6 +33,7 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
     REQUEST_KNOWLEDGE_ENGRAM_IMPORT_CSV,
+    REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS,
     REQUEST_KNOWLEDGE_ENGRAM_UPDATE,
     REQUEST_KNOWLEDGE_ENGRAMS,
     REQUEST_KNOWLEDGE_IDENTITY_HINTS,
@@ -139,6 +141,16 @@ async def list_engrams(request: Request, limit: int = 20) -> list[dict[str, obje
     return context.event_bus.request(
         REQUEST_KNOWLEDGE_ENGRAMS,
         EngramListRequest(limit=limit),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.get("/engrams/{engram_id}/memory-stats")
+async def engram_memory_stats(request: Request, engram_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS,
+        EngramMemoryStatsRequest(engram_id=engram_id),
         source_module="knowledge.adapters.api.routes",
     )
 

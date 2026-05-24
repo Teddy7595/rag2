@@ -1514,10 +1514,11 @@
   let processingTimer = null;
   let processingTone = 'sky';
   let pendingModelRestartSignal = null;
+  let preserveInputAfterCommand = false;
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
-    '/ingest <ruta_relativa_vault>', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
+    '/digest <ruta_relativa_vault>', '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
     '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
@@ -2616,6 +2617,27 @@
     }
   }
 
+  async function resolveActiveEngramId() {
+    const local = String(activeIdentityId || '').trim();
+    if (local) {
+      return local;
+    }
+    try {
+      const response = await fetch('/api/knowledge/identity/current');
+      if (!response.ok) {
+        return '';
+      }
+      const payload = await response.json();
+      const resolvedId = String(payload.id || '').trim();
+      if (resolvedId) {
+        applyIdentitySelection(resolvedId, { persist: true });
+      }
+      return resolvedId;
+    } catch (_) {
+      return '';
+    }
+  }
+
   async function loadLobbyEngrams() {
     if (!lobbyEngramSelect) {
       return;
@@ -2837,13 +2859,19 @@
       return;
     }
 
+    const engramId = await resolveActiveEngramId();
+    if (!engramId) {
+      setActionStatus('No hay engrama activo. Selecciona uno para subir contenido reutilizable.', 'amber');
+      return;
+    }
+
     if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
       setActionStatus('Subiste una imagen, pero vision esta desactivada. Activa vision desde /admin/models.', 'amber');
     }
 
     const formData = new FormData();
     formData.append('file', attachedFile);
-    const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`, {
+    const response = await fetch(`/api/storage/engrams/${encodeURIComponent(engramId)}/content`, {
       method: 'POST',
       body: formData,
     });
@@ -2854,7 +2882,15 @@
     }
 
     lastUploadedPath = String(payload.relative_path || '');
-    setActionStatus(`Asset subido: ${lastUploadedPath || attachedFile.name}`, 'green');
+    setActionStatus(`Contenido subido para engrama ${engramId.slice(0, 8)}: ${lastUploadedPath || attachedFile.name}`, 'green');
+    if (lastUploadedPath) {
+      inputField.value = `/digest ${lastUploadedPath}`;
+      preserveInputAfterCommand = true;
+      adjustHeight(inputField);
+      updateSendButtonState();
+      inputField.focus();
+      setStatus(`Comando listo: /digest ${lastUploadedPath}`, { blinking: false, tone: 'teal' });
+    }
   }
 
   async function runVisionCommand(promptText) {
@@ -2882,7 +2918,7 @@
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      setActionStatus('Comandos disponibles cargados. Usa /models, /rules show o /attach para empezar.', 'sky');
+      setActionStatus('Comandos listos: /upload, /digest, /assets list, /ragcount, /models, /rules show.', 'sky');
       return true;
     }
 
@@ -2953,13 +2989,14 @@
     }
 
     if (command === '/assets' && args === 'list') {
-      if (!activeSessionId) {
-        setActionStatus('No hay session_id activo aun.', 'amber');
+      const engramId = await resolveActiveEngramId();
+      if (!engramId) {
+        setActionStatus('No hay engrama activo para listar contenido.', 'amber');
         return true;
       }
-      const response = await fetch(`/api/storage/chats/${encodeURIComponent(activeSessionId)}/assets`);
+      const response = await fetch(`/api/storage/engrams/${encodeURIComponent(engramId)}/content`);
       const payload = await response.json();
-      setActionStatus(`Assets de sala: ${(payload || []).join(', ') || 'sin archivos'}`, 'sky');
+      setActionStatus(`Contenido del engrama: ${(payload || []).join(', ') || 'sin archivos'}`, 'sky');
       return true;
     }
 
@@ -2973,15 +3010,69 @@
       return true;
     }
 
-    if (command === '/ingest') {
+    if (command === '/ingest' || command === '/digest') {
       const targetPath = args || lastUploadedPath;
       if (!targetPath) {
-        setActionStatus('Uso: /ingest <ruta_relativa_en_vault> o sube con /upload primero.', 'amber');
+        setActionStatus('Uso: /digest <ruta_relativa_en_vault> o sube con /upload primero.', 'amber');
         return true;
       }
-      const response = await fetch(`/api/storage/vault/ingest?relative_path=${encodeURIComponent(targetPath)}`, { method: 'POST' });
+      const engramId = await resolveActiveEngramId();
+      startProcessingFeedback('feeding de libro: preparando', 'blue');
+      try {
+        const query = new URLSearchParams({ relative_path: targetPath });
+        if (engramId) {
+          query.set('engram_id', engramId);
+        }
+        updateProcessingStage('feeding de libro: digiriendo documento', 'blue');
+        const response = await fetch(`/api/storage/vault/ingest?${query.toString()}`, { method: 'POST' });
+        const payload = await response.json();
+        if (response.ok) {
+          const ingested = payload.ingested || {};
+          const chunkCount = Number(ingested.chunk_count || 0);
+          const imageCount = Number(ingested.image_count || 0);
+          setActionStatus(
+            `Feeding completo: ${payload.relative_path || targetPath} · chunks=${chunkCount} · imagenes=${imageCount}`,
+            'green',
+          );
+        } else {
+          setActionStatus(`Fallo digest: ${JSON.stringify(payload)}`, 'danger');
+        }
+      } catch (error) {
+        setActionStatus(`Fallo digest: ${String(error)}`, 'danger');
+      } finally {
+        stopProcessingFeedback();
+      }
+      return true;
+    }
+
+    if (command === '/ragcount') {
+      const rawTarget = String(args || '').trim();
+      let targetEngramId = rawTarget;
+      if (!targetEngramId) {
+        targetEngramId = await resolveActiveEngramId();
+      }
+      if (targetEngramId.startsWith('@')) {
+        const byMention = resolveMentionedEngram(targetEngramId);
+        targetEngramId = byMention && byMention.id ? byMention.id : targetEngramId.slice(1);
+      }
+      targetEngramId = String(targetEngramId || '').trim();
+      if (!targetEngramId) {
+        setActionStatus('Uso: /ragcount [engram_id|@nombre] y debe existir un engrama activo.', 'amber');
+        return true;
+      }
+      const response = await fetch(`/api/knowledge/engrams/${encodeURIComponent(targetEngramId)}/memory-stats`);
       const payload = await response.json();
-      setActionStatus(response.ok ? `Ingestado: ${payload.relative_path || targetPath}` : `Fallo ingest: ${JSON.stringify(payload)}`, response.ok ? 'green' : 'danger');
+      if (!response.ok) {
+        setActionStatus(`No se pudo consultar memorias RAG: ${JSON.stringify(payload)}`, 'danger');
+        return true;
+      }
+      const byType = Object.entries(payload.by_source_type || {})
+        .map(([sourceType, count]) => `${sourceType}=${count}`)
+        .join(', ');
+      setActionStatus(
+        `RAG ${payload.engram_id}: total=${payload.total_memories} · docs=${payload.document_count} · ${byType || 'sin registros'}`,
+        'sky',
+      );
       return true;
     }
 
@@ -3200,7 +3291,11 @@
     if (text.startsWith('/')) {
       const handled = await handleSlashCommand(text);
       if (handled) {
-        inputField.value = '';
+        if (preserveInputAfterCommand) {
+          preserveInputAfterCommand = false;
+        } else {
+          inputField.value = '';
+        }
         adjustHeight(inputField);
         updateSendButtonState();
         inputField.focus();
