@@ -1057,7 +1057,7 @@ class RealtimeChatService:
             prompt_sections.append(f"Origen (quién eres):\n{backstory}")
 
         # BLOCK 2: Kernel constraint (system-level, model-agnostic).
-        prompt_sections.append(f"Restriccion del sistema: {kernel_meta_rule}")
+        #prompt_sections.append(f"Restriccion del sistema: {kernel_meta_rule}")
 
         # BLOCK 3: World context (optional).
         if world_rules:
