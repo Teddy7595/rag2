@@ -453,6 +453,46 @@ def instruction_echo_prefix_detected(text: str) -> bool:
     return any(re.search(pattern, first_low) for pattern in instruction_echo_patterns)
 
 
+def has_roleplay_actions(text: str) -> bool:
+    """Detect *action* style roleplay markers that indicate narrative drift.
+
+    Returns True when the model is using roleplay conventions (*smiles*, *walks away*)
+    instead of speaking directly as the character.
+    """
+    return bool(re.search(r"\*[^*\n]{2,120}\*", text))
+
+
+def strip_roleplay_actions(text: str) -> str:
+    """Remove *action* markers, preserving the spoken dialogue."""
+    cleaned = re.sub(r"\*[^*\n]{2,120}\*", "", text)
+    # Collapse extra whitespace left by removed blocks.
+    cleaned = re.sub(r"[ \t]{2,}", " ", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
+    return cleaned.strip()
+
+
+def meta_rule_permits_roleplay(meta_rule: str) -> bool:
+    """Return True when the engram's meta_rule explicitly PERMITS roleplay action markers.
+
+    Looks for active/positive instructions to use them, not mere mentions.
+    "sin narrador" or "no uses asteriscos" must NOT trigger this.
+    """
+    lowered = (meta_rule or "").lower()
+    # Explicit positive permission patterns
+    positive_patterns = (
+        r"\busa\s+(acotaciones|asteriscos|acciones|roleplay)\b",
+        r"\bincluye\s+(acotaciones|asteriscos|acciones|narracion)\b",
+        r"\bpermitido\s+roleplay\b",
+        r"\bpuedes\s+usar\s+(asteriscos|acotaciones)\b",
+        r"\bformato\s+roleplay\b",
+        r"\bstage\s+direction",
+        r"\btheater\s+mode\b",
+        r"\bteatral\b",
+        r"\bnarras\s+(acciones|movimientos)\b",
+    )
+    return any(re.search(pattern, lowered) for pattern in positive_patterns)
+
+
 def _token_overlap_ratio(a: str, b: str) -> float:
     """Fraction of meaningful tokens in *a* that also appear in *b*."""
     tokens_a = set(re.findall(r"[a-z0-9áéíóúñ]{3,}", a.lower()))

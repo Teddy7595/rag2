@@ -15,10 +15,13 @@ from app.interaction.application.governance import (
     dedupe_rule_lines,
     detect_repetition,
     evaluate_immersive_response,
+    has_roleplay_actions,
     instruction_echo_prefix_detected,
     looks_like_internal_reasoning,
+    meta_rule_permits_roleplay,
     sanitize_generated_reply,
     sanitize_history_content,
+    strip_roleplay_actions,
 )
 from app.interaction.application.service import InteractionService
 from app.interaction.events import (
@@ -966,6 +969,8 @@ class RealtimeChatService:
         behavior_prompt = dedupe_rule_lines(str(identity.get("behavior_prompt") or ""), max_lines=8)
         meta_rule = dedupe_rule_lines(str(identity.get("meta_rule") or ""), max_lines=8)
         intellectual_profile = str(identity.get("intellectual_profile") or "").strip()
+        backstory_raw = str(identity.get("backstory") or "").strip()
+        backstory = backstory_raw[:420] if backstory_raw else ""
         context_pack = context_preview.get("context_pack", {})
         knowledge_matches = list(context_pack.get("knowledge_matches", []))
         engram_matches = list(context_pack.get("engram_matches", []))
@@ -1035,26 +1040,28 @@ class RealtimeChatService:
             "Si quieres, te lo reformulo en puntos accionables."
         )
 
-        prompt_sections = [
-            (
-                "Meta-regla de kernel (origen del modelo): "
-                f"{kernel_meta_rule}"
-            ),
-            f"Identidad activa: {identity_name}.",
-            "Estilo objetivo (interno, no repetir): espanol claro y conciso.",
-            f"Mensaje del usuario: {input_data.content.strip()}",
-            f"Idea principal: {main_idea}",
-        ]
-        if secondary_ideas:
-            prompt_sections.append("Ideas secundarias: " + ", ".join(secondary_ideas))
-        if intellectual_profile:
-            prompt_sections.append(f"Perfil intelectual del engrama: {intellectual_profile}")
-        if behavior_prompt:
-            prompt_sections.append(f"Instruccion de comportamiento del engrama: {behavior_prompt}")
+        # --- Prompt construction ---
+        # Order matters for model attention: identity/rules FIRST, context MIDDLE, request LAST.
+        prompt_sections: list[str] = []
+
+        # BLOCK 1: Who this entity is and how it MUST behave (highest attention zone).
         if meta_rule:
-            prompt_sections.append(f"Meta-regla del engrama: {meta_rule}")
+            prompt_sections.append(f"REGLA ABSOLUTA DE COMPORTAMIENTO:\n{meta_rule}")
+        identity_block = f"Eres: {identity_name}."
+        if intellectual_profile:
+            identity_block += f" Perfil: {intellectual_profile}."
+        prompt_sections.append(identity_block)
+        if behavior_prompt:
+            prompt_sections.append(f"Modo de conducta:\n{behavior_prompt}")
+        if backstory:
+            prompt_sections.append(f"Origen (quién eres):\n{backstory}")
+
+        # BLOCK 2: Kernel constraint (system-level, model-agnostic).
+        prompt_sections.append(f"Restriccion del sistema: {kernel_meta_rule}")
+
+        # BLOCK 3: World context (optional).
         if world_rules:
-            prompt_sections.append(f"Reglas del mundo activas para esta sesion:\n{world_rules}")
+            prompt_sections.append(f"Reglas del mundo activas:\n{world_rules}")
         if compact_context_text:
             prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
         if knowledge_matches:
@@ -1064,13 +1071,21 @@ class RealtimeChatService:
                     for match in knowledge_matches[:4]
                 )
             )
+
+        # BLOCK 4: The actual request.
+        prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
+        if main_idea:
+            prompt_sections.append(f"Tema central: {main_idea}")
+        if secondary_ideas:
+            prompt_sections.append("Temas secundarios: " + ", ".join(secondary_ideas))
+
+        # BLOCK 5: Format instruction (last — brief).
         if conversational_mode:
-            prompt_sections.append("Responde en espanol natural, cercano y humano.")
-            prompt_sections.append("No menciones contexto interno, etiquetas, rutas ni nombres de documentos.")
+            prompt_sections.append("Responde de forma natural y directa, como lo haría este personaje en una conversación real.")
         else:
-            prompt_sections.append("Responde en espanol claro y util, sin mostrar analisis interno ni encabezados tecnicos.")
-            prompt_sections.append("No uses etiquetas como [CONTEXT ROUTING], [RELEVANT KNOWLEDGE] o [RELEVANT ENGRAMS].")
-        prompt = "\n\n".join(section for section in prompt_sections if section.strip())
+            prompt_sections.append("Responde en español claro y útil, sin mostrar razonamiento interno ni encabezados técnicos.")
+
+        prompt = "\n\n".join(s for s in prompt_sections if s.strip())
 
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
         if timeout_enabled and session_id.strip():
@@ -1218,6 +1233,17 @@ class RealtimeChatService:
                             return retry_reply, quality_flags
                         # Nothing came back — fall through to original unsanitized reply.
 
+                # --- Roleplay drift guard ---
+                # Strip *action* markers when the engram's meta_rule doesn't permit them.
+                # This applies in ALL modes: conversational drift is the most common case,
+                # but a timeout can also push the model into full roleplay output.
+                # Never blocks the response — only strips the format artifact.
+                if has_custom_engram and has_roleplay_actions(reply) and not meta_rule_permits_roleplay(meta_rule):
+                    stripped = strip_roleplay_actions(reply)
+                    if len(stripped) >= 15:
+                        quality_flags["roleplay_stripped"] = True
+                        reply = stripped
+
                 # --- Immersive evaluation: only in non-conversational RAG turns ---
                 # Conversational/creative/adult turns are never rejected by heuristics.
                 # We only retry when the reply is structurally broken (markers leaked).
@@ -1256,6 +1282,12 @@ class RealtimeChatService:
                 if best_effort_reply:
                     quality_flags["guard_triggered"] = True
                     quality_flags["guard_path"] = "timeout_best_effort"
+                    # Even on timeout, strip roleplay drift if the engram doesn't allow it.
+                    if has_custom_engram and has_roleplay_actions(best_effort_reply) and not meta_rule_permits_roleplay(meta_rule):
+                        stripped = strip_roleplay_actions(best_effort_reply)
+                        if len(stripped) >= 15:
+                            quality_flags["roleplay_stripped"] = True
+                            best_effort_reply = stripped
                     return best_effort_reply, quality_flags
                 quality_flags["guard_triggered"] = True
                 quality_flags["fallback_used"] = True
