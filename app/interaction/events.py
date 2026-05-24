@@ -40,7 +40,7 @@ class InteractionRealtimeInput:
     channel: str = "chat"
     identity_id: str | None = None
     saga_id: str | None = None
-    context_limit: int = 5
+    context_limit: int = 8
     history_limit: int = 20
     world_rules: str = ""
 

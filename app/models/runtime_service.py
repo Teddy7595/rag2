@@ -296,9 +296,11 @@ class LocalInferenceService:
 
         try:
             min_p = max(0.0, min(1.0, float(runtime_config.get("text_generation_min_p") or 0.05)))
-            repeat_penalty = max(1.0, min(2.0, float(runtime_config.get("text_generation_repeat_penalty") or 1.15)))
-            presence_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_presence_penalty") or 0.0)))
-            frequency_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_frequency_penalty") or 0.0)))
+            # Anti-repetition defaults: repeat_penalty discourages exact token repeats,
+            # presence/frequency penalize reusing tokens already in the output.
+            repeat_penalty = max(1.0, min(2.0, float(runtime_config.get("text_generation_repeat_penalty") or 1.20)))
+            presence_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_presence_penalty") or 0.15)))
+            frequency_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_frequency_penalty") or 0.10)))
             seed = int(runtime_config.get("text_generation_seed") or -1)
 
             response = cast(Any, llm).create_completion(

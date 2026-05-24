@@ -1076,14 +1076,9 @@ class RealtimeChatService:
             intent_hint=intent_hint,
             embedding_runtime=self.embedding_runtime,
         )
-        conversational_mode = policy.intent in {"greeting", "identity", "conversational"}
+        conversational_mode = policy.intent in {"greeting", "identity"}
         narrative_mode = policy.intent == "narrative"
-
-        if conversational_mode:
-            knowledge_matches = []
-            engram_matches = []
-            context_text = ""
-            compact_context_text = ""
+        # RAG always runs — even on conversational turns the context can add value.
 
         main_idea = ""
         secondary_ideas: list[str] = []

@@ -66,58 +66,32 @@ def build_turn_policy(
     if intent not in {"greeting", "identity", "conversational", "technical", "narrative", "mixed"}:
         intent = classify_intent(user_text, embedding_runtime=embedding_runtime)
 
-    # Keep conservative budgets on default identity and allow larger budgets on custom engrams.
-    if intent == "greeting":
-        return ConversationTurnPolicy(
-            intent=intent,
-            max_tokens=140,
-            temperature=0.45,
-            top_p=0.95,
-            deadline_ms=1700,
-            prefer_short=True,
-        )
-    if intent == "identity":
+    # Greeting/identity stay short — everything else gets a full budget.
+    if intent in {"greeting", "identity"}:
         return ConversationTurnPolicy(
             intent=intent,
             max_tokens=220,
-            temperature=0.4,
+            temperature=0.55,
             top_p=0.95,
-            deadline_ms=2200,
+            deadline_ms=8000,
             prefer_short=True,
-        )
-    if intent == "conversational":
-        return ConversationTurnPolicy(
-            intent=intent,
-            max_tokens=300 if has_custom_engram else 240,
-            temperature=0.6 if has_custom_engram else 0.5,
-            top_p=0.95,
-            deadline_ms=3600,
-            prefer_short=True,
-        )
-    if intent == "technical":
-        return ConversationTurnPolicy(
-            intent=intent,
-            max_tokens=768 if has_custom_engram else 512,
-            temperature=0.35 if has_custom_engram else 0.2,
-            top_p=1.0 if has_custom_engram else 0.9,
-            deadline_ms=3200,
-            prefer_short=False,
         )
     if intent == "narrative":
         return ConversationTurnPolicy(
             intent=intent,
-            max_tokens=2048 if has_custom_engram else 1400,
-            temperature=0.82 if has_custom_engram else 0.72,
+            max_tokens=2048,
+            temperature=0.82,
             top_p=0.95,
             deadline_ms=90000,
             prefer_short=False,
         )
+    # Default for conversational, technical, mixed — half A4 page (~768 tokens).
     return ConversationTurnPolicy(
         intent=intent,
-        max_tokens=1024 if has_custom_engram else 640,
-        temperature=0.3 if has_custom_engram else 0.2,
-        top_p=1.0 if has_custom_engram else 0.9,
-        deadline_ms=8000,
+        max_tokens=768,
+        temperature=0.72,
+        top_p=0.95,
+        deadline_ms=45000,
         prefer_short=False,
     )
 

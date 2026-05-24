@@ -367,14 +367,18 @@ class ContextRetrieverRuntime:
 
     def _rerank_knowledge_diversity(self, ranked: list[ContextMatch], limit: int) -> tuple[ContextMatch, ...]:
         selected: list[ContextMatch] = []
-        seen_docs: set[str] = set()
+        seen_docs: dict[str, int] = {}
+        # Allow up to 3 chunks from the same document before enforcing diversity.
+        # This captures more narrative/story context from a single PDF.
+        max_per_doc = max(2, limit // 2)
         for match in ranked:
             document_id = str(match.metadata.get("document_id") or "")
-            if document_id and document_id in seen_docs and len(selected) >= max(1, limit // 2):
-                continue
-            selected.append(match)
             if document_id:
-                seen_docs.add(document_id)
+                count = seen_docs.get(document_id, 0)
+                if count >= max_per_doc:
+                    continue
+                seen_docs[document_id] = count + 1
+            selected.append(match)
             if len(selected) >= limit:
                 break
         if len(selected) < limit:
