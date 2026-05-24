@@ -106,18 +106,18 @@ def build_turn_policy(
     if intent == "narrative":
         return ConversationTurnPolicy(
             intent=intent,
-            max_tokens=1000 if has_custom_engram else 700,
+            max_tokens=2048 if has_custom_engram else 1400,
             temperature=0.82 if has_custom_engram else 0.72,
             top_p=0.95,
-            deadline_ms=14000,
+            deadline_ms=90000,
             prefer_short=False,
         )
     return ConversationTurnPolicy(
         intent=intent,
-        max_tokens=420 if has_custom_engram else 320,
+        max_tokens=1024 if has_custom_engram else 640,
         temperature=0.3 if has_custom_engram else 0.2,
         top_p=1.0 if has_custom_engram else 0.9,
-        deadline_ms=2200,
+        deadline_ms=8000,
         prefer_short=False,
     )
 

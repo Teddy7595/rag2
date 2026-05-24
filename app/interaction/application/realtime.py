@@ -322,7 +322,9 @@ def _dynamic_response_token_budget(
     if asks_brief:
         target = min(target, 220 if conversational_mode else 320)
 
-    if history_size >= 16:
+    # Only reduce for short-response modes; narrative/long modes should not be penalized
+    # for having more history — the user wants continuity, not shorter responses.
+    if history_size >= 16 and prefer_short:
         target = int(target * 0.85)
     if deadline_ms < 3000:
         target = int(target * 0.8)
@@ -1261,6 +1263,10 @@ class RealtimeChatService:
         immersive_strict = bool(rollout.get("immersive_strict_engram", True))
         immersive_max_retries = int(rollout.get("immersive_retry_max") or 1)
 
+        # Characters budget for sanitization: narrative/long modes get 8000 (~2048 tokens),
+        # conversational gets 1200. This is what actually caps the visible response length.
+        sanitize_max_chars = 9000 if (narrative_mode or not policy.prefer_short) else 1200
+
         def _generate_and_sanitize(gen_prompt: str, gen_temperature: float) -> tuple[str, bool]:
             """Call the model and apply sanitization. Returns (reply, ok)."""
             try:
@@ -1279,7 +1285,7 @@ class RealtimeChatService:
             raw = str((gen_result or {}).get("content") or "").strip() if isinstance(gen_result, dict) else ""
             ok = isinstance(gen_result, dict) and bool(gen_result.get("ok")) and bool(raw)
             if sanitize_enabled and raw:
-                raw = sanitize_generated_reply(raw, prefer_short=bool(policy.prefer_short))
+                raw = sanitize_generated_reply(raw, prefer_short=bool(policy.prefer_short), max_chars=sanitize_max_chars)
                 if looks_like_internal_reasoning(raw) or instruction_echo_prefix_detected(raw):
                     quality_flags["instruction_echo_stripped"] = True
                     raw = ""
@@ -1298,7 +1304,7 @@ class RealtimeChatService:
                 quality_flags["timeout_hit"] = True
 
             content = str(generated.get("content") or "").strip() if isinstance(generated, dict) else ""
-            max_chars_budget = 280 if policy.prefer_short else 1200
+            max_chars_budget = 280 if policy.prefer_short else sanitize_max_chars
             if len(content) > max_chars_budget:
                 quality_flags["response_too_long"] = True
             best_effort_reply = content.strip()
@@ -1309,7 +1315,7 @@ class RealtimeChatService:
                 # --- Sanitize: strip technical artifacts only (leaked instructions, protocol tags) ---
                 # This mirrors the RAG1 approach: remove format garbage, never block content.
                 if sanitize_enabled:
-                    sanitized = sanitize_generated_reply(reply, prefer_short=bool(policy.prefer_short))
+                    sanitized = sanitize_generated_reply(reply, prefer_short=bool(policy.prefer_short), max_chars=sanitize_max_chars)
                     hard_echo = looks_like_internal_reasoning(reply) or instruction_echo_prefix_detected(reply)
                     if hard_echo:
                         quality_flags["instruction_echo_stripped"] = True
