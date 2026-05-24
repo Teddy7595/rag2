@@ -963,14 +963,11 @@ class RealtimeChatService:
         if not main_idea:
             main_idea = input_data.content.strip()[:80]
 
-        if conversational_mode:
-            fallback_reply = _choose_conversational_fallback(input_data.content, identity_name)
-        else:
-            user_focus = re.sub(r"\s+", " ", input_data.content).strip()[:80]
-            fallback_reply = (
-                f"Soy {identity_name}. Sobre '{user_focus}', puedo resumirtelo en claro y sin metacomentarios. "
-                "Si quieres, te lo doy por puntos accionables."
-            )
+        user_focus = re.sub(r"\s+", " ", input_data.content).strip()[:80]
+        terminal_fallback_reply = (
+            f"Soy {identity_name}. No pude completar esta respuesta en este turno sobre '{user_focus}'. "
+            "Si quieres, te lo reformulo en puntos accionables."
+        )
 
         prompt_sections = [
             f"Identidad activa: {identity_name}.",
@@ -1087,17 +1084,9 @@ class RealtimeChatService:
             if len(content) > max_chars_budget:
                 quality_flags["response_too_long"] = True
             sanitized = sanitize_generated_reply(content, prefer_short=policy.prefer_short) if sanitize_enabled else content
-            if conversational_mode and sanitized:
-                compact = re.sub(r"\s+", " ", sanitized).strip()
-                sentences = re.split(r"(?<=[.!?])\s+", compact)
-                sanitized = " ".join(part for part in sentences[:2] if part).strip()
-
-            best_effort_reply = sanitized
-            if not best_effort_reply and content and not looks_like_internal_reasoning(content):
-                best_effort_reply = content.strip()
+            best_effort_reply = sanitized.strip()
 
             immersive_mode_enabled = bool(rollout.get("immersive_mode_enabled", False))
-            immersive_retry_max = max(0, min(2, int(rollout.get("immersive_retry_max", 1) or 1)))
             immersive_threshold = max(0.1, min(0.95, float(int(rollout.get("immersive_threshold_percent", 65) or 65)) / 100.0))
             immersive_strict_engram = bool(rollout.get("immersive_strict_engram", True))
 
@@ -1114,60 +1103,6 @@ class RealtimeChatService:
                 quality_flags["immersive_score"] = float(immersive_eval.get("score") or 0.0)
                 quality_flags["immersive_reasons"] = list(immersive_eval.get("reasons") or [])
 
-                needs_retry = (not sanitized) or (not bool(immersive_eval.get("passed")))
-                if needs_retry and immersive_retry_max > 0:
-                    quality_flags["immersive_triggered"] = True
-                    quality_flags["immersive_retry_count"] = 1
-
-                    repair_prompt = "\n\n".join(
-                        section
-                        for section in [
-                            prompt,
-                            "Correccion inmersiva interna (no repetir):",
-                            "- Reescribe la respuesta como el engrama activo, en primera persona y tono natural.",
-                            "- Prohibido mostrar reglas internas, etiquetas, contexto recuperado o metacomentarios.",
-                            "- Responde la peticion del usuario de forma concreta.",
-                            f"Borrador descartado (interno): {candidate_for_immersive[:260]}",
-                        ]
-                        if section.strip()
-                    )
-
-                    retry_start = time.perf_counter()
-                    retry_generated = self.event_bus.request(
-                        REQUEST_MODEL_TEXT_GENERATION,
-                        ModelTextGenerationRequest(prompt=repair_prompt, temperature=temperature, top_p=top_p, max_tokens=max_tokens),
-                        source_module="interaction.application.realtime",
-                    )
-                    retry_elapsed_ms = int((time.perf_counter() - retry_start) * 1000)
-                    quality_flags["elapsed_ms"] = int(quality_flags.get("elapsed_ms") or 0) + retry_elapsed_ms
-                    retry_content = str(retry_generated.get("content") or "").strip() if isinstance(retry_generated, dict) else ""
-
-                    if retry_content and instruction_echo_prefix_detected(retry_content):
-                        quality_flags["instruction_echo_stripped"] = True
-
-                    retry_sanitized = sanitize_generated_reply(retry_content, prefer_short=policy.prefer_short) if sanitize_enabled else retry_content
-                    retry_eval = evaluate_immersive_response(
-                        retry_sanitized or retry_content,
-                        identity_name=identity_name,
-                        user_text=input_data.content,
-                        threshold=immersive_threshold,
-                        strict_engram=immersive_strict_engram,
-                        has_custom_engram=has_custom_engram,
-                    )
-                    quality_flags["immersive_retry_score"] = float(retry_eval.get("score") or 0.0)
-                    quality_flags["immersive_retry_reasons"] = list(retry_eval.get("reasons") or [])
-
-                    if isinstance(retry_generated, dict) and retry_generated.get("ok") and retry_sanitized and bool(retry_eval.get("passed")):
-                        return retry_sanitized, quality_flags
-
-                    retry_best_effort = retry_sanitized
-                    if not retry_best_effort and retry_content and not looks_like_internal_reasoning(retry_content):
-                        retry_best_effort = retry_content.strip()
-                    if retry_best_effort:
-                        quality_flags["guard_triggered"] = True
-                        quality_flags["guard_path"] = "immersive_retry_best_effort"
-                        return retry_best_effort, quality_flags
-
             if guard_enabled and content and not sanitized:
                 quality_flags["guard_triggered"] = True
                 quality_flags["guard_path"] = "sanitizer_blocked"
@@ -1180,35 +1115,17 @@ class RealtimeChatService:
                     return best_effort_reply, quality_flags
                 quality_flags["guard_triggered"] = True
                 quality_flags["fallback_used"] = True
-                quality_flags["guard_path"] = "timeout_fallback_hard"
-                return (
-                    self._avoid_repetitive_fallback(
-                        fallback_reply,
-                        identity_name=identity_name,
-                        user_input=input_data.content,
-                        main_idea=main_idea,
-                        conversational_mode=conversational_mode,
-                        history_messages=history_messages,
-                    ),
-                    quality_flags,
-                )
+                quality_flags["guard_path"] = "timeout_empty_output"
+                return terminal_fallback_reply, quality_flags
         except Exception:
-            pass
+            quality_flags["fallback_used"] = True
+            quality_flags["guard_path"] = "generation_exception"
+            return terminal_fallback_reply, quality_flags
 
         quality_flags["fallback_used"] = True
         if not str(quality_flags.get("guard_path") or ""):
-            quality_flags["guard_path"] = "generic_fallback"
-        return (
-            self._avoid_repetitive_fallback(
-                fallback_reply,
-                identity_name=identity_name,
-                user_input=input_data.content,
-                main_idea=main_idea,
-                conversational_mode=conversational_mode,
-                history_messages=history_messages,
-            ),
-            quality_flags,
-        )
+            quality_flags["guard_path"] = "empty_model_output"
+        return terminal_fallback_reply, quality_flags
 
     def _resolve_saga_next_context(
         self,

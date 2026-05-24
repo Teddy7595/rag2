@@ -187,7 +187,7 @@ def test_compose_reply_uses_embedding_intent_hint_for_ambiguous_turn(monkeypatch
     assert "Responde en espanol natural, cercano y humano." in event_bus.last_prompt
 
 
-def test_compose_reply_chatty_query_uses_conversational_fallback_without_internal_labels(monkeypatch) -> None:
+def test_compose_reply_chatty_query_with_empty_model_output_returns_operational_fallback(monkeypatch) -> None:
     event_bus = FakeEventBus({"ok": True, "content": ""})
     service = RealtimeChatService(
         event_bus=event_bus,
@@ -207,11 +207,11 @@ def test_compose_reply_chatty_query_uses_conversational_fallback_without_interna
     assert quality["fallback_used"] is True
     assert "smoke-doc" not in reply
     assert "contexto" not in reply.lower()
-    assert "Soy Asistente Base" in reply
-    assert "directo" in reply.lower() or "breve" in reply.lower() or "natural" in reply.lower()
+    assert "soy asistente base" in reply.lower()
+    assert "puntos accionables" in reply.lower()
 
 
-def test_compose_reply_typoed_greeting_never_uses_smoke_doc_fallback(monkeypatch) -> None:
+def test_compose_reply_typoed_greeting_with_empty_model_output_uses_operational_fallback(monkeypatch) -> None:
     event_bus = FakeEventBus({"ok": True, "content": ""})
     service = RealtimeChatService(
         event_bus=event_bus,
@@ -232,10 +232,11 @@ def test_compose_reply_typoed_greeting_never_uses_smoke_doc_fallback(monkeypatch
     assert "smoke-doc" not in reply
     assert "punto principal" not in reply.lower()
     assert "contexto" not in reply.lower()
-    assert "Soy Asistente Base" in reply or "Hola" in reply
+    assert "soy asistente base" in reply.lower()
+    assert "puntos accionables" in reply.lower()
 
 
-def test_compose_reply_slang_greeting_returns_human_style_reply(monkeypatch) -> None:
+def test_compose_reply_slang_greeting_with_empty_model_output_uses_operational_fallback(monkeypatch) -> None:
     event_bus = FakeEventBus({"ok": True, "content": ""})
     service = RealtimeChatService(
         event_bus=event_bus,
@@ -255,7 +256,8 @@ def test_compose_reply_slang_greeting_returns_human_style_reply(monkeypatch) -> 
     assert quality["fallback_used"] is True
     assert "contexto" not in reply.lower()
     assert "smoke-doc" not in reply.lower()
-    assert "soy asistente base" in reply.lower() or "hola" in reply.lower()
+    assert "soy asistente base" in reply.lower()
+    assert "puntos accionables" in reply.lower()
 
 
 def test_compose_reply_story_request_never_leaks_internal_labels(monkeypatch) -> None:
@@ -413,7 +415,7 @@ def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypat
     assert "contexto" not in reply.lower()
 
 
-def test_compose_reply_immersive_mode_retries_when_first_draft_is_meta() -> None:
+def test_compose_reply_immersive_mode_does_not_retry_and_uses_operational_fallback() -> None:
     event_bus = FakeEventBus(
         [
             {
@@ -443,8 +445,9 @@ def test_compose_reply_immersive_mode_retries_when_first_draft_is_meta() -> None
         session_id="session-immersive-retry",
     )
 
-    assert quality["immersive_triggered"] is True
-    assert quality["immersive_retry_count"] == 1
-    assert quality["fallback_used"] is False
+    assert quality["immersive_triggered"] is False
+    assert quality["immersive_retry_count"] == 0
+    assert quality["fallback_used"] is True
     assert "etiquetas internas" not in reply.lower()
-    assert "historia" in reply.lower()
+    assert "soy mistress keynes" in reply.lower()
+    assert "puntos accionables" in reply.lower()
