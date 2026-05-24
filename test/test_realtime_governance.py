@@ -326,7 +326,7 @@ def test_compose_reply_sets_instruction_echo_flag_when_prefix_is_stripped() -> N
     assert "solo enfoca" not in reply.lower()
 
 
-def test_compose_reply_conversational_english_output_falls_back_to_spanish() -> None:
+def test_compose_reply_conversational_english_output_prefers_model_reply() -> None:
     event_bus = FakeEventBus(
         {
             "ok": True,
@@ -345,9 +345,9 @@ def test_compose_reply_conversational_english_output_falls_back_to_spanish() -> 
         session_id="session-english-fallback",
     )
 
-    assert quality["fallback_used"] is True
-    assert quality["guard_path"] == "language_fallback_spanish"
-    assert "soy mistress keynes" in reply.lower()
+    assert quality["fallback_used"] is False
+    assert quality["guard_path"] == ""
+    assert "i can answer your question directly" in reply.lower()
 
 
 def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch) -> None:

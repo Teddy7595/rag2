@@ -1091,21 +1091,10 @@ class RealtimeChatService:
                 compact = re.sub(r"\s+", " ", sanitized).strip()
                 sentences = re.split(r"(?<=[.!?])\s+", compact)
                 sanitized = " ".join(part for part in sentences[:2] if part).strip()
-            if conversational_mode and sanitized and _looks_mostly_english(sanitized):
-                quality_flags["guard_triggered"] = True
-                quality_flags["fallback_used"] = True
-                quality_flags["guard_path"] = "language_fallback_spanish"
-                return (
-                    self._avoid_repetitive_fallback(
-                        fallback_reply,
-                        identity_name=identity_name,
-                        user_input=input_data.content,
-                        main_idea=main_idea,
-                        conversational_mode=conversational_mode,
-                        history_messages=history_messages,
-                    ),
-                    quality_flags,
-                )
+
+            best_effort_reply = sanitized
+            if not best_effort_reply and content and not looks_like_internal_reasoning(content):
+                best_effort_reply = content.strip()
 
             immersive_mode_enabled = bool(rollout.get("immersive_mode_enabled", False))
             immersive_retry_max = max(0, min(2, int(rollout.get("immersive_retry_max", 1) or 1)))
@@ -1171,27 +1160,24 @@ class RealtimeChatService:
                     if isinstance(retry_generated, dict) and retry_generated.get("ok") and retry_sanitized and bool(retry_eval.get("passed")):
                         return retry_sanitized, quality_flags
 
-                    quality_flags["guard_triggered"] = True
-                    quality_flags["fallback_used"] = True
-                    quality_flags["guard_path"] = "immersive_retry_fallback"
-                    return (
-                        self._avoid_repetitive_fallback(
-                            fallback_reply,
-                            identity_name=identity_name,
-                            user_input=input_data.content,
-                            main_idea=main_idea,
-                            conversational_mode=conversational_mode,
-                            history_messages=history_messages,
-                        ),
-                        quality_flags,
-                    )
+                    retry_best_effort = retry_sanitized
+                    if not retry_best_effort and retry_content and not looks_like_internal_reasoning(retry_content):
+                        retry_best_effort = retry_content.strip()
+                    if retry_best_effort:
+                        quality_flags["guard_triggered"] = True
+                        quality_flags["guard_path"] = "immersive_retry_best_effort"
+                        return retry_best_effort, quality_flags
 
             if guard_enabled and content and not sanitized:
                 quality_flags["guard_triggered"] = True
                 quality_flags["guard_path"] = "sanitizer_blocked"
-            if isinstance(generated, dict) and generated.get("ok") and sanitized:
-                return sanitized, quality_flags
+            if isinstance(generated, dict) and generated.get("ok") and best_effort_reply:
+                return best_effort_reply, quality_flags
             if timeout_enabled and quality_flags["timeout_hit"] and elapsed_ms > int(scaled_deadline_ms * 2.5):
+                if best_effort_reply:
+                    quality_flags["guard_triggered"] = True
+                    quality_flags["guard_path"] = "timeout_best_effort"
+                    return best_effort_reply, quality_flags
                 quality_flags["guard_triggered"] = True
                 quality_flags["fallback_used"] = True
                 quality_flags["guard_path"] = "timeout_fallback_hard"
