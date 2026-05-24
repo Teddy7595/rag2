@@ -1142,6 +1142,13 @@ class RealtimeChatService:
                 )
             )
 
+        # BLOCK 3.3: Document direct-context — bypasses RAG vector search.
+        document_context = str(input_data.document_context or "").strip()
+        if document_context:
+            prompt_sections.append(
+                f"Documento de referencia (lee este contenido directamente, sin buscarlo en la base de datos):\n{document_context[:12000]}"
+            )
+
         # BLOCK 3.5: Conversation history (injected directly, bypasses compact_context_for_prompt).
         history_window = history_messages[-20:]
         if history_window:

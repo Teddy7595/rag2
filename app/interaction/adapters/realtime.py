@@ -48,6 +48,7 @@ def _build_input(payload: dict[str, Any], *, default_saga_id: str | None = None)
         context_limit=int(payload.get("context_limit") or payload.get("limit") or 5),
         history_limit=int(payload.get("history_limit") or 20),
         world_rules=str(payload.get("world_rules") or ""),
+        document_context=str(payload.get("document_context") or ""),
     )
 
 

@@ -427,6 +427,56 @@
     font-family: var(--chat-font-mono);
   }
 
+  #doc-context-bar {
+    display: none;
+    margin: 0 5px 8px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.75rem;
+    color: var(--chat-accent-color);
+    border: 1px dashed var(--chat-accent-color);
+    border-radius: 10px;
+    padding: 6px 8px;
+    background: rgba(0, 255, 65, 0.04);
+  }
+
+  #doc-context-bar.is-visible {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  #doc-context-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .doc-ctx-btn {
+    background: transparent;
+    border: 1px solid currentColor;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    font-family: var(--chat-font-mono);
+    flex-shrink: 0;
+  }
+
+  #doc-context-save-btn {
+    color: var(--chat-accent-color);
+  }
+
+  #doc-context-clear-btn {
+    color: #94a3b8;
+  }
+
+  #doc-context-loading {
+    font-size: 0.68rem;
+    opacity: 0.7;
+  }
+
   .input-wrapper {
     display: flex;
     gap: 10px;
@@ -1526,6 +1576,12 @@
 <div id="input-area">
   <div id="autocomplete-list"></div>
   <div id="status-bar">Sesion realtime iniciando...</div>
+  <div id="doc-context-bar">
+    <span id="doc-context-label"></span>
+    <span id="doc-context-loading" style="display:none;">extrayendo…</span>
+    <button type="button" class="doc-ctx-btn" id="doc-context-save-btn" title="Guardar en RAG">guardar en RAG</button>
+    <button type="button" class="doc-ctx-btn" id="doc-context-clear-btn">limpiar</button>
+  </div>
   <div id="attached-file">
     <span id="attached-file-label"></span>
     <button id="clear-file-btn" type="button">limpiar</button>
@@ -1542,6 +1598,7 @@
   <div class="input-wrapper" id="input-box">
     <input type="file" id="file-upload" style="display:none;" accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx">
     <input type="file" id="ingest-files" style="display:none;" accept=".pdf,.txt,.md,.json,.csv,.doc,.docx,.html,.xml" multiple>
+    <input type="file" id="doc-context-upload" style="display:none;" accept=".pdf,.txt,.md,.json,.csv">
     <button class="icon-btn" id="attach-btn" title="Adjuntar archivo (o usa /attach)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
@@ -1553,6 +1610,12 @@
         <polyline points="14 2 14 8 20 8"></polyline>
         <line x1="12" y1="18" x2="12" y2="12"></line>
         <line x1="9" y1="15" x2="15" y2="15"></line>
+      </svg>
+    </button>
+    <button class="icon-btn" id="doc-context-btn" title="Leer documento como contexto directo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path>
+        <path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path>
       </svg>
     </button>
     <textarea id="message-input" placeholder="Escribe una orden..." rows="1"></textarea>
@@ -1590,6 +1653,13 @@
   const ingestFilesInput = document.getElementById('ingest-files');
   const attachedFileLabel = document.getElementById('attached-file-label');
   const clearFileBtn = document.getElementById('clear-file-btn');
+  const docContextBtn = document.getElementById('doc-context-btn');
+  const docContextUpload = document.getElementById('doc-context-upload');
+  const docContextBar = document.getElementById('doc-context-bar');
+  const docContextLabel = document.getElementById('doc-context-label');
+  const docContextLoading = document.getElementById('doc-context-loading');
+  const docContextSaveBtn = document.getElementById('doc-context-save-btn');
+  const docContextClearBtn = document.getElementById('doc-context-clear-btn');
   const inputBox = document.getElementById('input-box');
   const cancelEditBtn = document.getElementById('cancel-edit-btn');
   const sessionIdLabel = document.getElementById('chat-session-id');
@@ -1649,6 +1719,8 @@
   let knownEngramsByName = new Map();
   let activeSessionId = '';
   let attachedFile = null;
+  let documentContext = '';
+  let documentContextFile = null;
   let lastMessageId = '';
   let lastAssistantMessageId = '';
   let worldRules = '';
@@ -1681,7 +1753,7 @@
   const slashCommands = [
     '/saga', '/saga estado', '/saga nueva <título>', '/saga cmd <texto>',
     '/saga pausa', '/saga activar', '/saga admin',
-    '/help', '/info', '/attach', '/clearfile', '/assets list', '/vault list',
+    '/help', '/info', '/attach', '/clearfile', '/doc', '/cleardoc', '/assets list', '/vault list',
     '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
     '/ctx <1-50>', '/history <1-100>', '/limits'
@@ -2363,6 +2435,51 @@
     }
     attachedFileBox.classList.add('is-visible');
     attachedFileLabel.textContent = `adjunto: ${attachedFile.name}`;
+  }
+
+  function renderDocumentContext() {
+    if (!documentContextFile) {
+      docContextBar.classList.remove('is-visible');
+      docContextLabel.textContent = '';
+      docContextLoading.style.display = 'none';
+      return;
+    }
+    docContextBar.classList.add('is-visible');
+    const chars = documentContext ? ` (${documentContext.length.toLocaleString()} chars)` : '';
+    docContextLabel.textContent = `doc: ${documentContextFile.name}${chars}`;
+    docContextLoading.style.display = 'none';
+    docContextSaveBtn.style.display = documentContext ? '' : 'none';
+  }
+
+  async function loadDocumentContext(file) {
+    documentContextFile = file;
+    documentContext = '';
+    docContextBar.classList.add('is-visible');
+    docContextLabel.textContent = `doc: ${file.name}`;
+    docContextLoading.style.display = 'inline';
+    docContextSaveBtn.style.display = 'none';
+
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      const resp = await fetch('/api/knowledge/documents/read-text', { method: 'POST', body: formData });
+      if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+      const data = await resp.json();
+      documentContext = data.text || '';
+      setActionStatus(`Documento cargado: ${file.name} (${(documentContext.length).toLocaleString()} chars). Se usará como contexto directo.`, 'green');
+    } catch (err) {
+      documentContextFile = null;
+      documentContext = '';
+      setActionStatus(`Error leyendo documento: ${err.message}`, 'danger');
+    }
+    renderDocumentContext();
+  }
+
+  function clearDocumentContext() {
+    documentContext = '';
+    documentContextFile = null;
+    docContextUpload.value = '';
+    renderDocumentContext();
   }
 
   function appendMessage(text, isUser, avatarUrl, forceScroll, msgId = null, author = null, channel = null) {
@@ -3172,7 +3289,7 @@
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      setActionStatus('Comandos: /info, /attach, /clearfile, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits, /saga, /saga estado, /saga nueva <título>, /saga cmd <texto>, /saga pausa, /saga activar, /saga admin.', 'sky');
+      setActionStatus('Comandos: /info, /attach, /clearfile, /doc (cargar doc como contexto directo), /cleardoc, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits, /saga, /saga estado, /saga nueva <título>, /saga cmd <texto>, /saga pausa, /saga activar, /saga admin.', 'sky');
       return true;
     }
 
@@ -3238,7 +3355,19 @@
       attachedFile = null;
       fileUpload.value = '';
       renderAttachedFile();
-      setActionStatus('Adjunto limpiado.', 'green');
+      clearDocumentContext();
+      setActionStatus('Adjunto y contexto de documento limpiados.', 'green');
+      return true;
+    }
+
+    if (command === '/doc') {
+      docContextUpload.click();
+      return true;
+    }
+
+    if (command === '/cleardoc') {
+      clearDocumentContext();
+      setActionStatus('Contexto de documento limpiado.', 'green');
       return true;
     }
 
@@ -3709,6 +3838,7 @@
       channel: 'chat',
       world_rules: worldRules,
       identity_id: activeIdentityId || null,
+      document_context: documentContext || '',
     }));
   }
 
@@ -3751,6 +3881,28 @@
     fileUpload.value = '';
     renderAttachedFile();
     setStatus('Adjunto limpiado.', false);
+  });
+
+  docContextBtn.addEventListener('click', () => {
+    docContextUpload.click();
+  });
+
+  docContextUpload.addEventListener('change', () => {
+    const file = docContextUpload.files && docContextUpload.files[0] ? docContextUpload.files[0] : null;
+    if (file) {
+      loadDocumentContext(file);
+    }
+  });
+
+  docContextClearBtn.addEventListener('click', () => {
+    clearDocumentContext();
+    setStatus('Contexto de documento limpiado.', false);
+  });
+
+  docContextSaveBtn.addEventListener('click', async () => {
+    if (!documentContextFile) return;
+    setActionStatus(`Guardando ${documentContextFile.name} en RAG…`, 'sky');
+    runMultiFileIngest([documentContextFile]);
   });
 
   sessionCopyButton.addEventListener('click', async () => {

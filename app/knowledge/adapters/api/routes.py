@@ -12,6 +12,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.app_context import get_app_context_from_request
+from app.knowledge.application.document_ingestion import _clean_ingested_text, _read_pdf_pages
 from app.knowledge.application.ingest_jobs import IngestJobRegistry
 from app.knowledge.events import (
     ContextBuildRequest,
@@ -337,6 +338,39 @@ async def delete_engram(request: Request, engram_id: str) -> dict[str, object]:
     if not result["deleted"]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Engram not found")
     return result
+
+
+@router.post("/documents/read-text")
+async def read_document_text(
+    file: UploadFile = File(...),
+) -> dict[str, object]:
+    """Extract plain text from an uploaded file (PDF or plain text) for use as direct chat context.
+
+    Does NOT ingest into the knowledge base — use /documents/ingest-upload for that.
+    Returns: {"text": str, "filename": str, "char_count": int}
+    """
+    raw = await file.read()
+    name = file.filename or "document"
+    content_type = file.content_type or ""
+    is_pdf = name.lower().endswith(".pdf") or "pdf" in content_type.lower()
+
+    if is_pdf:
+        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+            tmp.write(raw)
+            tmp_path = tmp.name
+        try:
+            pages = _read_pdf_pages(tmp_path)
+        finally:
+            Path(tmp_path).unlink(missing_ok=True)
+        text = "\n\n".join(p for p in pages if p.strip())
+    else:
+        try:
+            raw_text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raw_text = raw.decode("latin-1", errors="replace")
+        text = _clean_ingested_text(raw_text)
+
+    return {"text": text, "filename": name, "char_count": len(text)}
 
 
 @router.post("/documents/ingest-upload")

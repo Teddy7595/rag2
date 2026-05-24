@@ -43,6 +43,7 @@ class InteractionRealtimeInput:
     context_limit: int = 8
     history_limit: int = 20
     world_rules: str = ""
+    document_context: str = ""
 
 
 @dataclass(frozen=True)
