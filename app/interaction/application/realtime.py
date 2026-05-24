@@ -1176,6 +1176,8 @@ class RealtimeChatService:
             prompt_sections.append("Responde en español claro y útil, sin mostrar razonamiento interno ni encabezados técnicos.")
 
         prompt = "\n\n".join(s for s in prompt_sections if s.strip())
+        # Lead-in: tells the model where its turn starts, prevents meta-rule echo.
+        prompt = f"{prompt}\n\n{identity_name}:"
         trace_prompt(blocks=[s for s in prompt_sections if s.strip()])
 
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
@@ -1388,6 +1390,36 @@ class RealtimeChatService:
             quality_flags["fallback_used"] = True
             quality_flags["guard_path"] = "generation_exception"
             return terminal_fallback_reply, quality_flags
+
+        # --- No-RAG retry: full identity + conversation history, RAG stripped ---
+        # The full prompt may have failed due to context overflow or zero RAG match.
+        # Retry keeping engram personality and chat history — just drop the knowledge
+        # blocks that added noise without relevant content.
+        if has_custom_engram:
+            no_rag_sections: list[str] = []
+            if meta_rule:
+                no_rag_sections.append(f"REGLA ABSOLUTA DE COMPORTAMIENTO:\n{meta_rule}")
+            id_block = f"Eres: {identity_name}."
+            if intellectual_profile:
+                id_block += f" Perfil: {intellectual_profile}."
+            no_rag_sections.append(id_block)
+            if behavior_prompt:
+                no_rag_sections.append(f"Modo de conducta:\n{behavior_prompt}")
+            if backstory:
+                no_rag_sections.append(f"Origen (quién eres):\n{backstory}")
+            # Keep conversation history so the model has continuity
+            if history_messages:
+                history_text_retry = _format_history(history_messages[-20:])
+                if history_text_retry:
+                    no_rag_sections.append(f"Historial de conversación:\n{history_text_retry}")
+            no_rag_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
+            no_rag_prompt = "\n\n".join(s for s in no_rag_sections if s.strip())
+            no_rag_prompt = f"{no_rag_prompt}\n\n{identity_name}:"
+            no_rag_reply, _ = _generate_and_sanitize(no_rag_prompt, min(1.1, temperature + 0.05))
+            if no_rag_reply:
+                quality_flags["guard_path"] = "no_rag_retry"
+                quality_flags["fallback_used"] = False
+                return no_rag_reply, quality_flags
 
         quality_flags["fallback_used"] = True
         if not str(quality_flags.get("guard_path") or ""):
