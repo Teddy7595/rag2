@@ -1433,8 +1433,8 @@ class RealtimeChatService:
         world_rules: str = "",
     ) -> dict[str, object] | None:
         saga_id = str(saga_id or "").strip() or _extract_saga_id_hint(user_text) or _extract_saga_id_hint(world_rules)
-        if not saga_id and not _looks_like_saga_turn(user_text):
-            return None
+        # No keyword guard — always try to find and inject active saga context
+        # so the user doesn't need to say "saga" to get story continuity.
 
         try:
             from app.operations.events import OperationsSagaListRequest

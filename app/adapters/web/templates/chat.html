@@ -1646,7 +1646,9 @@
     '/help', '/info', '/attach', '/clearfile', '/assets list', '/vault list',
     '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
-    '/ctx <1-50>', '/history <1-100>', '/limits'
+    '/ctx <1-50>', '/history <1-100>', '/limits',
+    '/saga', '/saga estado', '/saga nueva <título>', '/saga cmd <texto>',
+    '/saga pausa', '/saga activar', '/saga admin'
   ];
 
   function renderBootstrapMessage() {
@@ -2518,6 +2520,7 @@
       currentEngramColor = identity.color;
       statusDot.style.backgroundColor = identity.color;
       document.documentElement.style.setProperty('--chat-accent-color', identity.color);
+      try { localStorage.setItem('rag2.engram.accent', identity.color); } catch (_) {}
     }
     if (identity.avatar) {
       currentEngramAvatar = identity.avatar;
@@ -3099,7 +3102,7 @@
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      setActionStatus('Comandos: /info, /attach, /clearfile, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits.', 'sky');
+      setActionStatus('Comandos: /info, /attach, /clearfile, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits, /saga, /saga estado, /saga nueva <título>, /saga cmd <texto>, /saga pausa, /saga activar, /saga admin.', 'sky');
       return true;
     }
 
@@ -3297,6 +3300,145 @@
 
     if (command === '/cancel') {
       cancelEdit();
+      return true;
+    }
+
+    if (command === '/saga') {
+      // /saga sin args → mostrar ayuda
+      if (!args) {
+        setActionStatus('Saga: /saga estado · /saga nueva <título> · /saga cmd <texto> · /saga pausa · /saga activar · /saga admin', 'sky');
+        return true;
+      }
+
+      const [subCmd, ...subRest] = args.split(/\s+/);
+      const subArgs = subRest.join(' ').trim();
+
+      // /saga admin → ir a la UI de sagas
+      if (subCmd === 'admin') {
+        window.open('/admin/sagas', '_blank', 'noopener,noreferrer');
+        setActionStatus('Admin de sagas abierto en nueva pestaña.', 'sky');
+        return true;
+      }
+
+      // /saga estado → mostrar saga activa
+      if (subCmd === 'estado') {
+        try {
+          const res = await fetch('/api/operations/sagas?limit=1&statuses=active');
+          const sagas = await res.json();
+          if (!Array.isArray(sagas) || !sagas.length) {
+            setActionStatus('No hay saga activa en este momento.', 'amber');
+            return true;
+          }
+          const s = sagas[0];
+          setActionStatus(`Saga activa: "${s.title}" · comandos: ${s.command_count || 0} · estado: ${s.status}`, 'green');
+        } catch (err) {
+          setActionStatus(`Error consultando sagas: ${err.message}`, 'danger');
+        }
+        return true;
+      }
+
+      // /saga nueva <título> → crear saga
+      if (subCmd === 'nueva') {
+        const title = subArgs.trim();
+        if (!title) {
+          setActionStatus('Uso: /saga nueva <título de la historia>', 'amber');
+          return true;
+        }
+        try {
+          setActionStatus('Creando saga...', 'sky');
+          const res = await fetch('/api/operations/sagas', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, premise: '', summary: '', world_building: '', initial_command: '' }),
+          });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.detail || `HTTP ${res.status}`);
+          setActionStatus(`Saga creada: "${data.title}" (${data.id})`, 'green');
+        } catch (err) {
+          setActionStatus(`No se pudo crear la saga: ${err.message}`, 'danger');
+        }
+        return true;
+      }
+
+      // /saga cmd <texto> → agregar comando a la saga activa
+      if (subCmd === 'cmd') {
+        const cmdText = subArgs.trim();
+        if (!cmdText) {
+          setActionStatus('Uso: /saga cmd <texto del comando narrativo>', 'amber');
+          return true;
+        }
+        try {
+          const listRes = await fetch('/api/operations/sagas?limit=1&statuses=active');
+          const sagas = await listRes.json();
+          if (!Array.isArray(sagas) || !sagas.length) {
+            setActionStatus('No hay saga activa. Crea una con /saga nueva <título>.', 'amber');
+            return true;
+          }
+          const sagaId = sagas[0].id;
+          const res = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}/commands`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ command: cmdText, note: 'desde-chat' }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.appended) throw new Error(data.detail || 'No se pudo agregar');
+          setActionStatus(`Comando agregado a "${sagas[0].title}" · total: ${data.saga.command_count}`, 'green');
+        } catch (err) {
+          setActionStatus(`Error agregando comando: ${err.message}`, 'danger');
+        }
+        return true;
+      }
+
+      // /saga pausa → pausar saga activa
+      if (subCmd === 'pausa') {
+        try {
+          const listRes = await fetch('/api/operations/sagas?limit=1&statuses=active');
+          const sagas = await listRes.json();
+          if (!Array.isArray(sagas) || !sagas.length) {
+            setActionStatus('No hay saga activa para pausar.', 'amber');
+            return true;
+          }
+          const saga = sagas[0];
+          const res = await fetch(`/api/operations/sagas/${encodeURIComponent(saga.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: saga.title, premise: saga.premise || '', summary: saga.summary || '', world_building: saga.world_building || '', status: 'paused' }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.updated) throw new Error(data.detail || 'No se pudo pausar');
+          setActionStatus(`Saga "${saga.title}" pausada.`, 'amber');
+        } catch (err) {
+          setActionStatus(`Error pausando saga: ${err.message}`, 'danger');
+        }
+        return true;
+      }
+
+      // /saga activar → reactivar primera saga pausada
+      if (subCmd === 'activar') {
+        try {
+          const listRes = await fetch('/api/operations/sagas?limit=1&statuses=paused');
+          const sagas = await listRes.json();
+          if (!Array.isArray(sagas) || !sagas.length) {
+            setActionStatus('No hay saga pausada para activar.', 'amber');
+            return true;
+          }
+          const saga = sagas[0];
+          const res = await fetch(`/api/operations/sagas/${encodeURIComponent(saga.id)}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title: saga.title, premise: saga.premise || '', summary: saga.summary || '', world_building: saga.world_building || '', status: 'active' }),
+          });
+          const data = await res.json();
+          if (!res.ok || !data.updated) throw new Error(data.detail || 'No se pudo activar');
+          setActionStatus(`Saga "${saga.title}" reactivada.`, 'green');
+        } catch (err) {
+          setActionStatus(`Error activando saga: ${err.message}`, 'danger');
+        }
+        return true;
+      }
+
+      // Subcomando no reconocido
+      setActionStatus(`Subcomando de saga desconocido: "${subCmd}". Escribe /saga para ver opciones.`, 'amber');
       return true;
     }
 
