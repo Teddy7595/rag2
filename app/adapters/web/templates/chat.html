@@ -926,17 +926,30 @@
       gap: 8px;
     }
 
+    .avatar-col {
+      gap: 3px;
+      width: 38px;
+    }
+
     .message-row .avatar {
-      display: none;
+      display: block;
+      width: 38px;
+      height: 38px;
+      border-radius: 8px;
+    }
+
+    .avatar-action-btn {
+      width: 38px;
+      height: 20px;
     }
 
     .message-row.user {
-      margin-left: 36px;
+      margin-left: 0;
     }
 
     .message-row.ai,
     .message-row.system {
-      margin-right: 36px;
+      margin-right: 0;
     }
 
     .meta {
@@ -1865,6 +1878,7 @@
         case 'session_started':
           persistSessionId(String(packet.session_id || ''));
           preferredSessionId = String(packet.session_id || preferredSessionId || '');
+          updateIdentityUI(packet);
           loadWorldRules(String(packet.session_id || ''));
           setStatus(`Sesion ${String(packet.session_id || '').slice(0, 8)} activa.`, false);
           refreshModelState({ announce: true });
@@ -1882,6 +1896,7 @@
           return;
         }
         case 'turn_started':
+          updateIdentityUI(packet);
           startProcessingFeedback('preparando contexto', 'violet');
           currentAiBubble = appendMessage(renderThinkingBubble(), false, currentEngramAvatar, true, null, 'assistant', 'assistant');
           updateSendButtonState();
@@ -2730,17 +2745,25 @@
   }
 
   function updateIdentityUI(identity) {
-    if (identity.name) {
-      engramName.innerText = identity.name;
+    const payload = (identity && typeof identity === 'object') ? identity : {};
+    const nested = (payload.identity && typeof payload.identity === 'object') ? payload.identity : {};
+
+    const resolvedName = String(payload.name || nested.name || '').trim();
+    if (resolvedName) {
+      engramName.innerText = resolvedName;
     }
-    if (identity.color) {
-      currentEngramColor = identity.color;
-      statusDot.style.backgroundColor = identity.color;
-      document.documentElement.style.setProperty('--chat-accent-color', identity.color);
-      try { localStorage.setItem('rag2.engram.accent', identity.color); } catch (_) {}
+
+    const resolvedColor = String(payload.color || payload.color_hex || nested.color || nested.color_hex || '').trim();
+    if (resolvedColor) {
+      currentEngramColor = resolvedColor;
+      statusDot.style.backgroundColor = resolvedColor;
+      document.documentElement.style.setProperty('--chat-accent-color', resolvedColor);
+      try { localStorage.setItem('rag2.engram.accent', resolvedColor); } catch (_) {}
     }
-    if (identity.avatar) {
-      currentEngramAvatar = identity.avatar;
+
+    const resolvedAvatar = String(payload.avatar || payload.avatar_url || nested.avatar || nested.avatar_url || '').trim();
+    if (resolvedAvatar) {
+      currentEngramAvatar = resolvedAvatar;
     }
   }
 
