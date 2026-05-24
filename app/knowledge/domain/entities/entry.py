@@ -19,7 +19,6 @@ class KnowledgeEntry(BaseEntity):
     chunk_count: int | None = None
     source_chars: int = 0
     embedding: list[float] = field(default_factory=list)
-    engram_id: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -36,7 +35,6 @@ class KnowledgeEntry(BaseEntity):
             "chunk_count": self.chunk_count,
             "source_chars": self.source_chars,
             "embedding": list(self.embedding),
-            "engram_id": self.engram_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

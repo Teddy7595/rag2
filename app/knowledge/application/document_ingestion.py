@@ -122,7 +122,6 @@ class DocumentIngestionService:
             chunk_count=None,
             source_chars=len(full_text),
             embedding=self.embedding_runtime.embed_text(full_text),
-            engram_id=request.engram_id or None,
         )
         saved_document = self.repository.save(header_entry)
 
@@ -144,7 +143,6 @@ class DocumentIngestionService:
                     chunk_count=None,
                     source_chars=len(chunk_text),
                     embedding=self.embedding_runtime.embed_text(chunk_text),
-                    engram_id=request.engram_id or None,
                 )
                 saved_chunk = self.repository.save(chunk_entry)
                 chunk_records.append(saved_chunk)
@@ -174,7 +172,6 @@ class DocumentIngestionService:
                 chunk_count=None,
                 source_chars=len(content),
                 embedding=self.embedding_runtime.embed_text(content),
-                engram_id=request.engram_id or None,
             )
             image_records.append(self.repository.save(image_entry))
 

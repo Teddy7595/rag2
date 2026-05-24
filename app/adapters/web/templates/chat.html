@@ -3026,9 +3026,6 @@
     const formData = new FormData();
     for (const file of files) formData.append('files', file);
 
-    const activeEngramId = await resolveActiveEngramId().catch(() => null);
-    if (activeEngramId) formData.append('engram_id', activeEngramId);
-
     let jobId;
     try {
       const res = await fetch('/api/knowledge/documents/ingest-upload', { method: 'POST', body: formData });

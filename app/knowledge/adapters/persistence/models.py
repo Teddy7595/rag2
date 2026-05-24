@@ -29,7 +29,6 @@ class KnowledgeEntryRecord(DatabaseBase):
     chunk_count: Mapped[int | None] = mapped_column(Integer, nullable=True)
     source_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     embedding: Mapped[list[float]] = mapped_column(JSON, nullable=False, default=list)
-    engram_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True, default=None)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -49,7 +48,6 @@ class KnowledgeEntryRecord(DatabaseBase):
             chunk_count=entry.chunk_count,
             source_chars=entry.source_chars,
             embedding=list(entry.embedding),
-            engram_id=entry.engram_id or None,
             created_at=entry.created_at,
             updated_at=entry.updated_at,
         )
@@ -69,7 +67,6 @@ class KnowledgeEntryRecord(DatabaseBase):
             chunk_count=self.chunk_count,
             source_chars=self.source_chars,
             embedding=list(self.embedding or []),
-            engram_id=self.engram_id,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )

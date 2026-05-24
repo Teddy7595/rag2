@@ -126,7 +126,6 @@ class DocumentIngestRequest:
     tags: tuple[str, ...] = ()
     chunk_size: int = 180
     chunk_overlap: int = 40
-    engram_id: str | None = None
 
 
 @dataclass(frozen=True)
