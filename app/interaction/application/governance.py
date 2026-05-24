@@ -193,6 +193,7 @@ def is_conversational_query(text: str) -> bool:
         r"\bcomo\s+ha\s+est",
         r"\bcomo\s+est(?:a|as|an|do|toy)\b",
         r"\bque\s+tal\b",
+        r"\best(?:a|as)\s+(?:agitad[oa]|cansad[oa]|nervios[oa]|ansios[oa]|trist[ea]|feliz|seri[oa]|hostil|amable|bien|mal)\b",
     )
     return any(re.search(pattern, lowered_compact) for pattern in conversational_patterns)
 
@@ -365,12 +366,45 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
         return ""
 
     if len(result) > max_chars:
-        result = result[:max_chars].rstrip() + "..."
+        result = _truncate_complete_sentence(result, max_chars)
 
     if prefer_short and len(result) > 280:
-        result = result[:280].rstrip() + "..."
+        result = _truncate_complete_sentence(result, 280)
+
+    if result.endswith("..."):
+        trimmed = result[:-3].rstrip()
+        if trimmed:
+            result = f"{trimmed}."
 
     return result
+
+
+def _truncate_complete_sentence(text: str, max_chars: int) -> str:
+    content = str(text or "").strip()
+    if len(content) <= max_chars:
+        return content
+
+    window = content[:max_chars].rstrip()
+    if not window:
+        return ""
+
+    sentence_matches = list(re.finditer(r"[.!?](?:[\"')\]]+)?(?=\s|$)", window))
+    if sentence_matches:
+        candidate = window[: sentence_matches[-1].end()].rstrip()
+        if len(candidate) >= max(80, int(max_chars * 0.45)):
+            return candidate
+
+    split_at = window.rfind(" ")
+    candidate = window[:split_at].rstrip() if split_at > 0 else window
+    candidate = candidate.rstrip(" ,:;-.")
+    if not candidate:
+        candidate = window.rstrip(" ,:;-")
+
+    if not candidate:
+        return ""
+    if candidate[-1] not in ".!?":
+        return f"{candidate}."
+    return candidate
 
 
 def _strip_instruction_echo_prefix(text: str) -> str:

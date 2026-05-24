@@ -93,6 +93,21 @@ def test_sanitize_generated_reply_strips_internal_regla_and_salida_markers() -> 
     assert cleaned == ""
 
 
+def test_sanitize_generated_reply_truncates_with_sentence_closure() -> None:
+    noisy = (
+        "Primera frase completa. Segunda frase completa. "
+        "Tercera frase muy larga que termina quedand"
+    )
+    cleaned = sanitize_generated_reply(noisy, max_chars=58)
+    assert cleaned.endswith(".")
+    assert not cleaned.endswith("...")
+
+
+def test_sanitize_generated_reply_normalizes_trailing_ellipsis() -> None:
+    cleaned = sanitize_generated_reply("Te explico esto ahora...", max_chars=1200)
+    assert cleaned == "Te explico esto ahora."
+
+
 def test_sanitize_history_content_masks_internal_reasoning() -> None:
     masked = sanitize_history_content("1. **Analyze the Request:** user input")
     assert "omitida por seguridad" in masked
@@ -114,11 +129,21 @@ def test_classify_intent_detects_conversational_queries() -> None:
     assert classify_intent("Que opinas del contenido para adultos?") == "conversational"
 
 
+def test_classify_intent_detects_affective_state_questions() -> None:
+    assert classify_intent("¿Estas agitada?") == "conversational"
+
+
 def test_build_turn_policy_for_conversational_queries() -> None:
     policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
     assert policy.intent == "conversational"
     assert policy.max_tokens <= 360
     assert policy.deadline_ms >= 3000
+    assert policy.prefer_short is True
+
+
+def test_build_turn_policy_for_affective_state_question() -> None:
+    policy = build_turn_policy("Estas agitada?", has_custom_engram=True)
+    assert policy.intent == "conversational"
     assert policy.prefer_short is True
 
 
