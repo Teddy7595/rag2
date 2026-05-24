@@ -23,6 +23,12 @@ from app.interaction.application.governance import (
     sanitize_history_content,
     strip_roleplay_actions,
 )
+from app.interaction.application.pipeline_trace import (
+    trace_context,
+    trace_prompt,
+    trace_reply,
+    trace_turn_start,
+)
 from app.interaction.application.service import InteractionService
 from app.interaction.events import (
     InteractionMessageRecordRequest,
@@ -712,10 +718,18 @@ class RealtimeChatService:
         if input_data.world_rules.strip() and input_data.world_rules.strip() != str(stored_conditions.get("world_rules") or "").strip():
             self.interaction_service.repository.save_session_conditions(session_id, world_rules=input_data.world_rules)
 
+        is_continuation = _is_continuation(input_data.content)
         rag_query = (
             _build_narrative_rag_query(input_data.content, history_messages)
-            if _is_continuation(input_data.content)
+            if is_continuation
             else input_data.content
+        )
+        trace_turn_start(
+            turn_id=turn_id,
+            session_id=session_id,
+            user_text=input_data.content,
+            is_continuation=is_continuation,
+            rag_query=rag_query,
         )
         context_preview = self.event_bus.request(
             REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
@@ -748,6 +762,27 @@ class RealtimeChatService:
         )
 
         identity = context_preview["identity"]
+        _cp = context_preview.get("context_pack") or {}
+        _km = list(_cp.get("knowledge_matches") or [])
+        _policy_preview = build_turn_policy(
+            input_data.content,
+            has_custom_engram=str(identity.get("id") or "").upper() not in {"", "DEFAULT", "SETUP", "ERR"},
+        )
+        trace_context(
+            identity_name=str(identity.get("name") or "?"),
+            intent=_policy_preview.intent,
+            max_tokens=_policy_preview.max_tokens,
+            temperature=_policy_preview.temperature,
+            deadline_ms=_policy_preview.deadline_ms,
+            narrative_mode=_policy_preview.intent == "narrative",
+            knowledge_matches=[
+                {"label": m.get("label"), "score": m.get("score"), "excerpt": m.get("excerpt")}
+                if isinstance(m, dict) else {}
+                for m in _km
+            ],
+            history_loaded=len(history_messages),
+            history_injected=min(20 if _policy_preview.intent == "narrative" else 12, len(history_messages)),
+        )
         user_message = self.interaction_service.record_message(
             InteractionMessageRecordRequest(
                 author=input_data.author,
@@ -793,6 +828,13 @@ class RealtimeChatService:
                 "elapsed_ms": int(quality_flags.get("elapsed_ms") or 0),
                 "reply_chars": len(assistant_reply or ""),
             },
+        )
+        trace_reply(
+            reply_chars=len(assistant_reply or ""),
+            elapsed_ms=int(quality_flags.get("elapsed_ms") or 0),  # type: ignore[arg-type]
+            guard_triggered=bool(quality_flags.get("guard_triggered")),
+            fallback_used=bool(quality_flags.get("fallback_used")),
+            timeout_hit=bool(quality_flags.get("timeout_hit")),
         )
         assistant_author = str(identity.get("name") or "assistant")
         assistant_message = self.interaction_service.record_message(
@@ -1134,6 +1176,7 @@ class RealtimeChatService:
             prompt_sections.append("Responde en español claro y útil, sin mostrar razonamiento interno ni encabezados técnicos.")
 
         prompt = "\n\n".join(s for s in prompt_sections if s.strip())
+        trace_prompt(blocks=[s for s in prompt_sections if s.strip()])
 
         scaled_deadline_ms = max(200, int((policy.deadline_ms * deadline_scale) / 100))
         if timeout_enabled and session_id.strip():
