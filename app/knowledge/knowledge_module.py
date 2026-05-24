@@ -5,6 +5,7 @@ from app.knowledge.adapters import register_knowledge_event_handlers
 from app.knowledge.adapters.persistence import SqlAlchemyEngramRepository, SqlAlchemyKnowledgeRepository
 from app.knowledge.adapters.api import router as knowledge_router
 from app.knowledge.application import KnowledgeService
+from app.knowledge.application.ingest_jobs import IngestJobRegistry
 
 
 def register_knowledge_module(app: FastAPI) -> None:
@@ -18,5 +19,6 @@ def register_knowledge_module(app: FastAPI) -> None:
         embedding_model_dir=context.settings.embedding_model_dir,
     )
     register_service(app, "knowledge", service)
+    register_service(app, "knowledge_ingest_jobs", IngestJobRegistry())
     register_module_group(app, "knowledge", ("knowledge",), routers=(knowledge_router,))
     register_knowledge_event_handlers(app)

@@ -1232,6 +1232,75 @@
     0%, 80%, 100% { opacity: 0.3; transform: translateY(0); }
     40% { opacity: 1; transform: translateY(-2px); }
   }
+
+  #ingest-status-panel {
+    margin: 0 5px 8px;
+    display: grid;
+    gap: 5px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.72rem;
+  }
+
+  .ingest-file-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 8px;
+    padding: 6px 10px;
+    background: #0d0d0d;
+  }
+
+  .ingest-file-info {
+    display: grid;
+    gap: 3px;
+  }
+
+  .ingest-file-name {
+    color: #cbd5e1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    max-width: 260px;
+  }
+
+  .ingest-file-msg {
+    color: #6b7280;
+    font-size: 0.69rem;
+  }
+
+  .ingest-file-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: var(--chat-line-soft);
+    overflow: hidden;
+    margin-top: 3px;
+  }
+
+  .ingest-file-bar-fill {
+    height: 100%;
+    border-radius: 2px;
+    background: var(--chat-accent-color);
+    transition: width 0.3s ease;
+    width: 0%;
+  }
+
+  .ingest-file-status {
+    font-size: 0.68rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+  }
+
+  .ingest-file-status.processing { color: #fbbf24; }
+  .ingest-file-status.embedding  { color: #60a5fa; }
+  .ingest-file-status.done       { color: #34d399; }
+  .ingest-file-status.error      { color: #fb7185; }
+  .ingest-file-status.queued     { color: #9ca3af; }
+
+  #ingest-btn { color: #60a5fa; }
+  #ingest-btn:hover { color: var(--chat-accent-color); }
 </style>
 {% endblock %}
 
@@ -1376,6 +1445,7 @@
 <div id="input-area">
   <div id="autocomplete-list"></div>
   <div id="status-bar">Sesion realtime iniciando...</div>
+  <div id="ingest-status-panel" style="display:none;"></div>
   <div id="attached-file">
     <span id="attached-file-label"></span>
     <button id="clear-file-btn" type="button">limpiar</button>
@@ -1389,9 +1459,18 @@
   </div>
   <div class="input-wrapper" id="input-box">
     <input type="file" id="file-upload" style="display:none;" accept="image/*,.pdf,.txt,.md,.json,.csv,.doc,.docx">
+    <input type="file" id="ingest-files" style="display:none;" accept=".pdf,.txt,.md,.json,.csv,.doc,.docx,.html,.xml" multiple>
     <button class="icon-btn" id="attach-btn" title="Adjuntar archivo (o usa /attach)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
+      </svg>
+    </button>
+    <button class="icon-btn" id="ingest-btn" title="Digerir archivos en el RAG (múltiples)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+        <polyline points="14 2 14 8 20 8"></polyline>
+        <line x1="12" y1="18" x2="12" y2="12"></line>
+        <line x1="9" y1="15" x2="15" y2="15"></line>
       </svg>
     </button>
     <textarea id="message-input" placeholder="Escribe una orden..." rows="1"></textarea>
@@ -1425,6 +1504,9 @@
   const attachBtn = document.getElementById('attach-btn');
   const fileUpload = document.getElementById('file-upload');
   const attachedFileBox = document.getElementById('attached-file');
+  const ingestBtn = document.getElementById('ingest-btn');
+  const ingestFilesInput = document.getElementById('ingest-files');
+  const ingestStatusPanel = document.getElementById('ingest-status-panel');
   const attachedFileLabel = document.getElementById('attached-file-label');
   const clearFileBtn = document.getElementById('clear-file-btn');
   const inputBox = document.getElementById('input-box');
@@ -2849,6 +2931,86 @@
     fileUpload.click();
   }
 
+  // --- Multi-file RAG ingest ---
+
+  function _renderIngestRow(index, fileName) {
+    const row = document.createElement('div');
+    row.className = 'ingest-file-row';
+    row.id = `ingest-row-${index}`;
+    row.innerHTML = `
+      <div class="ingest-file-info">
+        <span class="ingest-file-name" title="${fileName}">${fileName}</span>
+        <div class="ingest-file-bar"><div class="ingest-file-bar-fill" id="ingest-bar-${index}"></div></div>
+        <span class="ingest-file-msg" id="ingest-msg-${index}">En cola…</span>
+      </div>
+      <span class="ingest-file-status queued" id="ingest-status-${index}">Espera</span>
+    `;
+    return row;
+  }
+
+  function _updateIngestRow(index, { status, progress, message }) {
+    const bar = document.getElementById(`ingest-bar-${index}`);
+    const msg = document.getElementById(`ingest-msg-${index}`);
+    const statusEl = document.getElementById(`ingest-status-${index}`);
+    if (bar) bar.style.width = `${progress}%`;
+    if (msg) msg.textContent = message || '';
+    if (statusEl) {
+      const labels = { processing: 'Procesando', embedding: 'Embebiendo', done: 'Listo', error: 'Error', queued: 'Espera' };
+      statusEl.textContent = labels[status] || status;
+      statusEl.className = `ingest-file-status ${status}`;
+    }
+  }
+
+  async function runMultiFileIngest(files) {
+    if (!files || files.length === 0) return;
+
+    ingestStatusPanel.innerHTML = '';
+    for (let i = 0; i < files.length; i++) {
+      ingestStatusPanel.appendChild(_renderIngestRow(i, files[i].name));
+    }
+    ingestStatusPanel.style.display = 'grid';
+
+    const formData = new FormData();
+    for (const file of files) formData.append('files', file);
+
+    let jobId;
+    try {
+      const res = await fetch('/api/knowledge/documents/ingest-upload', { method: 'POST', body: formData });
+      const payload = await res.json();
+      if (!res.ok) {
+        setStatus(`Error iniciando ingest: ${payload.detail || res.statusText}`, { tone: 'danger' });
+        return;
+      }
+      jobId = payload.job_id;
+    } catch (err) {
+      setStatus(`Error de red al iniciar ingest: ${err.message}`, { tone: 'danger' });
+      return;
+    }
+
+    setStatus(`Ingiriendo ${files.length} archivo(s)…`, { tone: 'sky', blinking: true });
+
+    const evtSource = new EventSource(`/api/knowledge/documents/ingest-jobs/${encodeURIComponent(jobId)}/events`);
+    evtSource.addEventListener('ingest_update', (e) => {
+      try {
+        const event = JSON.parse(e.data);
+        if (event.done && event.status === 'batch_done') {
+          evtSource.close();
+          setStatus(`Ingest completo — ${event.file_count} archivo(s) indexado(s).`, { tone: 'green', blinking: false });
+          setTimeout(() => { ingestStatusPanel.style.display = 'none'; ingestStatusPanel.innerHTML = ''; }, 4000);
+          return;
+        }
+        const idx = event.file_index;
+        if (typeof idx === 'number') {
+          _updateIngestRow(idx, { status: event.status, progress: event.progress || 0, message: event.message || '' });
+        }
+      } catch (_) {}
+    });
+    evtSource.onerror = () => {
+      evtSource.close();
+      setStatus('SSE de ingest cerrado.', { tone: 'amber', blinking: false });
+    };
+  }
+
   async function uploadAttachedFile() {
     if (!activeSessionId) {
       setActionStatus('No hay session_id activo aun.', 'amber');
@@ -3346,6 +3508,19 @@
 
   attachBtn.addEventListener('click', () => {
     openAttachPicker();
+  });
+
+  ingestBtn.addEventListener('click', () => {
+    ingestFilesInput.value = '';
+    ingestFilesInput.click();
+  });
+
+  ingestFilesInput.addEventListener('change', () => {
+    const files = ingestFilesInput.files;
+    if (files && files.length > 0) {
+      runMultiFileIngest(Array.from(files));
+      ingestFilesInput.value = '';
+    }
   });
 
   window.addEventListener('storage', (event) => {

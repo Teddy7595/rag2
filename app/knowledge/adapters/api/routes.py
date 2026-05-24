@@ -1,8 +1,18 @@
+from __future__ import annotations
+
+import asyncio
+import json
+import tempfile
+from pathlib import Path
+from uuid import uuid4
+
 from fastapi import APIRouter, File, Form, Request, UploadFile
 from fastapi import HTTPException, status
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 
 from app.core.app_context import get_app_context_from_request
+from app.knowledge.application.ingest_jobs import IngestJobRegistry
 from app.knowledge.events import (
     ContextBuildRequest,
     ContextGraphRequest,
@@ -335,6 +345,147 @@ async def delete_engram(request: Request, engram_id: str) -> dict[str, object]:
     if not result["deleted"]:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Engram not found")
     return result
+
+
+@router.post("/documents/ingest-upload")
+async def ingest_upload_files(
+    request: Request,
+    files: list[UploadFile] = File(...),
+    tags: str = Form(""),
+) -> dict[str, object]:
+    """Accept multiple files, immediately start background ingestion and return a job_id.
+
+    The client subscribes to ``GET /documents/ingest-jobs/{job_id}/events`` to receive
+    SSE status events per file.
+    """
+    context = get_app_context_from_request(request)
+    registry = context.services.get("knowledge_ingest_jobs")
+    if not isinstance(registry, IngestJobRegistry):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Ingest registry unavailable")
+
+    if not files:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No se enviaron archivos")
+
+    loop = asyncio.get_running_loop()
+    job_id = registry.create(loop=loop)
+
+    tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    file_data: list[dict[str, object]] = []
+    for f in files:
+        raw = await f.read()
+        file_data.append({
+            "name": f.filename or f"file_{len(file_data) + 1}",
+            "content": raw,
+            "content_type": f.content_type or "",
+        })
+
+    asyncio.create_task(
+        asyncio.to_thread(_run_ingest_job, job_id, file_data, tag_list, context, registry)
+    )
+
+    return {"job_id": job_id, "file_count": len(file_data)}
+
+
+@router.get("/documents/ingest-jobs/{job_id}/events")
+async def ingest_job_events(request: Request, job_id: str) -> StreamingResponse:
+    """SSE stream that yields ingest status events until the batch completes."""
+    context = get_app_context_from_request(request)
+    registry = context.services.get("knowledge_ingest_jobs")
+    if not isinstance(registry, IngestJobRegistry):
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="Ingest registry unavailable")
+
+    async def event_stream():
+        async for event in registry.subscribe(job_id):
+            data = json.dumps(event, ensure_ascii=False)
+            yield f"event: ingest_update\ndata: {data}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")
+
+
+def _run_ingest_job(
+    job_id: str,
+    file_data: list[dict[str, object]],
+    tags: list[str],
+    context: object,
+    registry: IngestJobRegistry,
+) -> None:
+    """Synchronous worker executed in a thread pool by asyncio.to_thread."""
+    for i, file_info in enumerate(file_data):
+        name = str(file_info["name"])
+        content_bytes = bytes(file_info["content"])  # type: ignore[arg-type]
+        content_type = str(file_info.get("content_type") or "")
+        is_pdf = name.lower().endswith(".pdf") or "pdf" in content_type.lower()
+
+        registry.emit(job_id, {
+            "file_index": i, "file_name": name,
+            "status": "processing", "progress": 10,
+            "message": f"Procesando {name}…", "done": False,
+        })
+
+        try:
+            if is_pdf:
+                with tempfile.NamedTemporaryFile(suffix=".pdf", delete=False) as tmp:
+                    tmp.write(content_bytes)
+                    tmp_path = tmp.name
+                try:
+                    registry.emit(job_id, {
+                        "file_index": i, "file_name": name,
+                        "status": "embedding", "progress": 45,
+                        "message": f"Extrayendo texto y generando embeddings de {name}…", "done": False,
+                    })
+                    result = context.event_bus.request(  # type: ignore[union-attr]
+                        REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
+                        DocumentIngestRequest(
+                            title=name,
+                            pdf_path=tmp_path,
+                            source_uri=f"upload:{name}",
+                            tags=tuple(tags),
+                        ),
+                        source_module="knowledge.adapters.api.routes",
+                    )
+                finally:
+                    Path(tmp_path).unlink(missing_ok=True)
+            else:
+                try:
+                    raw_text = content_bytes.decode("utf-8")
+                except UnicodeDecodeError:
+                    raw_text = content_bytes.decode("latin-1", errors="replace")
+
+                registry.emit(job_id, {
+                    "file_index": i, "file_name": name,
+                    "status": "embedding", "progress": 45,
+                    "message": f"Generando embeddings de {name}…", "done": False,
+                })
+                result = context.event_bus.request(  # type: ignore[union-attr]
+                    REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
+                    DocumentIngestRequest(
+                        title=name,
+                        raw_text=raw_text,
+                        source_uri=f"upload:{name}",
+                        tags=tuple(tags),
+                    ),
+                    source_module="knowledge.adapters.api.routes",
+                )
+
+            chunk_count = int((result or {}).get("chunk_count") or 0)
+            registry.emit(job_id, {
+                "file_index": i, "file_name": name,
+                "status": "done", "progress": 100,
+                "message": f"Listo — {chunk_count} fragmentos indexados.", "done": False,
+                "chunk_count": chunk_count,
+            })
+        except Exception as exc:
+            registry.emit(job_id, {
+                "file_index": i, "file_name": name,
+                "status": "error", "progress": 0,
+                "message": str(exc)[:200], "done": False,
+            })
+
+    registry.emit(job_id, {
+        "status": "batch_done", "file_count": len(file_data),
+        "message": f"Batch completo — {len(file_data)} archivo(s) procesado(s).",
+        "done": True,
+    })
 
 
 @router.post("/engrams/import/csv")

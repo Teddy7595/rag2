@@ -453,6 +453,24 @@ def instruction_echo_prefix_detected(text: str) -> bool:
     return any(re.search(pattern, first_low) for pattern in instruction_echo_patterns)
 
 
+def _token_overlap_ratio(a: str, b: str) -> float:
+    """Fraction of meaningful tokens in *a* that also appear in *b*."""
+    tokens_a = set(re.findall(r"[a-z0-9áéíóúñ]{3,}", a.lower()))
+    tokens_b = set(re.findall(r"[a-z0-9áéíóúñ]{3,}", b.lower()))
+    if not tokens_a:
+        return 0.0
+    return len(tokens_a & tokens_b) / len(tokens_a)
+
+
+def detect_repetition(reply: str, recent_replies: list[str], *, threshold: float = 0.76) -> tuple[bool, float]:
+    """Return (is_repetitive, max_overlap) comparing reply against recent assistant messages."""
+    candidates = [r for r in recent_replies if r.strip()]
+    if not candidates or not reply.strip():
+        return False, 0.0
+    max_overlap = max(_token_overlap_ratio(reply, prev) for prev in candidates)
+    return max_overlap >= threshold, round(max_overlap, 3)
+
+
 def evaluate_immersive_response(
     text: str,
     *,
@@ -461,6 +479,7 @@ def evaluate_immersive_response(
     threshold: float = 0.65,
     strict_engram: bool = True,
     has_custom_engram: bool = False,
+    recent_replies: list[str] | None = None,
 ) -> dict[str, object]:
     candidate = re.sub(r"\s+", " ", str(text or "")).strip()
     score = 1.0
@@ -501,17 +520,17 @@ def evaluate_immersive_response(
         score -= 0.12
         reasons.append("too_short")
 
-    if has_custom_engram and strict_engram:
-        first_person_markers = (" yo ", " soy ", " conmigo", "me ")
-        padded = f" {lowered} "
-        if not any(marker in padded for marker in first_person_markers):
-            score -= 0.12
-            reasons.append("weak_persona_voice")
+    # Alignment check removed — heuristic-based persona/user alignment scoring
+    # is too narrow for adult/creative content and causes valid responses to be rejected.
 
-    user_focus = re.sub(r"\s+", " ", user_text.lower()).strip()
-    if user_focus and len(user_focus) >= 8 and user_focus.split()[0] not in lowered and has_custom_engram:
-        score -= 0.08
-        reasons.append("weak_user_alignment")
+    # Repetition detection against recent assistant replies
+    if recent_replies:
+        is_repetitive, overlap = detect_repetition(candidate, recent_replies)
+        if is_repetitive:
+            score -= min(0.40, 0.20 + (overlap - 0.58) * 2.0)
+            reasons.append(f"repetitive_content:{overlap:.2f}")
+            if overlap >= 0.80:
+                hard_fail = True
 
     score = max(0.0, min(1.0, round(score, 3)))
     passed = (score >= max(0.1, min(0.95, threshold))) and not hard_fail
