@@ -97,6 +97,31 @@ def _recent_assistant_replies(messages: list[dict[str, object]], *, limit: int =
     return replies
 
 
+_CONTINUATION_RE = re.compile(
+    r"\b(continúa|continua|continúalo|continúala|sigue|siguiente|prosigue|"
+    r"adelante|más|mas|después|despues|y\s+luego|y\s+entonces|"
+    r"qu[eé]\s+pas[oó]|qu[eé]\s+le\s+pas[oó]|qu[eé]\s+hizo|"
+    r"me\s+gusta|me\s+gustó|me\s+encanta|me\s+encantó|bien|dale|ok|okay|"
+    r"y\s+el\s+personaje|y\s+la\s+historia)\b",
+    re.IGNORECASE,
+)
+
+
+def _is_continuation(user_text: str) -> bool:
+    stripped = user_text.strip()
+    return len(stripped) < 80 and bool(_CONTINUATION_RE.search(stripped))
+
+
+def _build_narrative_rag_query(user_text: str, history_messages: list[dict[str, object]]) -> str:
+    """Enrich the RAG query with the tail of the last assistant reply so the
+    vector search finds chunks that continue naturally from where the story left off."""
+    recent = _recent_assistant_replies(history_messages, limit=1)
+    if not recent:
+        return user_text
+    tail = recent[0][-400:].strip()
+    return f"{tail} {user_text}".strip()
+
+
 def _looks_mostly_english(text: str) -> bool:
     lowered = re.sub(r"\s+", " ", text.lower()).strip()
     if not lowered:
@@ -458,10 +483,11 @@ class RealtimeChatService:
                     "identity": ("quien eres", "como te llamas", "cual es tu nombre"),
                     "conversational": ("como sigues", "que opinas", "hablemos", "charlar contigo"),
                     "technical": ("tengo un error", "hay un bug", "necesito ayuda tecnica"),
+                    "narrative": ("cuéntame una historia", "continúa la historia", "sigue narrando", "qué pasó después"),
                     "mixed": ("quiero contexto y opinion", "consulta general con contexto"),
                 },
             )
-            if semantic_intent in {"greeting", "identity", "conversational", "technical", "mixed"}:
+            if semantic_intent in {"greeting", "identity", "conversational", "technical", "narrative", "mixed"}:
                 return semantic_intent
 
         runtime = self.model_runtime
@@ -686,10 +712,15 @@ class RealtimeChatService:
         if input_data.world_rules.strip() and input_data.world_rules.strip() != str(stored_conditions.get("world_rules") or "").strip():
             self.interaction_service.repository.save_session_conditions(session_id, world_rules=input_data.world_rules)
 
+        rag_query = (
+            _build_narrative_rag_query(input_data.content, history_messages)
+            if _is_continuation(input_data.content)
+            else input_data.content
+        )
         context_preview = self.event_bus.request(
             REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
             ContextBuildRequest(
-                raw_text=input_data.content,
+                raw_text=rag_query,
                 limit=input_data.context_limit,
                 identity_id=input_data.identity_id,
                 history=history_text,
@@ -1002,6 +1033,7 @@ class RealtimeChatService:
             embedding_runtime=self.embedding_runtime,
         )
         conversational_mode = policy.intent in {"greeting", "identity", "conversational"}
+        narrative_mode = policy.intent == "narrative"
 
         if conversational_mode:
             knowledge_matches = []
@@ -1065,18 +1097,20 @@ class RealtimeChatService:
         if compact_context_text:
             prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
         if knowledge_matches:
+            match_limit = 7 if narrative_mode else 4
             prompt_sections.append(
                 "Coincidencias relevantes:\n" + "\n".join(
                     f"- {str(match.get('label') or 'contexto')}: {str(match.get('excerpt') or '').strip()}"
-                    for match in knowledge_matches[:4]
+                    for match in knowledge_matches[:match_limit]
                 )
             )
 
         # BLOCK 3.5: Conversation history (injected directly, bypasses compact_context_for_prompt).
-        if history_messages:
-            history_text = _format_history(history_messages[-12:])
-            if history_text:
-                prompt_sections.append(f"Historial de conversación:\n{history_text}")
+        history_window = history_messages[-20:] if narrative_mode else history_messages[-12:]
+        if history_window:
+            history_text_block = _format_history(history_window)
+            if history_text_block:
+                prompt_sections.append(f"Historial de conversación:\n{history_text_block}")
 
         # BLOCK 4: The actual request.
         prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
@@ -1088,6 +1122,14 @@ class RealtimeChatService:
         # BLOCK 5: Format instruction (last — brief).
         if conversational_mode:
             prompt_sections.append("Responde de forma natural y directa, como lo haría este personaje en una conversación real.")
+        elif narrative_mode:
+            prompt_sections.append(
+                "Continúa o desarrolla la historia de forma coherente con el historial y el contexto recuperado. "
+                "Mantén los personajes, la escena, el tono y los eventos ya establecidos. "
+                "No reinicies ni ignores lo que ya ocurrió. "
+                "Escribe con riqueza narrativa, detalle sensorial y voz consistente del personaje. "
+                "No uses encabezados ni razonamiento interno."
+            )
         else:
             prompt_sections.append("Responde en español claro y útil, sin mostrar razonamiento interno ni encabezados técnicos.")
 

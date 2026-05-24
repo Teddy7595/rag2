@@ -42,7 +42,7 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     return dot / (left_norm * right_norm)
 
 
-def _excerpt(text: str, keywords: tuple[str, ...], *, limit: int = 180) -> str:
+def _excerpt(text: str, keywords: tuple[str, ...], *, limit: int = 480) -> str:
     cleaned = " ".join(text.split()).strip()
     if not cleaned:
         return ""
@@ -53,8 +53,8 @@ def _excerpt(text: str, keywords: tuple[str, ...], *, limit: int = 180) -> str:
             continue
         index = lowered.find(keyword.lower())
         if index >= 0:
-            start = max(0, index - 60)
-            end = min(len(cleaned), index + len(keyword) + 120)
+            start = max(0, index - 120)
+            end = min(len(cleaned), index + len(keyword) + 360)
             excerpt = cleaned[start:end]
             if start > 0:
                 excerpt = f"...{excerpt}"

@@ -29,6 +29,14 @@ _INTENT_PROTOTYPES: dict[str, tuple[str, ...]] = {
         "necesito ayuda tecnica",
         "diagnostica el fallo",
     ),
+    "narrative": (
+        "cuéntame una historia",
+        "continúa la historia",
+        "sigue narrando",
+        "qué pasó después con el personaje",
+        "escríbeme un relato",
+        "prosigue con la narrativa",
+    ),
     "mixed": (
         "quiero contexto y opinion",
         "mezcla de charla y soporte tecnico",
@@ -55,7 +63,7 @@ def build_turn_policy(
     embedding_runtime: SemanticEmbeddingRuntime | None = None,
 ) -> ConversationTurnPolicy:
     intent = (intent_hint or classify_intent(user_text, embedding_runtime=embedding_runtime)).strip().lower()
-    if intent not in {"greeting", "identity", "conversational", "technical", "mixed"}:
+    if intent not in {"greeting", "identity", "conversational", "technical", "narrative", "mixed"}:
         intent = classify_intent(user_text, embedding_runtime=embedding_runtime)
 
     # Keep conservative budgets on default identity and allow larger budgets on custom engrams.
@@ -93,6 +101,15 @@ def build_turn_policy(
             temperature=0.35 if has_custom_engram else 0.2,
             top_p=1.0 if has_custom_engram else 0.9,
             deadline_ms=3200,
+            prefer_short=False,
+        )
+    if intent == "narrative":
+        return ConversationTurnPolicy(
+            intent=intent,
+            max_tokens=1000 if has_custom_engram else 700,
+            temperature=0.82 if has_custom_engram else 0.72,
+            top_p=0.95,
+            deadline_ms=14000,
             prefer_short=False,
         )
     return ConversationTurnPolicy(
@@ -137,6 +154,17 @@ def classify_intent(text: str, *, embedding_runtime: SemanticEmbeddingRuntime | 
     )
     if any(marker in lowered for marker in technical_markers):
         return "technical"
+    narrative_markers = (
+        "cuéntame", "cuentame", "historia", "narración", "narracion",
+        "continúa", "continua", "sigue", "siguiente",
+        "que pasó", "que paso", "qué pasó", "qué paso",
+        "y luego", "y entonces", "y después", "y despues",
+        "personaje", "escena", "capítulo", "capitulo",
+        "relato", "cuento", "narra", "prosigue", "adelante",
+        "me gusta la historia", "me gustó la historia",
+    )
+    if any(marker in lowered for marker in narrative_markers):
+        return "narrative"
     return "mixed"
 
 
