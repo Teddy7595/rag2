@@ -88,6 +88,11 @@ class LocalInferenceService:
             "seed": int(config.get("text_generation_seed") or -1),
         }
 
+    def llama_cpp_context_size(self) -> int:
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        config = cast(dict[str, Any], catalog.get("runtime_config") or {})
+        return max(512, int(config.get("llama_cpp_n_ctx") or 32768))
+
     def restart_runtime(self, *, reason: str = "model_update") -> dict[str, object]:
         events: list[dict[str, object]] = []
 
@@ -484,13 +489,14 @@ class LocalInferenceService:
 
         model_path = str(self.catalog_service.models_dir / relative_model_path)
         attempts: list[str] = []
+        requested_n_ctx = self.llama_cpp_context_size()
 
         profiles: list[dict[str, object]]
         if cpu_only:
             profiles = [
                 {
                     "label": "cpu_balanced",
-                    "n_ctx": max(512, min(n_ctx, 2048)),
+                    "n_ctx": max(512, min(requested_n_ctx, 2048)),
                     "n_gpu_layers": 0,
                     "n_batch": max(32, min(n_batch, 256)),
                     "flash_attn": False,
@@ -507,21 +513,21 @@ class LocalInferenceService:
             profiles = [
                 {
                     "label": "gpu_auto",
-                    "n_ctx": n_ctx,
+                    "n_ctx": requested_n_ctx,
                     "n_gpu_layers": -1,
                     "n_batch": n_batch,
                     "flash_attn": True,
                 },
                 {
                     "label": "gpu_partial",
-                    "n_ctx": max(1024, min(n_ctx, 4096)),
+                    "n_ctx": max(1024, min(requested_n_ctx, 4096)),
                     "n_gpu_layers": 24,
                     "n_batch": max(64, min(n_batch, 512)),
                     "flash_attn": True,
                 },
                 {
                     "label": "cpu_fallback",
-                    "n_ctx": max(1024, min(n_ctx, 4096)),
+                    "n_ctx": max(1024, min(requested_n_ctx, 4096)),
                     "n_gpu_layers": 0,
                     "n_batch": max(32, min(n_batch, 256)),
                     "flash_attn": False,

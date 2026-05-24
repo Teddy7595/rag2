@@ -683,6 +683,7 @@
   const OPEN_IMPORT_CSV = document.getElementById('open-import-csv');
   const OVERWRITE_IMPORT_CSV = document.getElementById('overwrite-import-csv');
   const IMPORT_CSV_FILE = document.getElementById('import-csv-file');
+  const ENGRAM_UPDATE_SIGNAL_KEY = 'rag2.engrams.updateSignal';
 
   const INP_ID = document.getElementById('edit-id');
   const INP_NAME = document.getElementById('inp-name');
@@ -752,6 +753,18 @@
       interaction_mode: String(raw.interaction_mode || 'Directo'),
       dialogue_examples: Array.isArray(raw.dialogue_examples) ? raw.dialogue_examples : [],
     };
+  }
+
+  function signalEngramCatalogUpdate(action, engramId) {
+    try {
+      window.localStorage.setItem(ENGRAM_UPDATE_SIGNAL_KEY, JSON.stringify({
+        action,
+        engram_id: String(engramId || '').trim(),
+        at: Date.now(),
+      }));
+    } catch (_) {
+      // no-op
+    }
   }
 
   function parseMetaRules(rawText) {
@@ -1000,6 +1013,7 @@
 
       closeModal();
       await loadEngrams();
+      signalEngramCatalogUpdate(isEdit ? 'updated' : 'created', editingId || payload.name);
       setStatus(isEdit ? 'Engrama actualizado.' : 'Engrama creado.');
       setEditorFeedback(isEdit ? 'Engrama actualizado correctamente.' : 'Engrama creado correctamente.', 'success');
       showToast(isEdit ? 'Engrama actualizado correctamente.' : 'Engrama creado correctamente.', 'success');
@@ -1026,6 +1040,7 @@
         throw new Error(await response.text());
       }
       await loadEngrams();
+      signalEngramCatalogUpdate('deleted', engramId);
       setStatus('Engrama eliminado.');
       showToast('Engrama eliminado.', 'success');
     } catch (error) {
@@ -1051,6 +1066,7 @@
 
       const payload = await response.json();
       await loadEngrams();
+      signalEngramCatalogUpdate('imported', 'csv');
       const errors = Array.isArray(payload.errors) ? payload.errors : [];
       const summary = `Importados=${payload.imported || 0}, creados=${payload.created || 0}, actualizados=${payload.updated || 0}, omitidos=${payload.skipped || 0}`;
       setStatus(errors.length ? `${summary}. Con advertencias.` : summary);

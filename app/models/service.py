@@ -23,6 +23,7 @@ _VISION_PROVIDER_OPTIONS = ("local", "ollama", "lmstudio")
 _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "llm_provider": "local",
     "llm_model_path": "",
+    "llama_cpp_n_ctx": 32768,
     "lmstudio_base_url": "http://localhost:8000",
     "lmstudio_model": "",
     "lmstudio_n_ctx": 32768,
@@ -213,6 +214,11 @@ class ModelCatalogService:
         config: dict[str, object] = dict(_RUNTIME_CONFIG_DEFAULTS)
         config["llm_provider"] = _normalize_provider(_read_env("LLM_PROVIDER", str(config["llm_provider"])), "local")
         config["llm_model_path"] = _read_env("LLM_MODEL_PATH", str(config["llm_model_path"]))
+        config["llama_cpp_n_ctx"] = _coerce_runtime_int(
+            _read_env("LLAMA_CPP_N_CTX", str(config["llama_cpp_n_ctx"])),
+            int(config["llama_cpp_n_ctx"]) if isinstance(config["llama_cpp_n_ctx"], int) else 32768,
+            minimum=512,
+        )
         config["lmstudio_base_url"] = _read_env("LMSTUDIO_BASE_URL", str(config["lmstudio_base_url"]))
         config["lmstudio_model"] = _read_env("LMSTUDIO_MODEL", str(config["lmstudio_model"]))
         config["lmstudio_n_ctx"] = _coerce_runtime_int(_read_env("LMSTUDIO_N_CTX", str(config["lmstudio_n_ctx"])), int(config["lmstudio_n_ctx"]) if isinstance(config["lmstudio_n_ctx"], int) else 32768, minimum=512)
@@ -589,6 +595,7 @@ class ModelCatalogService:
         normalized["vision_provider"] = _normalize_provider(_coerce_text(normalized.get("vision_provider")) or "local", "local")
         normalized["lmstudio_base_url"] = _coerce_text(normalized.get("lmstudio_base_url")) or "http://localhost:8000"
         normalized["lmstudio_model"] = _coerce_text(normalized.get("lmstudio_model")) or ""
+        normalized["llama_cpp_n_ctx"] = _coerce_runtime_int(normalized.get("llama_cpp_n_ctx"), 32768, minimum=512)
         normalized["lmstudio_n_ctx"] = _coerce_runtime_int(normalized.get("lmstudio_n_ctx"), 32768, minimum=512)
         normalized["vision_ollama_base_url"] = _coerce_text(normalized.get("vision_ollama_base_url")) or "http://localhost:11434"
         normalized["vision_ollama_model"] = _coerce_text(normalized.get("vision_ollama_model")) or "llava"

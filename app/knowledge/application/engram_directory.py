@@ -21,8 +21,12 @@ class EngramDirectory:
             self.identity_store[str(identity.id)] = identity
 
     def replace(self, identity: Identity) -> None:
-        self.remove(str(identity.id))
+        identity_id = str(identity.id)
+        was_active = self.last_active_identity_id == identity_id
+        self.remove(identity_id)
         self.cache(identity)
+        if was_active:
+            self.last_active_identity_id = identity_id
 
     def remove(self, identity_id: str) -> None:
         key = str(identity_id)

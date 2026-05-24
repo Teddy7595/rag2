@@ -31,6 +31,7 @@ class ModelTextSmokeRequest(BaseModel):
 class ModelRuntimeConfigUpdate(BaseModel):
     llm_provider: str | None = None
     llm_model_path: str | None = None
+    llama_cpp_n_ctx: int | None = None
     lmstudio_base_url: str | None = None
     lmstudio_model: str | None = None
     lmstudio_n_ctx: int | None = None

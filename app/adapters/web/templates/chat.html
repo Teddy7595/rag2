@@ -1474,12 +1474,16 @@
   const LIMITS_PREFIX = 'rag2.sessionLimits.';
   const DEFAULT_LIMITS_KEY = 'rag2.defaultSessionLimits';
   const MODEL_RESTART_SIGNAL_KEY = 'rag2.models.restartSignal';
+  const ENGRAM_UPDATE_SIGNAL_KEY = 'rag2.engrams.updateSignal';
 
   let currentEngramColor = '#00ff41';
   let currentEngramAvatar = 'https://ui-avatars.com/api/?name=AI&background=333&color=fff';
   let currentAiBubble = null;
   let isProcessing = false;
   let availableHints = [];
+  let knownEngrams = [];
+  let knownEngramsById = new Map();
+  let knownEngramsByName = new Map();
   let activeSessionId = '';
   let attachedFile = null;
   let lastMessageId = '';
@@ -2121,6 +2125,39 @@
     }
   }
 
+  function consumeEngramUpdateSignal() {
+    const raw = window.localStorage.getItem(ENGRAM_UPDATE_SIGNAL_KEY);
+    if (!raw) {
+      return null;
+    }
+    window.localStorage.removeItem(ENGRAM_UPDATE_SIGNAL_KEY);
+    try {
+      const parsed = JSON.parse(raw);
+      const at = Number(parsed && parsed.at);
+      if (!Number.isFinite(at)) {
+        return null;
+      }
+      const ageMs = Date.now() - at;
+      if (ageMs < 0 || ageMs > (30 * 60 * 1000)) {
+        return null;
+      }
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function refreshEngramCatalog() {
+    await loadLobbyEngrams();
+    await loadHints();
+    if (activeSessionId) {
+      const remembered = loadSessionEngram(activeSessionId);
+      if (remembered) {
+        applyIdentitySelection(remembered, { persist: false });
+      }
+    }
+  }
+
   function scrollToBottom(force) {
     const threshold = 10;
     const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight <= threshold;
@@ -2514,8 +2551,66 @@
       .map((item) => ({
         id: String((item && (item.id || item.engram_id || item.identity_id)) || '').trim(),
         name: String((item && (item.name || item.alias || item.title)) || '').trim(),
+        avatar: String((item && item.avatar) || '').trim(),
+        color: String((item && (item.color_hex || item.color)) || '').trim(),
       }))
       .filter((item) => item.id && item.name);
+  }
+
+  function rebuildEngramLookup(items) {
+    knownEngrams = Array.isArray(items) ? items : [];
+    knownEngramsById = new Map();
+    knownEngramsByName = new Map();
+    for (const item of knownEngrams) {
+      knownEngramsById.set(item.id, item);
+      knownEngramsByName.set(String(item.name || '').trim().toLowerCase(), item);
+    }
+  }
+
+  function resolveMentionedEngram(text) {
+    const matches = String(text || '').matchAll(/@([^\s.,!?;:()[\]{}<>]+)/g);
+    for (const match of matches) {
+      const token = String(match[1] || '').trim().toLowerCase();
+      if (!token) {
+        continue;
+      }
+      const exactByName = knownEngramsByName.get(token);
+      if (exactByName) {
+        return exactByName;
+      }
+      const exactById = knownEngramsById.get(token);
+      if (exactById) {
+        return exactById;
+      }
+      const partial = knownEngrams.find((item) => String(item.name || '').trim().toLowerCase().includes(token));
+      if (partial) {
+        return partial;
+      }
+    }
+    return null;
+  }
+
+  function applyIdentitySelection(identityId, { persist = true } = {}) {
+    const key = String(identityId || '').trim();
+    activeIdentityId = key;
+    if (lobbyEngramSelect) {
+      lobbyEngramSelect.value = key;
+    }
+    if (persist && activeSessionId) {
+      persistSessionEngram(activeSessionId, key);
+    }
+    if (!key) {
+      return;
+    }
+
+    const engram = knownEngramsById.get(key);
+    if (engram) {
+      updateIdentityUI({
+        name: engram.name,
+        color: engram.color || currentEngramColor,
+        avatar: engram.avatar || currentEngramAvatar,
+      });
+    }
   }
 
   async function loadLobbyEngrams() {
@@ -2530,11 +2625,19 @@
       }
       const payload = await response.json();
       const items = parseEngramItems(payload);
+      rebuildEngramLookup(items);
       for (const item of items) {
         const option = document.createElement('option');
         option.value = item.id;
         option.textContent = `${item.name} (${item.id.slice(0, 8)})`;
         lobbyEngramSelect.appendChild(option);
+      }
+
+      if (activeSessionId) {
+        const remembered = loadSessionEngram(activeSessionId);
+        if (remembered) {
+          applyIdentitySelection(remembered, { persist: false });
+        }
       }
     } catch (_) {
       // no-op: keep default option
@@ -2648,9 +2751,7 @@
     historyLimit = Math.max(1, Math.min(100, Number.isFinite(parsedHistory) ? parsedHistory : historyLimit));
 
     worldRules = serializeWorldRuleItems(worldRuleItems);
-    activeIdentityId = String(lobbyEngramSelect && lobbyEngramSelect.value || '').trim();
-
-    persistSessionEngram(key, activeIdentityId);
+    applyIdentitySelection(String(lobbyEngramSelect && lobbyEngramSelect.value || '').trim(), { persist: true });
     persistLimits(key);
     window.localStorage.setItem(`${WORLD_RULES_PREFIX}${key}`, worldRules);
 
@@ -3086,6 +3187,12 @@
       return;
     }
 
+    const mentionedEngram = resolveMentionedEngram(text);
+    if (mentionedEngram && mentionedEngram.id && mentionedEngram.id !== activeIdentityId) {
+      applyIdentitySelection(mentionedEngram.id, { persist: true });
+      setActionStatus(`Engrama activo cambiado por mención: ${mentionedEngram.name}.`, 'green');
+    }
+
     if (text.startsWith('/')) {
       const handled = await handleSlashCommand(text);
       if (handled) {
@@ -3140,6 +3247,12 @@
 
   attachBtn.addEventListener('click', () => {
     openAttachPicker();
+  });
+
+  window.addEventListener('storage', (event) => {
+    if (event.key === ENGRAM_UPDATE_SIGNAL_KEY) {
+      refreshEngramCatalog();
+    }
   });
 
   fileUpload.addEventListener('change', () => {
