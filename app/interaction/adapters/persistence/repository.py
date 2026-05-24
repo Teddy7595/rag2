@@ -98,6 +98,7 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
             summary_rows = session.execute(summary_statement).all()
 
             result: list[dict[str, object]] = []
+            included_ids: set[str] = set()
             for row in summary_rows:
                 session_id = str(row.session_id or "").strip()
                 if not session_id:
@@ -122,6 +123,63 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                         "last_excerpt": (last_content[:180] + "...") if len(last_content) > 180 else last_content,
                     }
                 )
+                included_ids.add(session_id)
+
+            fallback_activity: dict[str, datetime] = {}
+
+            conditions_rows = session.execute(
+                select(SessionConditionsRecord.session_id, SessionConditionsRecord.updated_at)
+                .order_by(SessionConditionsRecord.updated_at.desc())
+                .limit(safe_limit * 2)
+            ).all()
+            for row in conditions_rows:
+                key = str(row.session_id or "").strip()
+                if not key or key in included_ids:
+                    continue
+                updated_at = self._as_utc(row.updated_at)
+                if updated_at is not None:
+                    fallback_activity[key] = max(updated_at, fallback_activity.get(key, updated_at))
+
+            memory_rows = session.execute(
+                select(SessionMemorySnapshotRecord.session_id, SessionMemorySnapshotRecord.updated_at)
+                .order_by(SessionMemorySnapshotRecord.updated_at.desc())
+                .limit(safe_limit * 2)
+            ).all()
+            for row in memory_rows:
+                key = str(row.session_id or "").strip()
+                if not key or key in included_ids:
+                    continue
+                updated_at = self._as_utc(row.updated_at)
+                if updated_at is not None:
+                    fallback_activity[key] = max(updated_at, fallback_activity.get(key, updated_at))
+
+            graph_rows = session.execute(
+                select(SessionTopicGraphRecord.session_id, SessionTopicGraphRecord.updated_at)
+                .order_by(SessionTopicGraphRecord.updated_at.desc())
+                .limit(safe_limit * 2)
+            ).all()
+            for row in graph_rows:
+                key = str(row.session_id or "").strip()
+                if not key or key in included_ids:
+                    continue
+                updated_at = self._as_utc(row.updated_at)
+                if updated_at is not None:
+                    fallback_activity[key] = max(updated_at, fallback_activity.get(key, updated_at))
+
+            for session_id, updated_at in sorted(fallback_activity.items(), key=lambda item: item[1], reverse=True):
+                if len(result) >= safe_limit:
+                    break
+                result.append(
+                    {
+                        "session_id": session_id,
+                        "message_count": 0,
+                        "last_message_at": updated_at.isoformat() if updated_at else None,
+                        "last_author": "",
+                        "last_channel": "",
+                        "last_excerpt": "Sesion iniciada sin mensajes persistidos aun.",
+                    }
+                )
+                included_ids.add(session_id)
 
             return result
 

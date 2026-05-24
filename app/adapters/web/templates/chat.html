@@ -1506,6 +1506,7 @@
   let manualSocketClose = false;
   let preferredSessionId = '';
   let activeIdentityId = '';
+  let pendingLobbyEngramId = '';
   let lobbySelectedSessionId = '';
   let lobbyDraggingRuleIndex = -1;
   let processingStage = '';
@@ -1896,20 +1897,22 @@
 
   async function loadSessionList() {
     try {
-      const [sessionsResponse, trashResponse] = await Promise.all([
-        fetch('/api/interaction/sessions?limit=40'),
-        fetch('/api/interaction/sessions/deleted?limit=40'),
-      ]);
+      const sessionsResponse = await fetch('/api/interaction/sessions?limit=40');
       if (!sessionsResponse.ok) {
         throw new Error(await sessionsResponse.text());
       }
-      if (!trashResponse.ok) {
-        throw new Error(await trashResponse.text());
-      }
       const sessionsPayload = await sessionsResponse.json();
-      const trashPayload = await trashResponse.json();
       const sessions = Array.isArray(sessionsPayload) ? sessionsPayload : [];
-      const deletedSessions = Array.isArray(trashPayload) ? trashPayload : [];
+      let deletedSessions = [];
+      try {
+        const trashResponse = await fetch('/api/interaction/sessions/deleted?limit=40');
+        if (trashResponse.ok) {
+          const trashPayload = await trashResponse.json();
+          deletedSessions = Array.isArray(trashPayload) ? trashPayload : [];
+        }
+      } catch (_) {
+        deletedSessions = [];
+      }
       renderSessionList(sessions);
       renderLobbySessionList(sessions);
       renderDeletedSessionList(deletedSessions);
@@ -2398,7 +2401,7 @@
     if (sessionIntelLink) {
       sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
     }
-    activeIdentityId = loadSessionEngram(sessionId) || activeIdentityId;
+    activeIdentityId = loadSessionEngram(sessionId) || pendingLobbyEngramId || activeIdentityId;
     applySessionConfigToLobby(sessionId);
     loadLimitsForSession(sessionId);
     persistLimits(sessionId);
@@ -2590,14 +2593,14 @@
     return null;
   }
 
-  function applyIdentitySelection(identityId, { persist = true } = {}) {
+  function applyIdentitySelection(identityId, { persist = true, sessionId = null } = {}) {
     const key = String(identityId || '').trim();
     activeIdentityId = key;
     if (lobbyEngramSelect) {
       lobbyEngramSelect.value = key;
     }
-    if (persist && activeSessionId) {
-      persistSessionEngram(activeSessionId, key);
+    if (persist) {
+      persistSessionEngram(String(sessionId || activeSessionId || '').trim(), key);
     }
     if (!key) {
       return;
@@ -2636,6 +2639,7 @@
       if (activeSessionId) {
         const remembered = loadSessionEngram(activeSessionId);
         if (remembered) {
+          pendingLobbyEngramId = remembered;
           applyIdentitySelection(remembered, { persist: false });
         }
       }
@@ -3557,6 +3561,12 @@
       if (lobbySessionIdInput) {
         lobbySessionIdInput.value = generateSessionId();
       }
+    });
+  }
+
+  if (lobbyEngramSelect) {
+    lobbyEngramSelect.addEventListener('change', () => {
+      pendingLobbyEngramId = String(lobbyEngramSelect.value || '').trim();
     });
   }
 
