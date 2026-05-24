@@ -1473,6 +1473,7 @@
   const ENGRAM_PREFIX = 'rag2.sessionEngram.';
   const LIMITS_PREFIX = 'rag2.sessionLimits.';
   const DEFAULT_LIMITS_KEY = 'rag2.defaultSessionLimits';
+  const MODEL_RESTART_SIGNAL_KEY = 'rag2.models.restartSignal';
 
   let currentEngramColor = '#00ff41';
   let currentEngramAvatar = 'https://ui-avatars.com/api/?name=AI&background=333&color=fff';
@@ -1507,6 +1508,7 @@
   let processingStartedAt = 0;
   let processingTimer = null;
   let processingTone = 'sky';
+  let pendingModelRestartSignal = null;
 
   const slashCommands = [
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
@@ -2097,6 +2099,28 @@
     renderLimitsChip();
   }
 
+  function consumeModelRestartSignal() {
+    const raw = window.localStorage.getItem(MODEL_RESTART_SIGNAL_KEY);
+    if (!raw) {
+      return null;
+    }
+    window.localStorage.removeItem(MODEL_RESTART_SIGNAL_KEY);
+    try {
+      const parsed = JSON.parse(raw);
+      const at = Number(parsed && parsed.at);
+      if (!Number.isFinite(at)) {
+        return null;
+      }
+      const ageMs = Date.now() - at;
+      if (ageMs < 0 || ageMs > (30 * 60 * 1000)) {
+        return null;
+      }
+      return parsed;
+    } catch (_) {
+      return null;
+    }
+  }
+
   function scrollToBottom(force) {
     const threshold = 10;
     const isNearBottom = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight <= threshold;
@@ -2634,6 +2658,10 @@
     renderLobbyRules();
 
     await activateSession(key, { clearTimeline });
+    if (pendingModelRestartSignal) {
+      setActionStatus('Cambio de modelo detectado. Reconexion de chat aplicada sobre runtime actualizado.', 'green');
+      pendingModelRestartSignal = null;
+    }
     await saveWorldRules();
     hideLobby();
     inputField.focus();
@@ -3467,6 +3495,13 @@
   loadSessionList();
   loadLobbyEngrams();
   refreshModelState({ announce: false });
+
+  pendingModelRestartSignal = consumeModelRestartSignal();
+  if (pendingModelRestartSignal) {
+    const textModel = String(pendingModelRestartSignal.text || 'auto');
+    const visionModel = String(pendingModelRestartSignal.vision || 'auto');
+    setActionStatus(`Se detecto reinicio de modelos (texto=${textModel}, vision=${visionModel}). Al entrar, el chat reconectara al runtime nuevo.`, 'sky');
+  }
 
   if (lobbyContextLimitInput) {
     lobbyContextLimitInput.value = String(contextLimit);
