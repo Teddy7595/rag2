@@ -485,6 +485,31 @@ def detect_repetition(reply: str, recent_replies: list[str], *, threshold: float
     return max_overlap >= threshold, round(max_overlap, 3)
 
 
+def detect_repetition_semantic(
+    reply_embedding: list[float],
+    recent_embeddings: list[list[float]],
+    *,
+    threshold: float = 0.88,
+) -> tuple[bool, float]:
+    """GPU-friendly repetition check using pre-computed normalized embeddings.
+
+    Replaces Jaccard token overlap for long texts — O(1) in text length since
+    embeddings have fixed dimensionality. Embeddings must be L2-normalized
+    (sentence-transformers normalizes by default when normalize_embeddings=True),
+    so cosine similarity reduces to a plain dot product.
+
+    Returns (is_repetitive, max_similarity).
+    """
+    if not reply_embedding or not recent_embeddings:
+        return False, 0.0
+    max_sim = max(
+        sum(a * b for a, b in zip(reply_embedding, prev))
+        for prev in recent_embeddings
+        if prev
+    )
+    return max_sim >= threshold, round(max_sim, 4)
+
+
 def evaluate_immersive_response(
     text: str,
     *,
@@ -494,6 +519,11 @@ def evaluate_immersive_response(
     strict_engram: bool = True,
     has_custom_engram: bool = False,
     recent_replies: list[str] | None = None,
+    # Pre-computed normalized embeddings for the reply and recent responses.
+    # When provided, semantic cosine similarity replaces Jaccard token overlap —
+    # faster on GPU and scale-invariant for long narrative replies.
+    reply_embedding: list[float] | None = None,
+    recent_embeddings: list[list[float]] | None = None,
 ) -> dict[str, object]:
     candidate = re.sub(r"\s+", " ", str(text or "")).strip()
     score = 1.0
@@ -537,8 +567,17 @@ def evaluate_immersive_response(
     # Alignment check removed — heuristic-based persona/user alignment scoring
     # is too narrow for adult/creative content and causes valid responses to be rejected.
 
-    # Repetition detection against recent assistant replies
-    if recent_replies:
+    # Repetition detection: prefer semantic (GPU, O(1)) over Jaccard (CPU, O(n)).
+    # Semantic path is used when pre-computed embeddings are available; Jaccard
+    # is the fallback for callers that haven't enabled embedding caching yet.
+    if reply_embedding and recent_embeddings:
+        is_repetitive, overlap = detect_repetition_semantic(reply_embedding, recent_embeddings)
+        if is_repetitive:
+            score -= min(0.40, 0.20 + (overlap - 0.72) * 2.0)
+            reasons.append(f"repetitive_content_semantic:{overlap:.4f}")
+            if overlap >= 0.93:
+                hard_fail = True
+    elif recent_replies:
         is_repetitive, overlap = detect_repetition(candidate, recent_replies)
         if is_repetitive:
             score -= min(0.40, 0.20 + (overlap - 0.58) * 2.0)

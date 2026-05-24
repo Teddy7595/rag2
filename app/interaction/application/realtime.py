@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 from dataclasses import dataclass
 import logging
 import re
@@ -14,6 +15,7 @@ from app.interaction.application.governance import (
     compact_context_for_prompt,
     dedupe_rule_lines,
     detect_repetition,
+    detect_repetition_semantic,
     evaluate_immersive_response,
     has_roleplay_actions,
     instruction_echo_prefix_detected,
@@ -440,6 +442,14 @@ class RealtimeChatService:
         self.settings = settings
         self.model_runtime = model_runtime
         self.embedding_runtime = embedding_runtime
+        # Per-session cache of the last N reply embeddings for semantic repetition detection.
+        # Keyed by session_id; evicted on close_session.
+        self._reply_embeddings: dict[str, list[list[float]]] = {}
+        # Dedicated thread pool for background I/O (DB writes, event publishes)
+        # that would otherwise block the generation hot-path.
+        self._bg_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=2, thread_name_prefix="rag2_bg_record"
+        )
 
     def _rollout_flags(self) -> dict[str, object]:
         settings = self.settings
@@ -468,6 +478,21 @@ class RealtimeChatService:
             "immersive_threshold_percent": int(getattr(settings, "conversation_immersive_threshold_percent", 65) or 65),
             "immersive_strict_engram": bool(getattr(settings, "conversation_immersive_strict_engram", True)),
         }
+
+    # --- Reply embedding cache (per-session, last 4 turns) ---
+
+    def _cache_reply_embedding(self, session_id: str, embedding: list[float]) -> None:
+        """Store a reply embedding, keeping only the last 4 per session."""
+        bucket = self._reply_embeddings.setdefault(session_id, [])
+        bucket.append(embedding)
+        if len(bucket) > 4:
+            bucket.pop(0)
+
+    def _get_reply_embeddings(self, session_id: str) -> list[list[float]]:
+        return list(self._reply_embeddings.get(session_id) or [])
+
+    def _evict_reply_embeddings(self, session_id: str) -> None:
+        self._reply_embeddings.pop(session_id, None)
 
     def _debug_turn(self, enabled: bool, step: str, *, session_id: str, turn_id: str = "", payload: dict[str, object] | None = None) -> None:
         if not enabled:
@@ -838,7 +863,10 @@ class RealtimeChatService:
             timeout_hit=bool(quality_flags.get("timeout_hit")),
         )
         assistant_author = str(identity.get("name") or "assistant")
-        assistant_message = self.interaction_service.record_message(
+        # Build the message dict immediately (UUID assigned in Python, no DB round-trip).
+        # The actual repository.save() runs in the background so the client is not
+        # blocked by disk I/O after the GPU has already finished.
+        assistant_message, _persist_assistant = self.interaction_service.record_message_nowait(
             InteractionMessageRecordRequest(
                 author=assistant_author,
                 content=assistant_reply,
@@ -846,6 +874,7 @@ class RealtimeChatService:
                 session_id=session_id,
             )
         )
+        self._bg_executor.submit(_persist_assistant)
         report_progress("assistant_message_recorded")
         telemetry_enabled = bool(quality_flags.get("telemetry_enabled", True))
 
@@ -1014,6 +1043,7 @@ class RealtimeChatService:
         )
 
     def close_session(self, session_id: str, *, reason: str = "client_disconnect") -> None:
+        self._evict_reply_embeddings(session_id)
         self.event_bus.publish(
             PUBLISH_INTERACTION_REALTIME_SESSION_ENDED,
             {"session_id": session_id, "reason": reason},
@@ -1347,6 +1377,18 @@ class RealtimeChatService:
                 # Conversational/creative/adult turns are never rejected by heuristics.
                 # We only retry when the reply is structurally broken (markers leaked).
                 if immersive_enabled and has_custom_engram and not conversational_mode:
+                    # Semantic repetition check: compute reply embedding and compare
+                    # against session cache.  This runs on the GPU (already warm after
+                    # generation) and replaces the O(n) Jaccard CPU path for long replies.
+                    _reply_emb: list[float] = []
+                    _cached_embs: list[list[float]] = []
+                    if self.embedding_runtime:
+                        try:
+                            _reply_emb = self.embedding_runtime.embed_text(reply[:2000])
+                            _cached_embs = self._get_reply_embeddings(session_id)
+                        except Exception:
+                            pass
+
                     eval_result = evaluate_immersive_response(
                         reply,
                         identity_name=identity_name,
@@ -1354,8 +1396,14 @@ class RealtimeChatService:
                         threshold=immersive_threshold,
                         strict_engram=immersive_strict,
                         has_custom_engram=has_custom_engram,
-                        recent_replies=recent_assistant_replies if not conversational_mode else [],
+                        # Pass Jaccard fallback only when semantic path is unavailable.
+                        recent_replies=recent_assistant_replies if (not conversational_mode and not _reply_emb) else [],
+                        reply_embedding=_reply_emb or None,
+                        recent_embeddings=_cached_embs or None,
                     )
+                    # Cache the embedding now that evaluation is done (next turn uses it).
+                    if _reply_emb:
+                        self._cache_reply_embedding(session_id, _reply_emb)
                     quality_flags["immersive_score"] = eval_result["score"]
                     quality_flags["immersive_reasons"] = eval_result["reasons"]
 

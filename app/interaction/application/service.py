@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Callable
+
 from app.core.events import EventBus
 from app.interaction.domain import ConversationMessage
 from app.interaction.events import (
@@ -74,6 +76,38 @@ class InteractionService:
             metadata={"author": message.author, "channel": message.channel},
         )
         return payload
+
+    def record_message_nowait(
+        self, request: InteractionMessageRecordRequest
+    ) -> tuple[dict[str, object], Callable[[], None]]:
+        """Build the message entity and return its dict immediately.
+
+        The second return value is a zero-argument callable that performs the
+        actual repository write and event publish.  The caller is responsible
+        for executing it in a background thread so the hot-path is not blocked
+        by I/O.
+        """
+        message = ConversationMessage(
+            author=request.author,
+            content=request.content,
+            channel=request.channel,
+            session_id=request.session_id,
+        )
+        payload = message.as_dict()
+
+        def _persist() -> None:
+            try:
+                persisted = self.repository.save(message)
+                self.event_bus.publish(
+                    PUBLISH_INTERACTION_MESSAGE_RECORDED,
+                    persisted.as_dict(),
+                    source_module="interaction.application.service",
+                    metadata={"author": message.author, "channel": message.channel},
+                )
+            except Exception:
+                pass  # background failures are non-fatal; message dict already returned
+
+        return payload, _persist
 
     def hide_message(self, request: InteractionMessageActionRequest) -> dict[str, object]:
         message = self.repository.hide_message(request.message_id)
