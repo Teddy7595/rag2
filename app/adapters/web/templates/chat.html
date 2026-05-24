@@ -1233,52 +1233,87 @@
     40% { opacity: 1; transform: translateY(-2px); }
   }
 
-  #ingest-status-panel {
-    margin: 0 5px 8px;
-    display: grid;
-    gap: 5px;
+  /* --- Ingest toast notifications --- */
+  #ingest-toast-container {
+    position: fixed;
+    top: 62px;
+    right: 12px;
+    z-index: 500;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    max-width: min(300px, calc(100vw - 24px));
+    pointer-events: none;
+  }
+
+  @media (max-width: 480px) {
+    #ingest-toast-container {
+      top: auto;
+      bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+      right: 10px;
+      left: 10px;
+      max-width: none;
+    }
+  }
+
+  .ingest-toast {
+    background: rgba(13, 13, 13, 0.96);
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 10px;
+    padding: 8px 10px;
     font-family: var(--chat-font-mono);
     font-size: 0.72rem;
+    color: var(--chat-text-dim);
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.6);
+    pointer-events: auto;
+    display: grid;
+    gap: 4px;
+    animation: toastSlideIn 0.2s ease;
+    overflow: hidden;
   }
 
-  .ingest-file-row {
-    display: grid;
-    grid-template-columns: 1fr auto;
+  .ingest-toast.dismissing {
+    animation: toastSlideOut 0.3s ease forwards;
+  }
+
+  .ingest-toast-header {
+    display: flex;
     align-items: center;
+    justify-content: space-between;
     gap: 8px;
-    border: 1px solid var(--chat-line-soft);
-    border-radius: 8px;
-    padding: 6px 10px;
-    background: #0d0d0d;
   }
 
-  .ingest-file-info {
-    display: grid;
-    gap: 3px;
-  }
-
-  .ingest-file-name {
+  .ingest-toast-name {
     color: #cbd5e1;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    max-width: 260px;
+    flex: 1;
+    min-width: 0;
   }
 
-  .ingest-file-msg {
-    color: #6b7280;
-    font-size: 0.69rem;
+  .ingest-toast-badge {
+    font-size: 0.64rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    white-space: nowrap;
+    flex-shrink: 0;
   }
 
-  .ingest-file-bar {
-    height: 3px;
+  .ingest-toast-badge.processing { color: #fbbf24; }
+  .ingest-toast-badge.embedding  { color: #60a5fa; }
+  .ingest-toast-badge.done       { color: #34d399; }
+  .ingest-toast-badge.error      { color: #fb7185; }
+  .ingest-toast-badge.queued     { color: #9ca3af; }
+
+  .ingest-toast-bar {
+    height: 2px;
     border-radius: 2px;
     background: var(--chat-line-soft);
     overflow: hidden;
-    margin-top: 3px;
   }
 
-  .ingest-file-bar-fill {
+  .ingest-toast-bar-fill {
     height: 100%;
     border-radius: 2px;
     background: var(--chat-accent-color);
@@ -1286,18 +1321,27 @@
     width: 0%;
   }
 
-  .ingest-file-status {
-    font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    white-space: nowrap;
+  .ingest-toast-msg {
+    color: #6b7280;
+    font-size: 0.67rem;
   }
 
-  .ingest-file-status.processing { color: #fbbf24; }
-  .ingest-file-status.embedding  { color: #60a5fa; }
-  .ingest-file-status.done       { color: #34d399; }
-  .ingest-file-status.error      { color: #fb7185; }
-  .ingest-file-status.queued     { color: #9ca3af; }
+  @keyframes toastSlideIn {
+    from { opacity: 0; transform: translateX(20px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  @media (max-width: 480px) {
+    @keyframes toastSlideIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+  }
+
+  @keyframes toastSlideOut {
+    from { opacity: 1; max-height: 90px; margin-bottom: 0; }
+    to   { opacity: 0; max-height: 0; padding-top: 0; padding-bottom: 0; margin-bottom: -6px; }
+  }
 
   #ingest-btn { color: #60a5fa; }
   #ingest-btn:hover { color: var(--chat-accent-color); }
@@ -1442,10 +1486,11 @@
   </div>
 </aside>
 
+<div id="ingest-toast-container" aria-live="polite" aria-label="Estado de ingesta"></div>
+
 <div id="input-area">
   <div id="autocomplete-list"></div>
   <div id="status-bar">Sesion realtime iniciando...</div>
-  <div id="ingest-status-panel" style="display:none;"></div>
   <div id="attached-file">
     <span id="attached-file-label"></span>
     <button id="clear-file-btn" type="button">limpiar</button>
@@ -1506,7 +1551,6 @@
   const attachedFileBox = document.getElementById('attached-file');
   const ingestBtn = document.getElementById('ingest-btn');
   const ingestFilesInput = document.getElementById('ingest-files');
-  const ingestStatusPanel = document.getElementById('ingest-status-panel');
   const attachedFileLabel = document.getElementById('attached-file-label');
   const clearFileBtn = document.getElementById('clear-file-btn');
   const inputBox = document.getElementById('input-box');
@@ -1571,7 +1615,6 @@
   let lastMessageId = '';
   let lastAssistantMessageId = '';
   let worldRules = '';
-  let lastUploadedPath = '';
   let contextLimit = 5;
   let historyLimit = 20;
   let isEditingMode = false;
@@ -1599,8 +1642,8 @@
   let preserveInputAfterCommand = false;
 
   const slashCommands = [
-    '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
-    '/digest <ruta_relativa_vault>', '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
+    '/help', '/attach', '/clearfile', '/assets list', '/vault list',
+    '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
     '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
@@ -2931,47 +2974,60 @@
     fileUpload.click();
   }
 
-  // --- Multi-file RAG ingest ---
+  // --- Multi-file RAG ingest (toast-based) ---
 
-  function _renderIngestRow(index, fileName) {
-    const row = document.createElement('div');
-    row.className = 'ingest-file-row';
-    row.id = `ingest-row-${index}`;
-    row.innerHTML = `
-      <div class="ingest-file-info">
-        <span class="ingest-file-name" title="${fileName}">${fileName}</span>
-        <div class="ingest-file-bar"><div class="ingest-file-bar-fill" id="ingest-bar-${index}"></div></div>
-        <span class="ingest-file-msg" id="ingest-msg-${index}">En cola…</span>
+  function _renderIngestToast(index, fileName) {
+    const toast = document.createElement('div');
+    toast.className = 'ingest-toast';
+    toast.id = `ingest-toast-${index}`;
+    const safe = fileName.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    toast.innerHTML = `
+      <div class="ingest-toast-header">
+        <span class="ingest-toast-name" title="${safe}">${safe}</span>
+        <span class="ingest-toast-badge queued" id="ingest-tbadge-${index}">Espera</span>
       </div>
-      <span class="ingest-file-status queued" id="ingest-status-${index}">Espera</span>
+      <div class="ingest-toast-bar"><div class="ingest-toast-bar-fill" id="ingest-tbar-${index}"></div></div>
+      <span class="ingest-toast-msg" id="ingest-tmsg-${index}">En cola…</span>
     `;
-    return row;
+    return toast;
   }
 
-  function _updateIngestRow(index, { status, progress, message }) {
-    const bar = document.getElementById(`ingest-bar-${index}`);
-    const msg = document.getElementById(`ingest-msg-${index}`);
-    const statusEl = document.getElementById(`ingest-status-${index}`);
+  function _updateIngestToast(index, { status, progress, message }) {
+    const bar = document.getElementById(`ingest-tbar-${index}`);
+    const msg = document.getElementById(`ingest-tmsg-${index}`);
+    const badge = document.getElementById(`ingest-tbadge-${index}`);
     if (bar) bar.style.width = `${progress}%`;
     if (msg) msg.textContent = message || '';
-    if (statusEl) {
+    if (badge) {
       const labels = { processing: 'Procesando', embedding: 'Embebiendo', done: 'Listo', error: 'Error', queued: 'Espera' };
-      statusEl.textContent = labels[status] || status;
-      statusEl.className = `ingest-file-status ${status}`;
+      badge.textContent = labels[status] || status;
+      badge.className = `ingest-toast-badge ${status}`;
     }
+    if (status === 'done' || status === 'error') {
+      setTimeout(() => _dismissIngestToast(index), 3000);
+    }
+  }
+
+  function _dismissIngestToast(index) {
+    const toast = document.getElementById(`ingest-toast-${index}`);
+    if (!toast) return;
+    toast.classList.add('dismissing');
+    setTimeout(() => toast.remove(), 300);
   }
 
   async function runMultiFileIngest(files) {
     if (!files || files.length === 0) return;
 
-    ingestStatusPanel.innerHTML = '';
+    const toastContainer = document.getElementById('ingest-toast-container');
     for (let i = 0; i < files.length; i++) {
-      ingestStatusPanel.appendChild(_renderIngestRow(i, files[i].name));
+      toastContainer.appendChild(_renderIngestToast(i, files[i].name));
     }
-    ingestStatusPanel.style.display = 'grid';
 
     const formData = new FormData();
     for (const file of files) formData.append('files', file);
+
+    const activeEngramId = await resolveActiveEngramId().catch(() => null);
+    if (activeEngramId) formData.append('engram_id', activeEngramId);
 
     let jobId;
     try {
@@ -2979,11 +3035,13 @@
       const payload = await res.json();
       if (!res.ok) {
         setStatus(`Error iniciando ingest: ${payload.detail || res.statusText}`, { tone: 'danger' });
+        for (let i = 0; i < files.length; i++) _dismissIngestToast(i);
         return;
       }
       jobId = payload.job_id;
     } catch (err) {
       setStatus(`Error de red al iniciar ingest: ${err.message}`, { tone: 'danger' });
+      for (let i = 0; i < files.length; i++) _dismissIngestToast(i);
       return;
     }
 
@@ -2996,12 +3054,11 @@
         if (event.done && event.status === 'batch_done') {
           evtSource.close();
           setStatus(`Ingest completo — ${event.file_count} archivo(s) indexado(s).`, { tone: 'green', blinking: false });
-          setTimeout(() => { ingestStatusPanel.style.display = 'none'; ingestStatusPanel.innerHTML = ''; }, 4000);
           return;
         }
         const idx = event.file_index;
         if (typeof idx === 'number') {
-          _updateIngestRow(idx, { status: event.status, progress: event.progress || 0, message: event.message || '' });
+          _updateIngestToast(idx, { status: event.status, progress: event.progress || 0, message: event.message || '' });
         }
       } catch (_) {}
     });
@@ -3009,50 +3066,6 @@
       evtSource.close();
       setStatus('SSE de ingest cerrado.', { tone: 'amber', blinking: false });
     };
-  }
-
-  async function uploadAttachedFile() {
-    if (!activeSessionId) {
-      setActionStatus('No hay session_id activo aun.', 'amber');
-      return;
-    }
-    if (!attachedFile) {
-      setActionStatus('No hay archivo adjunto. Usa /attach.', 'amber');
-      return;
-    }
-
-    const engramId = await resolveActiveEngramId();
-    if (!engramId) {
-      setActionStatus('No hay engrama activo. Selecciona uno para subir contenido reutilizable.', 'amber');
-      return;
-    }
-
-    if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
-      setActionStatus('Subiste una imagen, pero vision esta desactivada. Activa vision desde /admin/models.', 'amber');
-    }
-
-    const formData = new FormData();
-    formData.append('file', attachedFile);
-    const response = await fetch(`/api/storage/engrams/${encodeURIComponent(engramId)}/content`, {
-      method: 'POST',
-      body: formData,
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setActionStatus(`Fallo upload: ${JSON.stringify(payload)}`, 'danger');
-      return;
-    }
-
-    lastUploadedPath = String(payload.relative_path || '');
-    setActionStatus(`Contenido subido para engrama ${engramId.slice(0, 8)}: ${lastUploadedPath || attachedFile.name}`, 'green');
-    if (lastUploadedPath) {
-      inputField.value = `/digest ${lastUploadedPath}`;
-      preserveInputAfterCommand = true;
-      adjustHeight(inputField);
-      updateSendButtonState();
-      inputField.focus();
-      setStatus(`Comando listo: /digest ${lastUploadedPath}`, { blinking: false, tone: 'teal' });
-    }
   }
 
   async function runVisionCommand(promptText) {
@@ -3080,7 +3093,7 @@
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      setActionStatus('Comandos listos: /upload, /digest, /assets list, /ragcount, /models, /rules show.', 'sky');
+      setActionStatus('Comandos: /attach, /clearfile, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits.', 'sky');
       return true;
     }
 
@@ -3145,11 +3158,6 @@
       return true;
     }
 
-    if (command === '/upload') {
-      await uploadAttachedFile();
-      return true;
-    }
-
     if (command === '/assets' && args === 'list') {
       const engramId = await resolveActiveEngramId();
       if (!engramId) {
@@ -3169,41 +3177,6 @@
         ? payload.slice(0, 20).map((item) => item.relative_path).join('\n')
         : '';
       setActionStatus(preview ? `Vault: ${preview.split('\n').length} archivos listados.` : 'Vault sin archivos.', 'sky');
-      return true;
-    }
-
-    if (command === '/ingest' || command === '/digest') {
-      const targetPath = args || lastUploadedPath;
-      if (!targetPath) {
-        setActionStatus('Uso: /digest <ruta_relativa_en_vault> o sube con /upload primero.', 'amber');
-        return true;
-      }
-      const engramId = await resolveActiveEngramId();
-      startProcessingFeedback('feeding de libro: preparando', 'blue');
-      try {
-        const query = new URLSearchParams({ relative_path: targetPath });
-        if (engramId) {
-          query.set('engram_id', engramId);
-        }
-        updateProcessingStage('feeding de libro: digiriendo documento', 'blue');
-        const response = await fetch(`/api/storage/vault/ingest?${query.toString()}`, { method: 'POST' });
-        const payload = await response.json();
-        if (response.ok) {
-          const ingested = payload.ingested || {};
-          const chunkCount = Number(ingested.chunk_count || 0);
-          const imageCount = Number(ingested.image_count || 0);
-          setActionStatus(
-            `Feeding completo: ${payload.relative_path || targetPath} · chunks=${chunkCount} · imagenes=${imageCount}`,
-            'green',
-          );
-        } else {
-          setActionStatus(`Fallo digest: ${JSON.stringify(payload)}`, 'danger');
-        }
-      } catch (error) {
-        setActionStatus(`Fallo digest: ${String(error)}`, 'danger');
-      } finally {
-        stopProcessingFeedback();
-      }
       return true;
     }
 

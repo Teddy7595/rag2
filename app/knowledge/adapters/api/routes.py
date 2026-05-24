@@ -352,6 +352,7 @@ async def ingest_upload_files(
     request: Request,
     files: list[UploadFile] = File(...),
     tags: str = Form(""),
+    engram_id: str = Form(""),
 ) -> dict[str, object]:
     """Accept multiple files, immediately start background ingestion and return a job_id.
 
@@ -370,6 +371,7 @@ async def ingest_upload_files(
     job_id = registry.create(loop=loop)
 
     tag_list = [t.strip() for t in tags.split(",") if t.strip()]
+    active_engram_id = engram_id.strip() or None
     file_data: list[dict[str, object]] = []
     for f in files:
         raw = await f.read()
@@ -380,7 +382,7 @@ async def ingest_upload_files(
         })
 
     asyncio.create_task(
-        asyncio.to_thread(_run_ingest_job, job_id, file_data, tag_list, context, registry)
+        asyncio.to_thread(_run_ingest_job, job_id, file_data, tag_list, active_engram_id, context, registry)
     )
 
     return {"job_id": job_id, "file_count": len(file_data)}
@@ -406,6 +408,7 @@ def _run_ingest_job(
     job_id: str,
     file_data: list[dict[str, object]],
     tags: list[str],
+    engram_id: str | None,
     context: object,
     registry: IngestJobRegistry,
 ) -> None:
@@ -440,6 +443,7 @@ def _run_ingest_job(
                             pdf_path=tmp_path,
                             source_uri=f"upload:{name}",
                             tags=tuple(tags),
+                            engram_id=engram_id,
                         ),
                         source_module="knowledge.adapters.api.routes",
                     )
@@ -463,6 +467,7 @@ def _run_ingest_job(
                         raw_text=raw_text,
                         source_uri=f"upload:{name}",
                         tags=tuple(tags),
+                        engram_id=engram_id,
                     ),
                     source_module="knowledge.adapters.api.routes",
                 )

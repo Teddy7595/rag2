@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 
 from app.core.database import DatabaseManager
 from app.knowledge.adapters.persistence.models import IdentityRecord, KnowledgeEntryRecord
@@ -34,6 +34,22 @@ class SqlAlchemyKnowledgeRepository(KnowledgeRepositoryPort):
                 select(KnowledgeEntryRecord)
                 .order_by(KnowledgeEntryRecord.created_at.desc(), KnowledgeEntryRecord.id.desc())
                 .limit(limit)
+            )
+            records = session.scalars(statement).all()
+            return [record.to_domain() for record in records]
+
+    def list_by_engram(self, engram_id: str) -> list[KnowledgeEntry]:
+        """Return entries scoped to the given engram plus global (NULL engram_id) entries."""
+        with self.database.session_factory() as session:
+            statement = (
+                select(KnowledgeEntryRecord)
+                .where(
+                    or_(
+                        KnowledgeEntryRecord.engram_id == engram_id,
+                        KnowledgeEntryRecord.engram_id.is_(None),
+                    )
+                )
+                .order_by(KnowledgeEntryRecord.created_at.asc(), KnowledgeEntryRecord.id.asc())
             )
             records = session.scalars(statement).all()
             return [record.to_domain() for record in records]

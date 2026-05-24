@@ -41,6 +41,11 @@ class DatabaseManager:
             if "session_id" not in columns:
                 statements.append("ALTER TABLE interaction_messages ADD COLUMN session_id VARCHAR(64)")
 
+            if "knowledge_entries" in tables:
+                ke_columns = {str(c.get("name") or "") for c in inspector.get_columns("knowledge_entries")}
+                if "engram_id" not in ke_columns:
+                    statements.append("ALTER TABLE knowledge_entries ADD COLUMN engram_id VARCHAR(36)")
+
             if not statements:
                 return
 
