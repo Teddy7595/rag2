@@ -36,13 +36,8 @@ class EngramCreateRequest:
     intellectual_profile: str = "General"
     behavior_prompt: str = ""
     meta_rule: str = "Stay consistent with the selected identity."
-    moral_threshold: int = 0
-    interaction_mode: str = "Directo"
     dialogue_examples: tuple[str, ...] = ()
     backstory: str = ""
-    temperatura_base: float = 0.8
-    top_p_base: float = 1.0
-    max_tokens_respuesta: int = 2048
 
 
 @dataclass(frozen=True)
@@ -54,13 +49,8 @@ class EngramUpdateRequest:
     intellectual_profile: str | None = None
     behavior_prompt: str | None = None
     meta_rule: str | None = None
-    moral_threshold: int | None = None
-    interaction_mode: str | None = None
     dialogue_examples: tuple[str, ...] | None = None
     backstory: str | None = None
-    temperatura_base: float | None = None
-    top_p_base: float | None = None
-    max_tokens_respuesta: int | None = None
 
 
 @dataclass(frozen=True)

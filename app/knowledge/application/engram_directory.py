@@ -114,11 +114,6 @@ class EngramDirectory:
             intellectual_profile="General",
             behavior_prompt="",
             meta_rule="Stay consistent with the selected identity.",
-            moral_threshold=0,
-            interaction_mode="Directo",
             dialogue_examples=[],
             backstory="",
-            temperatura_base=0.8,
-            top_p_base=1.0,
-            max_tokens_respuesta=2048,
         )

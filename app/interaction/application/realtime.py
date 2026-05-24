@@ -1072,6 +1072,12 @@ class RealtimeChatService:
                 )
             )
 
+        # BLOCK 3.5: Conversation history (injected directly, bypasses compact_context_for_prompt).
+        if history_messages:
+            history_text = _format_history(history_messages[-12:])
+            if history_text:
+                prompt_sections.append(f"Historial de conversación:\n{history_text}")
+
         # BLOCK 4: The actual request.
         prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
         if main_idea:

@@ -78,8 +78,6 @@ class KnowledgeService:
             "reglas",
             "room_rules",
         ),
-        "moral_threshold": ("moral_threshold", "moral", "threshold", "umbral", "umbral_moral"),
-        "interaction_mode": ("interaction_mode", "mode", "modo"),
         "dialogue_examples": (
             "dialogue_examples",
             "examples",
@@ -256,8 +254,6 @@ class KnowledgeService:
             intellectual_profile=request.intellectual_profile,
             behavior_prompt=request.behavior_prompt,
             meta_rule=request.meta_rule,
-            moral_threshold=request.moral_threshold,
-            interaction_mode=request.interaction_mode,
             dialogue_examples=list(request.dialogue_examples),
             backstory=request.backstory,
         )
@@ -595,8 +591,6 @@ class KnowledgeService:
                 "- Si falta informacion, explicitar supuestos breves.\n"
                 "- No inventar hechos externos al contexto."
             ),
-            moral_threshold=0,
-            interaction_mode="Directo",
             dialogue_examples=[
                 "Te doy un resumen operativo y luego los pasos exactos.",
                 "Confirmo estado actual y riesgos antes de proponer cambios.",
@@ -617,10 +611,6 @@ class KnowledgeService:
             identity.behavior_prompt = request.behavior_prompt
         if request.meta_rule is not None:
             identity.meta_rule = request.meta_rule
-        if request.moral_threshold is not None:
-            identity.moral_threshold = request.moral_threshold
-        if request.interaction_mode is not None:
-            identity.interaction_mode = request.interaction_mode
         if request.dialogue_examples is not None:
             identity.dialogue_examples = list(request.dialogue_examples)
         if request.backstory is not None:
@@ -668,14 +658,8 @@ class KnowledgeService:
             identity.behavior_prompt = payload["behavior_prompt"]
         if payload.get("meta_rule"):
             identity.meta_rule = self._normalize_meta_rule(payload["meta_rule"])
-        if payload.get("interaction_mode"):
-            identity.interaction_mode = payload["interaction_mode"]
         if payload.get("backstory"):
             identity.backstory = payload["backstory"]
-
-        threshold = self._parse_int(payload.get("moral_threshold", ""), minimum=0, maximum=100)
-        if threshold is not None:
-            identity.moral_threshold = threshold
 
         dialogue_examples = self._parse_dialogue_examples(payload.get("dialogue_examples", ""))
         if dialogue_examples:

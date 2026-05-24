@@ -67,8 +67,6 @@ class KnowledgeEngramInput(BaseModel):
     intellectual_profile: str = "General"
     behavior_prompt: str = ""
     meta_rule: str = "Stay consistent with the selected identity."
-    moral_threshold: int = 0
-    interaction_mode: str = "Directo"
     dialogue_examples: list[str] = Field(default_factory=list)
     backstory: str = ""
 
@@ -80,8 +78,6 @@ class KnowledgeEngramUpdateInput(BaseModel):
     intellectual_profile: str | None = None
     behavior_prompt: str | None = None
     meta_rule: str | None = None
-    moral_threshold: int | None = None
-    interaction_mode: str | None = None
     dialogue_examples: list[str] | None = None
     backstory: str | None = None
 
@@ -300,8 +296,6 @@ async def create_engram(request: Request, payload: KnowledgeEngramInput) -> dict
             intellectual_profile=payload.intellectual_profile,
             behavior_prompt=payload.behavior_prompt,
             meta_rule=payload.meta_rule,
-            moral_threshold=payload.moral_threshold,
-            interaction_mode=payload.interaction_mode,
             dialogue_examples=tuple(payload.dialogue_examples),
             backstory=payload.backstory,
         ),
@@ -322,8 +316,6 @@ async def update_engram(request: Request, engram_id: str, payload: KnowledgeEngr
             intellectual_profile=payload.intellectual_profile,
             behavior_prompt=payload.behavior_prompt,
             meta_rule=payload.meta_rule,
-            moral_threshold=payload.moral_threshold,
-            interaction_mode=payload.interaction_mode,
             dialogue_examples=tuple(payload.dialogue_examples) if payload.dialogue_examples is not None else None,
             backstory=payload.backstory,
         ),

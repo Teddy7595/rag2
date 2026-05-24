@@ -638,17 +638,6 @@
         <textarea id="inp-backstory" rows="3" placeholder="Origen y contexto de identidad..."></textarea>
       </div>
 
-      <div class="row-2">
-        <div class="form-group">
-          <label for="inp-threshold">Moral threshold</label>
-          <input type="number" id="inp-threshold" min="0" max="100" step="1" value="0">
-        </div>
-        <div class="form-group">
-          <label for="inp-mode">Interaction mode</label>
-          <input type="text" id="inp-mode" value="Directo">
-        </div>
-      </div>
-
       <div class="form-group">
         <label for="inp-dialogue">Ejemplos de diálogo (uno por línea)</label>
         <textarea id="inp-dialogue" rows="4" placeholder="Hola Atlas\nAnalizando contexto...\nSiguiente paso..."></textarea>
@@ -696,8 +685,6 @@
   const META_RULE_LIST = document.getElementById('meta-rule-list');
   const ADD_META_RULE_BTN = document.getElementById('add-meta-rule-btn');
   const INP_BACKSTORY = document.getElementById('inp-backstory');
-  const INP_THRESHOLD = document.getElementById('inp-threshold');
-  const INP_MODE = document.getElementById('inp-mode');
   const INP_DIALOGUE = document.getElementById('inp-dialogue');
 
   let currentEngrams = [];
@@ -749,8 +736,6 @@
       behavior_prompt: String(raw.behavior_prompt || ''),
       meta_rule: String(raw.meta_rule || ''),
       backstory: String(raw.backstory || ''),
-      moral_threshold: Number(raw.moral_threshold ?? 0),
-      interaction_mode: String(raw.interaction_mode || 'Directo'),
       dialogue_examples: Array.isArray(raw.dialogue_examples) ? raw.dialogue_examples : [],
     };
   }
@@ -862,8 +847,6 @@
         <div class="card-body">${(engram.behavior_prompt || 'Sin prompt de comportamiento.').replace(/</g, '&lt;')}</div>
         <div class="card-meta">
           <span class="pill">${engram.color_hex}</span>
-          <span class="pill">modo=${engram.interaction_mode || 'Directo'}</span>
-          <span class="pill">umbral=${engram.moral_threshold ?? 0}</span>
         </div>
         <div class="card-actions">
           <button class="btn" type="button" data-action="edit" data-id="${engram.id}">Editar</button>
@@ -932,8 +915,6 @@
       INP_META_RULE.value = '';
       setMetaRulesFromText(engram.meta_rule || DEFAULT_META_RULE);
       INP_BACKSTORY.value = engram.backstory || '';
-      INP_THRESHOLD.value = String(engram.moral_threshold ?? 0);
-      INP_MODE.value = engram.interaction_mode || 'Directo';
       INP_DIALOGUE.value = (engram.dialogue_examples || []).join('\n');
       setEditorFeedback('Editando engrama existente.');
     } else {
@@ -977,8 +958,6 @@
       intellectual_profile: INP_PROFILE.value.trim() || 'General',
       behavior_prompt: INP_BEHAVIOR.value.trim(),
       meta_rule: serializeMetaRules(metaRules),
-      moral_threshold: Number.parseInt(INP_THRESHOLD.value || '0', 10) || 0,
-      interaction_mode: INP_MODE.value.trim() || 'Directo',
       dialogue_examples: INP_DIALOGUE.value.split('\n').map((line) => line.trim()).filter(Boolean),
       backstory: INP_BACKSTORY.value.trim(),
     };
