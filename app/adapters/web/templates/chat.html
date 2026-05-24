@@ -892,8 +892,7 @@
     }
 
     #chat-hud-toggle {
-      left: 12px;
-      bottom: calc(124px + var(--chat-input-safe-bottom));
+      display: none;
     }
 
     #chat-hud {
@@ -1498,6 +1497,8 @@
   <div id="mobile-quick-actions" aria-label="Acciones rápidas">
     <button type="button" class="quick-btn" data-quick-action="help">Ayuda</button>
     <button type="button" class="quick-btn" data-quick-action="attach">Adjuntar</button>
+    <button type="button" class="quick-btn" data-quick-action="engrams">Engramas</button>
+    <button type="button" class="quick-btn" data-quick-action="info">Info</button>
     <button type="button" class="quick-btn" data-quick-action="vision">Vision</button>
     <button type="button" class="quick-btn" data-quick-action="models">Modelos</button>
     <button type="button" class="quick-btn" data-quick-action="rules">Reglas</button>
@@ -1642,7 +1643,7 @@
   let preserveInputAfterCommand = false;
 
   const slashCommands = [
-    '/help', '/attach', '/clearfile', '/assets list', '/vault list',
+    '/help', '/info', '/attach', '/clearfile', '/assets list', '/vault list',
     '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
     '/ctx <1-50>', '/history <1-100>', '/limits'
@@ -1848,6 +1849,14 @@
     }
     if (action === 'models') {
       window.location.href = '/admin/models';
+      return;
+    }
+    if (action === 'engrams') {
+      window.location.href = '/admin/engrams';
+      return;
+    }
+    if (action === 'info') {
+      toggleHud();
       return;
     }
     if (action === 'rules') {
@@ -3090,7 +3099,12 @@
     const args = rest.join(' ').trim();
 
     if (command === '/help') {
-      setActionStatus('Comandos: /attach, /clearfile, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits.', 'sky');
+      setActionStatus('Comandos: /info, /attach, /clearfile, /assets list, /vault list, /ragcount, /vision, /models, /rules show, /ctx, /history, /limits.', 'sky');
+      return true;
+    }
+
+    if (command === '/info') {
+      toggleHud();
       return true;
     }
 
