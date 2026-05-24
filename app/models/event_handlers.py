@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from app.core.app_context import get_app_context_from_app
 from app.core.events import EventEnvelope
 from app.models.events import (
+    REQUEST_MODEL_GENERATION_DEFAULTS,
     REQUEST_MODEL_TEXT_GENERATION,
     REQUEST_MODEL_VISION_ANALYSIS,
 )
@@ -23,5 +24,10 @@ def register_model_event_handlers(app: FastAPI) -> None:
     def handle_vision_analysis(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.analyze_image(envelope.payload)
 
+    def handle_generation_defaults(envelope: EventEnvelope[object]) -> dict[str, object]:
+        _ = envelope
+        return service.generation_defaults()
+
     context.event_bus.subscribe_request(REQUEST_MODEL_TEXT_GENERATION, handle_text_generation)
     context.event_bus.subscribe_request(REQUEST_MODEL_VISION_ANALYSIS, handle_vision_analysis)
+    context.event_bus.subscribe_request(REQUEST_MODEL_GENERATION_DEFAULTS, handle_generation_defaults)

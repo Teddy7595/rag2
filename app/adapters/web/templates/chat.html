@@ -1258,7 +1258,7 @@
     <article class="lobby-card">
       <header class="lobby-header">
         <h2 class="lobby-title">Configurar y entrar</h2>
-        <p class="lobby-subtitle">Define reglas de sala, engrama y modelo antes de abrir el chat realtime.</p>
+        <p class="lobby-subtitle">Define reglas de sala y engrama antes de abrir el chat realtime.</p>
       </header>
       <div class="lobby-grid">
         <label class="lobby-field">
@@ -1268,14 +1268,6 @@
         <label class="lobby-field">
           <span class="lobby-label">Engrama</span>
           <select id="lobby-engram-select" class="lobby-select"></select>
-        </label>
-        <label class="lobby-field">
-          <span class="lobby-label">Modelo texto</span>
-          <select id="lobby-model-text" class="lobby-select"></select>
-        </label>
-        <label class="lobby-field">
-          <span class="lobby-label">Modelo vision</span>
-          <select id="lobby-model-vision" class="lobby-select"></select>
         </label>
         <div class="lobby-grid" style="grid-template-columns: 1fr 1fr;">
           <label class="lobby-field">
@@ -1296,7 +1288,7 @@
           <ul id="lobby-rule-list" class="lobby-rule-list"></ul>
         </label>
       </div>
-      <p class="lobby-note">La selección de modelo se aplica al runtime local activo; el engrama y reglas se aplican al chat que abras.</p>
+      <p class="lobby-note">El modelo activo se administra desde el panel de control. Aquí solo eliges engrama y reglas por sala.</p>
       <div class="lobby-actions">
         <button type="button" class="lobby-btn" id="lobby-generate-session">Generar ID</button>
         <button type="button" class="lobby-btn" id="lobby-open-selected">Abrir seleccionada</button>
@@ -1465,8 +1457,6 @@
   const lobbyEnterLast = document.getElementById('lobby-enter-last');
   const lobbySessionIdInput = document.getElementById('lobby-session-id');
   const lobbyEngramSelect = document.getElementById('lobby-engram-select');
-  const lobbyModelTextSelect = document.getElementById('lobby-model-text');
-  const lobbyModelVisionSelect = document.getElementById('lobby-model-vision');
   const lobbyContextLimitInput = document.getElementById('lobby-context-limit');
   const lobbyHistoryLimitInput = document.getElementById('lobby-history-limit');
   const lobbyRuleInput = document.getElementById('lobby-rule-input');
@@ -1522,7 +1512,6 @@
     '/help', '/attach', '/clearfile', '/upload', '/assets list', '/vault list',
     '/ingest <ruta_relativa_vault>', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
-    '/model text <bundle_id>', '/model vision <bundle_id|off>',
     '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
 
@@ -1725,7 +1714,7 @@
       return;
     }
     if (action === 'models') {
-      handleSlashCommand('/models');
+      window.location.href = '/admin/models';
       return;
     }
     if (action === 'rules') {
@@ -2056,30 +2045,12 @@
     const selectableCount = Number(catalogState.summary && catalogState.summary.selectable_bundle_count) || 0;
     const textMissing = !(runtimeState && runtimeState.selected_text_model_path);
     if (selectableCount === 0 || textMissing) {
-      setActionStatus('No hay modelo de texto activo. Usa /models o /model text <bundle_id>.', 'amber');
+      setActionStatus('No hay modelo de texto activo. Configuralo en /admin/models.', 'amber');
     }
 
     if (!visionEnabled) {
-      setActionStatus('Vision local desactivada. Usa /model vision <bundle_id>.', 'amber');
+      setActionStatus('Vision local desactivada. Configurala en /admin/models.', 'amber');
     }
-  }
-
-  async function updateModelSelection(patch) {
-    const response = await fetch('/api/models/selection', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(patch),
-    });
-    const payload = await response.json();
-    if (!response.ok) {
-      setActionStatus(`No se pudo actualizar modelos: ${JSON.stringify(payload)}`, 'danger');
-      return false;
-    }
-    catalogState = payload;
-    runtimeState = payload.runtime || runtimeState;
-    visionEnabled = Boolean(runtimeState && runtimeState.local_vision_ready) && !visionForcedOff;
-    renderModelChip();
-    return true;
   }
 
   function readStoredLimits(sessionId) {
@@ -2546,45 +2517,6 @@
     }
   }
 
-  function parseModelBundles(catalog) {
-    const bundles = Array.isArray(catalog && catalog.bundles) ? catalog.bundles : [];
-    return bundles.filter((bundle) => bundle && !bundle.is_embedding_cache);
-  }
-
-  async function loadLobbyModels() {
-    if (!lobbyModelTextSelect || !lobbyModelVisionSelect) {
-      return;
-    }
-    lobbyModelTextSelect.innerHTML = '<option value="">Mantener selección actual</option>';
-    lobbyModelVisionSelect.innerHTML = '<option value="">Mantener selección actual</option><option value="off">Desactivar vision</option>';
-    try {
-      const response = await fetch('/api/models/catalog');
-      if (!response.ok) {
-        return;
-      }
-      const catalog = await response.json();
-      const bundles = parseModelBundles(catalog);
-      for (const bundle of bundles) {
-        const bundleId = String(bundle.bundle_id || '').trim();
-        if (!bundleId) {
-          continue;
-        }
-        const textOption = document.createElement('option');
-        textOption.value = bundleId;
-        textOption.textContent = bundleId;
-        lobbyModelTextSelect.appendChild(textOption);
-
-        if (bundle.supports_vision) {
-          const visionOption = document.createElement('option');
-          visionOption.value = bundleId;
-          visionOption.textContent = bundleId;
-          lobbyModelVisionSelect.appendChild(visionOption);
-        }
-      }
-    } catch (_) {
-      // no-op: keep defaults
-    }
-  }
 
   function renderLobbySessionList(sessions) {
     if (!lobbySessionsList) {
@@ -2678,25 +2610,6 @@
     }
   }
 
-  async function applyLobbyModelSelection() {
-    const textBundle = String(lobbyModelTextSelect && lobbyModelTextSelect.value || '').trim();
-    const visionBundle = String(lobbyModelVisionSelect && lobbyModelVisionSelect.value || '').trim();
-
-    if (textBundle) {
-      await updateModelSelection({ text_provider: 'local', text_bundle_id: textBundle, text_model_name: null });
-    }
-
-    if (visionBundle) {
-      if (visionBundle.toLowerCase() === 'off') {
-        visionForcedOff = true;
-        visionEnabled = false;
-        renderModelChip();
-      } else {
-        visionForcedOff = false;
-        await updateModelSelection({ vision_provider: 'local', vision_bundle_id: visionBundle, vision_model_name: null });
-      }
-    }
-  }
 
   async function enterChatSession(sessionId, { clearTimeline = true } = {}) {
     const key = String(sessionId || '').trim();
@@ -2717,7 +2630,6 @@
     persistLimits(key);
     window.localStorage.setItem(`${WORLD_RULES_PREFIX}${key}`, worldRules);
 
-    await applyLobbyModelSelection();
     renderWorldRulesHud();
     renderLobbyRules();
 
@@ -2793,7 +2705,7 @@
     }
 
     if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
-      setActionStatus('Subiste una imagen, pero vision esta desactivada. Usa /model vision <bundle_id>.', 'amber');
+      setActionStatus('Subiste una imagen, pero vision esta desactivada. Activa vision desde /admin/models.', 'amber');
     }
 
     const formData = new FormData();
@@ -2814,7 +2726,7 @@
 
   async function runVisionCommand(promptText) {
     if (!visionEnabled) {
-      setActionStatus('No hay modelo de vision activo. Usa /model vision <bundle_id>.', 'amber');
+      setActionStatus('No hay modelo de vision activo. Configuralo en /admin/models.', 'amber');
       return;
     }
 
@@ -2847,50 +2759,14 @@
         setActionStatus('No se pudo leer el catalogo de modelos.', 'danger');
         return true;
       }
-      const bundles = Array.isArray(catalogState.bundles) ? catalogState.bundles : [];
-      const localBundles = bundles.filter((bundle) => bundle && !bundle.is_embedding_cache).slice(0, 12);
-      const listText = localBundles.length
-        ? localBundles.map((bundle) => `${bundle.bundle_id} (${bundle.supports_vision ? 'texto+vision' : 'texto'})`).join('\n')
-        : 'sin bundles locales';
       const selectedText = catalogState.selection.text_bundle_id || catalogState.selection.text_model_name || 'sin modelo';
       const selectedVision = catalogState.selection.vision_bundle_id || catalogState.selection.vision_model_name || 'off';
-      setActionStatus(`Modelos activos -> texto: ${selectedText} · vision: ${selectedVision} · bundles: ${localBundles.length}`, 'sky');
+      setActionStatus(`Modelos activos -> texto: ${selectedText} · vision: ${selectedVision}. Admin: /admin/models`, 'sky');
       return true;
     }
 
     if (command === '/model') {
-      const [target, ...tail] = args.split(/\s+/);
-      const value = tail.join(' ').trim();
-      if (!target || !value) {
-        setActionStatus('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', 'amber');
-        return true;
-      }
-
-      if (target === 'text') {
-        const ok = await updateModelSelection({ text_provider: 'local', text_bundle_id: value, text_model_name: null });
-        if (ok) {
-          setActionStatus(`Modelo de texto activo: ${value}`, 'green');
-        }
-        return true;
-      }
-
-      if (target === 'vision') {
-        if (value.toLowerCase() === 'off') {
-          visionForcedOff = true;
-          visionEnabled = false;
-          renderModelChip();
-          setActionStatus('Vision local desactivada. Para reactivar: /model vision <bundle_id>.', 'amber');
-          return true;
-        }
-        visionForcedOff = false;
-        const ok = await updateModelSelection({ vision_provider: 'local', vision_bundle_id: value, vision_model_name: null });
-        if (ok) {
-          setActionStatus(`Modelo de vision activo: ${value}`, 'green');
-        }
-        return true;
-      }
-
-      setActionStatus('Uso: /model text <bundle_id> | /model vision <bundle_id|off>', 'amber');
+      setActionStatus('Los cambios de modelo se gestionan desde /admin/models.', 'amber');
       return true;
     }
 
@@ -3244,7 +3120,7 @@
     if (attachedFile) {
       setStatus(`Adjunto listo: ${attachedFile.name}`, false);
       if (String(attachedFile.type || '').toLowerCase().startsWith('image/') && !visionEnabled) {
-        setActionStatus('Imagen adjunta detectada, pero vision esta desactivada. Activa /model vision <bundle_id>.', 'amber');
+        setActionStatus('Imagen adjunta detectada, pero vision esta desactivada. Activala en /admin/models.', 'amber');
       }
     }
   });
@@ -3590,7 +3466,6 @@
   renderLobbyRules();
   loadSessionList();
   loadLobbyEngrams();
-  loadLobbyModels();
   refreshModelState({ announce: false });
 
   if (lobbyContextLimitInput) {

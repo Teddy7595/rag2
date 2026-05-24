@@ -165,6 +165,7 @@ def load_settings(project_root: Path) -> AppSettings:
         debug=_read_bool_env("APP_DEBUG", default=False),
         admin_local_only=_read_bool_env("APP_ADMIN_LOCAL_ONLY", default=True),
         admin_remote_allow_paths=_read_csv_env("APP_ADMIN_REMOTE_ALLOW_PATHS") or (
+            "/admin/models",
             "/admin/engrams",
             "/admin/context-graph",
             "/admin/sagas",

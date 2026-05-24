@@ -649,22 +649,6 @@
         </div>
       </div>
 
-      <div class="row-2">
-        <div class="form-group">
-          <label for="inp-temperature">Temperatura</label>
-          <input type="number" id="inp-temperature" min="0" max="2" step="0.05" value="0.8">
-        </div>
-        <div class="form-group">
-          <label for="inp-top-p">Top P</label>
-          <input type="number" id="inp-top-p" min="0" max="1" step="0.05" value="1.0">
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label for="inp-max-tokens">Max tokens</label>
-        <input type="number" id="inp-max-tokens" min="64" max="4096" step="64" value="2048">
-      </div>
-
       <div class="form-group">
         <label for="inp-dialogue">Ejemplos de diálogo (uno por línea)</label>
         <textarea id="inp-dialogue" rows="4" placeholder="Hola Atlas\nAnalizando contexto...\nSiguiente paso..."></textarea>
@@ -713,9 +697,6 @@
   const INP_BACKSTORY = document.getElementById('inp-backstory');
   const INP_THRESHOLD = document.getElementById('inp-threshold');
   const INP_MODE = document.getElementById('inp-mode');
-  const INP_TEMPERATURE = document.getElementById('inp-temperature');
-  const INP_TOP_P = document.getElementById('inp-top-p');
-  const INP_MAX_TOKENS = document.getElementById('inp-max-tokens');
   const INP_DIALOGUE = document.getElementById('inp-dialogue');
 
   let currentEngrams = [];
@@ -769,9 +750,6 @@
       backstory: String(raw.backstory || ''),
       moral_threshold: Number(raw.moral_threshold ?? 0),
       interaction_mode: String(raw.interaction_mode || 'Directo'),
-      temperatura_base: Number(raw.temperatura_base ?? 0.8),
-      top_p_base: Number(raw.top_p_base ?? 1.0),
-      max_tokens_respuesta: Number(raw.max_tokens_respuesta ?? 2048),
       dialogue_examples: Array.isArray(raw.dialogue_examples) ? raw.dialogue_examples : [],
     };
   }
@@ -871,9 +849,8 @@
         <div class="card-body">${(engram.behavior_prompt || 'Sin prompt de comportamiento.').replace(/</g, '&lt;')}</div>
         <div class="card-meta">
           <span class="pill">${engram.color_hex}</span>
-          <span class="pill">temp=${engram.temperatura_base}</span>
-          <span class="pill">top_p=${engram.top_p_base}</span>
-          <span class="pill">max=${engram.max_tokens_respuesta}</span>
+          <span class="pill">modo=${engram.interaction_mode || 'Directo'}</span>
+          <span class="pill">umbral=${engram.moral_threshold ?? 0}</span>
         </div>
         <div class="card-actions">
           <button class="btn" type="button" data-action="edit" data-id="${engram.id}">Editar</button>
@@ -920,9 +897,6 @@
     INP_BACKSTORY.value = '';
     INP_THRESHOLD.value = '0';
     INP_MODE.value = 'Directo';
-    INP_TEMPERATURE.value = '0.8';
-    INP_TOP_P.value = '1.0';
-    INP_MAX_TOKENS.value = '2048';
     INP_DIALOGUE.value = '';
     setEditorFeedback('Completa los campos y guarda los cambios.');
   }
@@ -947,9 +921,6 @@
       INP_BACKSTORY.value = engram.backstory || '';
       INP_THRESHOLD.value = String(engram.moral_threshold ?? 0);
       INP_MODE.value = engram.interaction_mode || 'Directo';
-      INP_TEMPERATURE.value = String(engram.temperatura_base ?? 0.8);
-      INP_TOP_P.value = String(engram.top_p_base ?? 1.0);
-      INP_MAX_TOKENS.value = String(engram.max_tokens_respuesta ?? 2048);
       INP_DIALOGUE.value = (engram.dialogue_examples || []).join('\n');
       setEditorFeedback('Editando engrama existente.');
     } else {
@@ -997,9 +968,6 @@
       interaction_mode: INP_MODE.value.trim() || 'Directo',
       dialogue_examples: INP_DIALOGUE.value.split('\n').map((line) => line.trim()).filter(Boolean),
       backstory: INP_BACKSTORY.value.trim(),
-      temperatura_base: Number.parseFloat(INP_TEMPERATURE.value || '0.8') || 0.8,
-      top_p_base: Number.parseFloat(INP_TOP_P.value || '1.0') || 1.0,
-      max_tokens_respuesta: Number.parseInt(INP_MAX_TOKENS.value || '2048', 10) || 2048,
     };
   }
 

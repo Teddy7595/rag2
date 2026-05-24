@@ -6,6 +6,7 @@ from typing import Any, cast
 
 from fastapi import APIRouter, Request
 from fastapi.responses import HTMLResponse
+from fastapi.responses import RedirectResponse
 from fastapi.routing import APIRoute
 from fastapi.templating import Jinja2Templates
 from starlette.routing import Mount, WebSocketRoute
@@ -278,17 +279,7 @@ async def chat_page(request: Request) -> HTMLResponse:
 
 @router.get("/admin/runtime-ai")
 async def runtime_ai_page(request: Request) -> HTMLResponse:
-    context = get_app_context_from_request(request)
-    runtime_context = _runtime_context(request)
-    return _render(
-        request,
-        "runtime_ai.html",
-        title=f"{context.settings.app_name} | Runtime AI",
-        eyebrow="Runtime AI",
-        headline="Diagnostico de inferencia local",
-        description="Inspecciona el binding de llama.cpp, verifica la seleccion local activa y ejecuta smoke tests de texto y vision desde el portal admin.",
-        **runtime_context,
-    )
+    return RedirectResponse(url="/admin/models", status_code=307)
 
 
 @router.get("/admin/context-graph")

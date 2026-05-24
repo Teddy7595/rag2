@@ -33,7 +33,12 @@ from app.interaction.events import (
 from app.knowledge.events import ContextBuildRequest, CurrentIdentityRequest, REQUEST_KNOWLEDGE_CONTEXT_PROMPT, REQUEST_KNOWLEDGE_CURRENT_IDENTITY
 from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
 from app.models.runtime_service import LocalInferenceService
-from app.models.events import ModelTextGenerationRequest, REQUEST_MODEL_TEXT_GENERATION
+from app.models.events import (
+    ModelGenerationDefaultsRequest,
+    ModelTextGenerationRequest,
+    REQUEST_MODEL_GENERATION_DEFAULTS,
+    REQUEST_MODEL_TEXT_GENERATION,
+)
 
 
 logger = logging.getLogger(__name__)
@@ -1024,24 +1029,36 @@ class RealtimeChatService:
         default_temperature = policy.temperature
         default_top_p = policy.top_p
         default_max_tokens = policy.max_tokens
+        try:
+            runtime_defaults = self.event_bus.request(
+                REQUEST_MODEL_GENERATION_DEFAULTS,
+                ModelGenerationDefaultsRequest(),
+                source_module="interaction.application.realtime",
+            )
+            if isinstance(runtime_defaults, dict):
+                default_temperature = float(runtime_defaults.get("temperature", default_temperature))
+                default_top_p = float(runtime_defaults.get("top_p", default_top_p))
+                default_max_tokens = int(runtime_defaults.get("max_tokens", default_max_tokens))
+        except Exception:
+            pass
 
         temperature = default_temperature
         try:
-            temperature = float(identity.get("resolved_temperature") or identity.get("temperatura_base") or default_temperature)
+            temperature = float(default_temperature)
         except (TypeError, ValueError):
             temperature = default_temperature
         temperature = max(0.0, min(2.0, temperature))
 
         top_p = default_top_p
         try:
-            top_p = float(identity.get("resolved_top_p") or identity.get("top_p_base") or default_top_p)
+            top_p = float(default_top_p)
         except (TypeError, ValueError):
             top_p = default_top_p
         top_p = max(0.0, min(1.0, top_p))
 
         max_tokens = default_max_tokens
         try:
-            max_tokens = int(identity.get("resolved_max_tokens") or identity.get("max_tokens_respuesta") or default_max_tokens)
+            max_tokens = int(default_max_tokens)
         except (TypeError, ValueError):
             max_tokens = default_max_tokens
         max_tokens = max(128, min(2048, max_tokens))

@@ -74,6 +74,41 @@ class LocalInferenceService:
         runtime["resolved"] = catalog["resolved"]
         return runtime
 
+    def generation_defaults(self) -> dict[str, object]:
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        config = cast(dict[str, Any], catalog.get("runtime_config") or {})
+        return {
+            "temperature": max(0.0, min(2.0, float(config.get("text_generation_temperature") or 0.35))),
+            "top_p": max(0.0, min(1.0, float(config.get("text_generation_top_p") or 1.0))),
+            "max_tokens": max(64, min(4096, int(config.get("text_generation_max_tokens") or 768))),
+        }
+
+    def restart_runtime(self, *, reason: str = "model_update") -> dict[str, object]:
+        events: list[dict[str, object]] = []
+
+        def emit(stage: str, detail: str) -> None:
+            events.append({"stage": stage, "detail": detail})
+
+        emit("restart_begin", f"Reinicio runtime iniciado: {reason}")
+        self._text_models.clear()
+        self._vision_models.clear()
+        self._intent_models.clear()
+        self._last_text_load_error = None
+        self._last_vision_load_error = None
+        self._last_intent_load_error = None
+        emit("cache_cleared", "Caches de modelos limpiadas")
+
+        status = self.runtime_status()
+        emit("status_loaded", "Estado runtime recargado")
+        emit("restart_complete", "Reinicio runtime completado")
+
+        return {
+            "ok": True,
+            "reason": reason,
+            "events": events,
+            "runtime_status": status,
+        }
+
     def smoke_text(self, prompt: str) -> dict[str, object]:
         return self.generate_text(
             ModelTextGenerationRequest(

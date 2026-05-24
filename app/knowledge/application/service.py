@@ -87,15 +87,6 @@ class KnowledgeService:
             "ejemplos",
         ),
         "backstory": ("backstory", "historia", "trasfondo", "bio", "contexto"),
-        "temperatura_base": ("temperatura_base", "temperatura", "temperature", "temp"),
-        "top_p_base": ("top_p_base", "top_p", "topp"),
-        "max_tokens_respuesta": (
-            "max_tokens_respuesta",
-            "max_tokens",
-            "max_tokens_response",
-            "token_limit",
-            "tokens",
-        ),
     }
 
     def __init__(
@@ -234,9 +225,6 @@ class KnowledgeService:
             interaction_mode=request.interaction_mode,
             dialogue_examples=list(request.dialogue_examples),
             backstory=request.backstory,
-            temperatura_base=request.temperatura_base,
-            top_p_base=request.top_p_base,
-            max_tokens_respuesta=request.max_tokens_respuesta,
         )
         saved_identity = engram_repository.save(identity)
         self.directory.cache(saved_identity)
@@ -579,9 +567,6 @@ class KnowledgeService:
                 "Confirmo estado actual y riesgos antes de proponer cambios.",
             ],
             backstory="Identidad base del sistema para inicializar nuevas sesiones.",
-            temperatura_base=0.45,
-            top_p_base=0.95,
-            max_tokens_respuesta=1024,
         )
 
     def _apply_identity_updates(self, identity: Identity, request: EngramUpdateRequest) -> None:
@@ -605,12 +590,6 @@ class KnowledgeService:
             identity.dialogue_examples = list(request.dialogue_examples)
         if request.backstory is not None:
             identity.backstory = request.backstory
-        if request.temperatura_base is not None:
-            identity.temperatura_base = request.temperatura_base
-        if request.top_p_base is not None:
-            identity.top_p_base = request.top_p_base
-        if request.max_tokens_respuesta is not None:
-            identity.max_tokens_respuesta = request.max_tokens_respuesta
 
     def _resolve_import_column_map(self, fieldnames: list[str]) -> dict[str, str]:
         normalized_headers = {self._normalize_import_column(name): name for name in fieldnames}
@@ -662,18 +641,6 @@ class KnowledgeService:
         threshold = self._parse_int(payload.get("moral_threshold", ""), minimum=0, maximum=100)
         if threshold is not None:
             identity.moral_threshold = threshold
-
-        temperature = self._parse_float(payload.get("temperatura_base", ""), minimum=0.0, maximum=2.0)
-        if temperature is not None:
-            identity.temperatura_base = temperature
-
-        top_p = self._parse_float(payload.get("top_p_base", ""), minimum=0.0, maximum=1.0)
-        if top_p is not None:
-            identity.top_p_base = top_p
-
-        max_tokens = self._parse_int(payload.get("max_tokens_respuesta", ""), minimum=64, maximum=4096)
-        if max_tokens is not None:
-            identity.max_tokens_respuesta = max_tokens
 
         dialogue_examples = self._parse_dialogue_examples(payload.get("dialogue_examples", ""))
         if dialogue_examples:

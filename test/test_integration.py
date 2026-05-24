@@ -163,6 +163,8 @@ def test_bootstrap_exposes_database_and_module_routes(tmp_path: Path, monkeypatc
         "/api/operations/status",
         "/api/models/catalog",
         "/api/models/selection",
+        "/api/models/runtime-config",
+        "/api/models/apply-restart-stream",
         "/api/models/runtime/status",
         "/api/models/runtime/text",
         "/api/models/runtime/vision",
@@ -199,7 +201,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
 
         runtime_admin_response = client.get("/admin/runtime-ai")
         assert runtime_admin_response.status_code == 200
-        assert "Runtime AI" in runtime_admin_response.text
+        assert "Modelos y proveedores" in runtime_admin_response.text
 
         context_graph_admin_response = client.get("/admin/context-graph")
         assert context_graph_admin_response.status_code == 200
@@ -471,7 +473,7 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         assert atlas_after_import is not None
         assert atlas_after_import["behavior_prompt"] == "Actualizado por CSV"
         assert "regla uno" in atlas_after_import["meta_rule"].lower()
-        assert atlas_after_import["max_tokens_respuesta"] == 1536
+        assert "max_tokens_respuesta" not in atlas_after_import
 
         resolve_response = client.post(
             "/api/knowledge/identity/resolve",

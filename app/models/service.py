@@ -19,6 +19,25 @@ _PROVIDER_ALIASES = {
 _TEXT_PROVIDER_OPTIONS = ("local", "lmstudio")
 _VISION_PROVIDER_OPTIONS = ("local", "ollama", "lmstudio")
 
+_RUNTIME_CONFIG_DEFAULTS = {
+    "llm_provider": "local",
+    "llm_model_path": "",
+    "lmstudio_base_url": "http://localhost:8000",
+    "lmstudio_model": "",
+    "lmstudio_n_ctx": 32768,
+    "vision_provider": "local",
+    "vision_model_path": "",
+    "vision_mm_projector_path": "",
+    "vision_ollama_base_url": "http://localhost:11434",
+    "vision_ollama_model": "llava",
+    "vision_lmstudio_base_url": "http://localhost:8000",
+    "vision_lmstudio_model": "",
+    "vision_timeout_seconds": 120,
+    "text_generation_temperature": 0.35,
+    "text_generation_top_p": 1.0,
+    "text_generation_max_tokens": 768,
+}
+
 
 def _read_env(name: str, default: str = "") -> str:
     value = os.getenv(name)
@@ -107,10 +126,12 @@ class ModelCatalogService:
         self.settings = settings
         self.models_dir = settings.ai_model_dir
         self.selection_path = settings.vault_dir / "model-selection.json"
+        self.runtime_config_path = settings.vault_dir / "model-runtime-config.json"
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
     def catalog(self) -> dict[str, object]:
         bundles = self.discover_bundles()
+        runtime_config = self.load_runtime_config()
         selection = self.load_selection(bundles)
         resolved = self._resolve_selection(selection, bundles)
         validation = self.validation_report(bundles)
@@ -118,7 +139,8 @@ class ModelCatalogService:
             "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
             "models_dir": str(self.models_dir),
             "summary": self._build_summary(bundles),
-            "providers": self._build_provider_overview(),
+            "providers": self._build_provider_overview(runtime_config),
+            "runtime_config": runtime_config,
             "selection": selection,
             "resolved": resolved,
             "runtime": self._build_runtime_status(selection, resolved, bundles),
@@ -146,6 +168,48 @@ class ModelCatalogService:
 
     def current_selection(self) -> dict[str, object]:
         return self.load_selection(self.discover_bundles())
+
+    def load_runtime_config(self) -> dict[str, object]:
+        config = dict(_RUNTIME_CONFIG_DEFAULTS)
+        config["llm_provider"] = _normalize_provider(_read_env("LLM_PROVIDER", str(config["llm_provider"])), "local")
+        config["llm_model_path"] = _read_env("LLM_MODEL_PATH", str(config["llm_model_path"]))
+        config["lmstudio_base_url"] = _read_env("LMSTUDIO_BASE_URL", str(config["lmstudio_base_url"]))
+        config["lmstudio_model"] = _read_env("LMSTUDIO_MODEL", str(config["lmstudio_model"]))
+        config["lmstudio_n_ctx"] = int(_read_env("LMSTUDIO_N_CTX", str(config["lmstudio_n_ctx"])) or config["lmstudio_n_ctx"])
+        config["vision_provider"] = _normalize_provider(_read_env("VISION_PROVIDER", str(config["vision_provider"])), "local")
+        config["vision_model_path"] = _read_env("VISION_MODEL_PATH", str(config["vision_model_path"]))
+        config["vision_mm_projector_path"] = _read_env("VISION_MM_PROJECTOR_PATH", str(config["vision_mm_projector_path"]))
+        config["vision_ollama_base_url"] = _read_env("VISION_OLLAMA_BASE_URL", str(config["vision_ollama_base_url"]))
+        config["vision_ollama_model"] = _read_env("VISION_OLLAMA_MODEL", str(config["vision_ollama_model"]))
+        config["vision_lmstudio_base_url"] = _read_env(
+            "VISION_LMSTUDIO_BASE_URL",
+            _read_env("LMSTUDIO_BASE_URL", str(config["vision_lmstudio_base_url"])),
+        )
+        config["vision_lmstudio_model"] = _read_env(
+            "VISION_LMSTUDIO_MODEL",
+            _read_env("LMSTUDIO_MODEL", str(config["vision_lmstudio_model"])),
+        )
+        config["vision_timeout_seconds"] = int(
+            _read_env("VISION_TIMEOUT_SECONDS", str(config["vision_timeout_seconds"])) or config["vision_timeout_seconds"]
+        )
+
+        file_payload = self._load_runtime_config_file()
+        if file_payload:
+            for key, value in file_payload.items():
+                if key in config:
+                    config[key] = value
+
+        return self._normalize_runtime_config(config)
+
+    def update_runtime_config(self, patch: dict[str, object]) -> dict[str, object]:
+        current = self.load_runtime_config()
+        for key, value in patch.items():
+            if key not in _RUNTIME_CONFIG_DEFAULTS:
+                continue
+            current[key] = value
+        normalized = self._normalize_runtime_config(current)
+        self._write_runtime_config(normalized)
+        return normalized
 
     def resolve_bundle(self, bundle_id: str | None) -> ModelBundle | None:
         normalized = _coerce_text(bundle_id)
@@ -249,23 +313,23 @@ class ModelCatalogService:
             "bundle_count": len(bundles),
         }
 
-    def _build_provider_overview(self) -> dict[str, object]:
+    def _build_provider_overview(self, runtime_config: dict[str, object]) -> dict[str, object]:
         return {
             "text": {
-                "configured_provider": _normalize_provider(_read_env("LLM_PROVIDER", "local"), "local"),
+                "configured_provider": _normalize_provider(_coerce_text(runtime_config.get("llm_provider")) or "local", "local"),
                 "supported_providers": list(_TEXT_PROVIDER_OPTIONS),
-                "lmstudio_base_url": _read_env("LMSTUDIO_BASE_URL", "http://localhost:8000"),
-                "lmstudio_model": _coerce_text(_read_env("LMSTUDIO_MODEL")),
-                "lmstudio_n_ctx": int(_read_env("LMSTUDIO_N_CTX", "32768") or "32768"),
+                "lmstudio_base_url": _coerce_text(runtime_config.get("lmstudio_base_url")) or "http://localhost:8000",
+                "lmstudio_model": _coerce_text(runtime_config.get("lmstudio_model")),
+                "lmstudio_n_ctx": int(runtime_config.get("lmstudio_n_ctx") or 32768),
             },
             "vision": {
-                "configured_provider": _normalize_provider(_read_env("VISION_PROVIDER", "local"), "local"),
+                "configured_provider": _normalize_provider(_coerce_text(runtime_config.get("vision_provider")) or "local", "local"),
                 "supported_providers": list(_VISION_PROVIDER_OPTIONS),
-                "ollama_base_url": _read_env("VISION_OLLAMA_BASE_URL", "http://localhost:11434"),
-                "ollama_model": _read_env("VISION_OLLAMA_MODEL", "llava"),
-                "lmstudio_base_url": _read_env("VISION_LMSTUDIO_BASE_URL", _read_env("LMSTUDIO_BASE_URL", "http://localhost:8000")),
-                "lmstudio_model": _coerce_text(_read_env("VISION_LMSTUDIO_MODEL") or _read_env("LMSTUDIO_MODEL")),
-                "timeout_seconds": max(5, int(_read_env("VISION_TIMEOUT_SECONDS", "120") or "120")),
+                "ollama_base_url": _coerce_text(runtime_config.get("vision_ollama_base_url")) or "http://localhost:11434",
+                "ollama_model": _coerce_text(runtime_config.get("vision_ollama_model")) or "llava",
+                "lmstudio_base_url": _coerce_text(runtime_config.get("vision_lmstudio_base_url")) or "http://localhost:8000",
+                "lmstudio_model": _coerce_text(runtime_config.get("vision_lmstudio_model")),
+                "timeout_seconds": max(5, int(runtime_config.get("vision_timeout_seconds") or 120)),
             },
         }
 
@@ -280,6 +344,7 @@ class ModelCatalogService:
         )
 
     def _build_default_selection(self, bundles: tuple[ModelBundle, ...]) -> dict[str, object]:
+        runtime_config = self.load_runtime_config()
         text_provider = self._default_provider("LLM_PROVIDER", "local", bundles, supports_vision=False)
         vision_provider = self._default_provider("VISION_PROVIDER", "local", bundles, supports_vision=True)
 
@@ -297,14 +362,14 @@ class ModelCatalogService:
         if text_provider == "local":
             selection["text_bundle_id"] = self._first_bundle_id(bundles, require_vision=False)
         elif text_provider == "lmstudio":
-            selection["text_model_name"] = _coerce_text(_read_env("LMSTUDIO_MODEL"))
+            selection["text_model_name"] = _coerce_text(runtime_config.get("lmstudio_model"))
 
         if vision_provider == "local":
             selection["vision_bundle_id"] = self._first_bundle_id(bundles, require_vision=True)
         elif vision_provider == "ollama":
-            selection["vision_model_name"] = _coerce_text(_read_env("VISION_OLLAMA_MODEL", "llava"))
+            selection["vision_model_name"] = _coerce_text(runtime_config.get("vision_ollama_model")) or "llava"
         elif vision_provider == "lmstudio":
-            selection["vision_model_name"] = _coerce_text(_read_env("VISION_LMSTUDIO_MODEL") or _read_env("LMSTUDIO_MODEL"))
+            selection["vision_model_name"] = _coerce_text(runtime_config.get("vision_lmstudio_model") or runtime_config.get("lmstudio_model"))
 
         return self._normalize_selection(selection, bundles)
 
@@ -340,6 +405,7 @@ class ModelCatalogService:
 
     def _normalize_selection(self, selection: dict[str, object], bundles: tuple[ModelBundle, ...]) -> dict[str, object]:
         bundle_lookup = {bundle.bundle_id: bundle for bundle in bundles}
+        runtime_config = self.load_runtime_config()
 
         text_provider = _normalize_provider(_coerce_text(selection.get("text_provider")) or "local", "local")
         vision_provider = _normalize_provider(_coerce_text(selection.get("vision_provider")) or "local", "local")
@@ -357,7 +423,7 @@ class ModelCatalogService:
         elif text_provider == "lmstudio":
             text_bundle_id = None
             if not text_model_name:
-                text_model_name = _coerce_text(_read_env("LMSTUDIO_MODEL"))
+                text_model_name = _coerce_text(runtime_config.get("lmstudio_model"))
         else:
             text_provider = "local" if self._first_bundle_id(bundles, require_vision=False) else "lmstudio"
             if text_provider == "local":
@@ -365,7 +431,7 @@ class ModelCatalogService:
                 text_model_name = None
             else:
                 text_bundle_id = None
-                text_model_name = _coerce_text(_read_env("LMSTUDIO_MODEL"))
+                text_model_name = _coerce_text(runtime_config.get("lmstudio_model"))
 
         if vision_provider == "local":
             vision_bundle = bundle_lookup.get(vision_bundle_id or "")
@@ -375,11 +441,11 @@ class ModelCatalogService:
         elif vision_provider == "ollama":
             vision_bundle_id = None
             if not vision_model_name:
-                vision_model_name = _coerce_text(_read_env("VISION_OLLAMA_MODEL", "llava"))
+                vision_model_name = _coerce_text(runtime_config.get("vision_ollama_model")) or "llava"
         elif vision_provider == "lmstudio":
             vision_bundle_id = None
             if not vision_model_name:
-                vision_model_name = _coerce_text(_read_env("VISION_LMSTUDIO_MODEL") or _read_env("LMSTUDIO_MODEL"))
+                vision_model_name = _coerce_text(runtime_config.get("vision_lmstudio_model") or runtime_config.get("lmstudio_model"))
         else:
             vision_provider = "local" if self._first_bundle_id(bundles, require_vision=True) else "ollama"
             if vision_provider == "local":
@@ -387,7 +453,7 @@ class ModelCatalogService:
                 vision_model_name = None
             else:
                 vision_bundle_id = None
-                vision_model_name = _coerce_text(_read_env("VISION_OLLAMA_MODEL", "llava"))
+                vision_model_name = _coerce_text(runtime_config.get("vision_ollama_model")) or "llava"
 
         return {
             "text_provider": text_provider,
@@ -427,6 +493,45 @@ class ModelCatalogService:
     def _write_selection(self, selection: dict[str, object]) -> None:
         self.selection_path.parent.mkdir(parents=True, exist_ok=True)
         self.selection_path.write_text(json.dumps(selection, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _load_runtime_config_file(self) -> dict[str, object] | None:
+        if not self.runtime_config_path.exists():
+            return None
+        try:
+            loaded = json.loads(self.runtime_config_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(loaded, dict):
+            return None
+        return loaded
+
+    def _write_runtime_config(self, config: dict[str, object]) -> None:
+        self.runtime_config_path.parent.mkdir(parents=True, exist_ok=True)
+        self.runtime_config_path.write_text(json.dumps(config, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _normalize_runtime_config(self, config: dict[str, object]) -> dict[str, object]:
+        normalized = dict(_RUNTIME_CONFIG_DEFAULTS)
+        for key in normalized:
+            if key in config:
+                normalized[key] = config[key]
+
+        normalized["llm_provider"] = _normalize_provider(_coerce_text(normalized.get("llm_provider")) or "local", "local")
+        normalized["vision_provider"] = _normalize_provider(_coerce_text(normalized.get("vision_provider")) or "local", "local")
+        normalized["lmstudio_base_url"] = _coerce_text(normalized.get("lmstudio_base_url")) or "http://localhost:8000"
+        normalized["lmstudio_model"] = _coerce_text(normalized.get("lmstudio_model")) or ""
+        normalized["lmstudio_n_ctx"] = max(512, int(normalized.get("lmstudio_n_ctx") or 32768))
+        normalized["vision_ollama_base_url"] = _coerce_text(normalized.get("vision_ollama_base_url")) or "http://localhost:11434"
+        normalized["vision_ollama_model"] = _coerce_text(normalized.get("vision_ollama_model")) or "llava"
+        normalized["vision_lmstudio_base_url"] = _coerce_text(normalized.get("vision_lmstudio_base_url")) or "http://localhost:8000"
+        normalized["vision_lmstudio_model"] = _coerce_text(normalized.get("vision_lmstudio_model")) or ""
+        normalized["vision_timeout_seconds"] = max(5, int(normalized.get("vision_timeout_seconds") or 120))
+        normalized["llm_model_path"] = _coerce_text(normalized.get("llm_model_path")) or ""
+        normalized["vision_model_path"] = _coerce_text(normalized.get("vision_model_path")) or ""
+        normalized["vision_mm_projector_path"] = _coerce_text(normalized.get("vision_mm_projector_path")) or ""
+        normalized["text_generation_temperature"] = max(0.0, min(2.0, float(normalized.get("text_generation_temperature") or 0.35)))
+        normalized["text_generation_top_p"] = max(0.0, min(1.0, float(normalized.get("text_generation_top_p") or 1.0)))
+        normalized["text_generation_max_tokens"] = max(64, min(4096, int(normalized.get("text_generation_max_tokens") or 768)))
+        return normalized
 
     def _bundle_id_for(self, file_path: Path) -> str:
         relative_path = file_path.relative_to(self.models_dir)

@@ -59,9 +59,6 @@ class KnowledgeEngramInput(BaseModel):
     interaction_mode: str = "Directo"
     dialogue_examples: list[str] = Field(default_factory=list)
     backstory: str = ""
-    temperatura_base: float = 0.8
-    top_p_base: float = 1.0
-    max_tokens_respuesta: int = 2048
 
 
 class KnowledgeEngramUpdateInput(BaseModel):
@@ -75,9 +72,6 @@ class KnowledgeEngramUpdateInput(BaseModel):
     interaction_mode: str | None = None
     dialogue_examples: list[str] | None = None
     backstory: str | None = None
-    temperatura_base: float | None = None
-    top_p_base: float | None = None
-    max_tokens_respuesta: int | None = None
 
 
 class KnowledgeIdentityResolveInput(BaseModel):
@@ -288,9 +282,6 @@ async def create_engram(request: Request, payload: KnowledgeEngramInput) -> dict
             interaction_mode=payload.interaction_mode,
             dialogue_examples=tuple(payload.dialogue_examples),
             backstory=payload.backstory,
-            temperatura_base=payload.temperatura_base,
-            top_p_base=payload.top_p_base,
-            max_tokens_respuesta=payload.max_tokens_respuesta,
         ),
         source_module="knowledge.adapters.api.routes",
     )
@@ -313,9 +304,6 @@ async def update_engram(request: Request, engram_id: str, payload: KnowledgeEngr
             interaction_mode=payload.interaction_mode,
             dialogue_examples=tuple(payload.dialogue_examples) if payload.dialogue_examples is not None else None,
             backstory=payload.backstory,
-            temperatura_base=payload.temperatura_base,
-            top_p_base=payload.top_p_base,
-            max_tokens_respuesta=payload.max_tokens_respuesta,
         ),
         source_module="knowledge.adapters.api.routes",
     )

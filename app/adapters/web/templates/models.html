@@ -253,9 +253,53 @@
         </div>
         <button type="submit" class="save-button">Guardar selección</button>
       </form>
+      <pre id="model-apply-status" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Listo para aplicar cambios.</pre>
+    </div>
+  </article>
+
+  <article class="card" style="--pill-accent: #22d3ee;">
+    <p class="card-label">Configuracion runtime completa</p>
+    <div class="card-body">
+      <p>Edita todas las propiedades runtime en JSON. Al aplicar, el sistema guarda y reinicia el runtime de modelos en tiempo real.</p>
+      <textarea id="runtime-config-json" class="control-input" style="min-height: 240px; width: 100%; resize: vertical;">{{ catalog.runtime_config | tojson(indent=2) }}</textarea>
       <div class="card-actions">
-        <a class="link-button" href="/admin/runtime-ai">Probar runtime AI</a>
+        <button id="apply-restart-button" type="button" class="save-button">Aplicar cambios y reiniciar runtime</button>
       </div>
+      <pre id="restart-events" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Sin reinicios recientes.</pre>
+    </div>
+  </article>
+</section>
+
+<section class="panel-grid" style="margin-top: 18px;">
+  <article class="panel">
+    <h2 class="panel-title">Smoke test de texto</h2>
+    <div class="panel-body">
+      <form id="runtime-text-form" style="display: grid; gap: 12px;">
+        <textarea id="runtime-text-prompt" class="control-input" style="min-height: 120px; resize: vertical;" placeholder="Escribe el prompt de prueba para el modelo de texto activo.">Resume el estado actual del runtime y el modelo activo.</textarea>
+        <button type="submit" class="save-button">Ejecutar texto</button>
+      </form>
+      <pre id="runtime-text-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Esperando ejecucion...</pre>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Smoke test de vision</h2>
+    <div class="panel-body">
+      <form id="runtime-vision-form" style="display: grid; gap: 12px;" enctype="multipart/form-data">
+        <input id="runtime-vision-file" class="control-input" type="file" accept="image/*">
+        <textarea id="runtime-vision-prompt" class="control-input" style="min-height: 96px; resize: vertical;" placeholder="Prompt opcional para analisis de imagen.">Describe la imagen en espanol, con foco en contenido visible y contexto.</textarea>
+        <button type="submit" class="save-button">Ejecutar vision</button>
+      </form>
+      <pre id="runtime-vision-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Esperando imagen...</pre>
+    </div>
+  </article>
+
+  <article class="panel">
+    <h2 class="panel-title">Validador de bundles GGUF</h2>
+    <div class="panel-body">
+      <p>Valida tamaño, cabecera GGUF y par modelo+mmproj antes de inferencia.</p>
+      <button id="runtime-validation-refresh" type="button" class="save-button">Revalidar bundles</button>
+      <pre id="runtime-validation-result" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Cargando validación...</pre>
     </div>
   </article>
 </section>
@@ -321,7 +365,22 @@
 {% block scripts %}
 <script>
 (() => {
+  const MODEL_RESTART_SIGNAL_KEY = 'rag2.models.restartSignal';
   const form = document.getElementById('model-selection-form');
+  const runtimeConfigJson = document.getElementById('runtime-config-json');
+  const applyRestartButton = document.getElementById('apply-restart-button');
+  const applyStatus = document.getElementById('model-apply-status');
+  const restartEvents = document.getElementById('restart-events');
+  const textForm = document.getElementById('runtime-text-form');
+  const textPrompt = document.getElementById('runtime-text-prompt');
+  const textResult = document.getElementById('runtime-text-result');
+  const visionForm = document.getElementById('runtime-vision-form');
+  const visionPrompt = document.getElementById('runtime-vision-prompt');
+  const visionFile = document.getElementById('runtime-vision-file');
+  const visionResult = document.getElementById('runtime-vision-result');
+  const validationResult = document.getElementById('runtime-validation-result');
+  const validationRefresh = document.getElementById('runtime-validation-refresh');
+
   const setBundle = (fieldId, bundleId) => {
     const field = document.getElementById(fieldId);
     if (field) {
@@ -334,31 +393,216 @@
   document.querySelectorAll('[data-select-vision-bundle]').forEach((button) => {
     button.addEventListener('click', () => setBundle('vision-bundle-id', button.dataset.selectVisionBundle));
   });
+
+  const appendRestartEvent = (line) => {
+    const current = restartEvents.textContent.trim();
+    restartEvents.textContent = current ? `${current}\n${line}` : line;
+  };
+
+  const parseRuntimeConfig = () => {
+    try {
+      const parsed = JSON.parse(runtimeConfigJson.value || '{}');
+      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('El JSON debe ser un objeto.');
+      }
+      return parsed;
+    } catch (error) {
+      throw new Error(`JSON invalido: ${String(error)}`);
+    }
+  };
+
   if (!form) {
     return;
   }
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const payload = {
+
+  const buildSelectionPayload = () => ({
       text_provider: document.getElementById('text-provider').value,
       text_bundle_id: document.getElementById('text-bundle-id').value || null,
       text_model_name: document.getElementById('text-model-name').value.trim() || null,
       vision_provider: document.getElementById('vision-provider').value,
       vision_bundle_id: document.getElementById('vision-bundle-id').value || null,
       vision_model_name: document.getElementById('vision-model-name').value.trim() || null,
-    };
+  });
+
+  const renderValidation = (payload) => {
+    if (!payload || typeof payload !== 'object') {
+      validationResult.textContent = 'Sin datos de validación.';
+      return;
+    }
+
+    const bundles = Array.isArray(payload.bundles) ? payload.bundles : [];
+    const lines = [
+      `models_dir: ${payload.models_dir || 'n/a'}`,
+      `bundles totales: ${payload.total_bundles || 0}`,
+      `texto listo: ${payload.ready_text_bundle_count || 0}`,
+      `vision lista: ${payload.ready_vision_bundle_count || 0}`,
+      `invalidos: ${payload.invalid_bundle_count || 0}`,
+      '',
+    ];
+
+    for (const bundle of bundles) {
+      const status = bundle.valid ? 'OK' : 'INVALIDO';
+      const issueText = Array.isArray(bundle.issues) && bundle.issues.length ? bundle.issues.join(', ') : 'sin issues';
+      lines.push(`[${status}] ${bundle.bundle_id}`);
+      lines.push(`  text_ready=${bundle.text_ready ? 'si' : 'no'} | vision_ready=${bundle.vision_ready ? 'si' : 'no'}`);
+      lines.push(`  issues: ${issueText}`);
+      if (bundle.text_artifact) {
+        lines.push(`  text: ${bundle.text_artifact.relative_path} (${bundle.text_artifact.size_label}) header=${bundle.text_artifact.header_magic || '-'} ok=${bundle.text_artifact.ok ? 'si' : 'no'}`);
+      }
+      if (bundle.projector_artifact) {
+        lines.push(`  mmproj: ${bundle.projector_artifact.relative_path} (${bundle.projector_artifact.size_label}) header=${bundle.projector_artifact.header_magic || '-'} ok=${bundle.projector_artifact.ok ? 'si' : 'no'}`);
+      }
+      lines.push('');
+    }
+
+    validationResult.textContent = lines.join('\n').trim();
+  };
+
+  const refreshValidation = async () => {
+    validationResult.textContent = 'Validando bundles...';
+    try {
+      const response = await fetch('/api/models/catalog/validation');
+      const payload = await response.json();
+      renderValidation(payload);
+    } catch (error) {
+      validationResult.textContent = `Fallo validación: ${String(error)}`;
+    }
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    applyStatus.textContent = 'Guardando selección...';
     const response = await fetch('/api/models/selection', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(buildSelectionPayload()),
     });
     if (!response.ok) {
       const text = await response.text();
-      alert(`No se pudo guardar la selección: ${text}`);
+      applyStatus.textContent = `No se pudo guardar la selección: ${text}`;
       return;
     }
+    applyStatus.textContent = 'Selección guardada. Pulsa "Aplicar cambios y reiniciar runtime" para reinicio en vivo.';
+  });
+
+  applyRestartButton.addEventListener('click', async () => {
+    let runtimeConfig = {};
+    try {
+      runtimeConfig = parseRuntimeConfig();
+    } catch (error) {
+      applyStatus.textContent = String(error);
+      return;
+    }
+
+    applyRestartButton.disabled = true;
+    applyStatus.textContent = 'Aplicando cambios y reiniciando runtime...';
+    restartEvents.textContent = '';
+
+    const response = await fetch('/api/models/apply-restart-stream', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ selection: buildSelectionPayload(), runtime_config: runtimeConfig, reason: 'admin_models_apply' }),
+    });
+
+    if (!response.ok || !response.body) {
+      const text = await response.text();
+      applyStatus.textContent = `No se pudo iniciar apply+restart: ${text}`;
+      applyRestartButton.disabled = false;
+      return;
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let doneEvent = null;
+    let failed = false;
+
+    while (true) {
+      const chunk = await reader.read();
+      if (chunk.done) {
+        break;
+      }
+      buffer += decoder.decode(chunk.value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+      for (const entry of events) {
+        const line = entry.split('\n').find((candidate) => candidate.startsWith('data: '));
+        if (!line) {
+          continue;
+        }
+        let payload = null;
+        try {
+          payload = JSON.parse(line.slice(6));
+        } catch (_) {
+          appendRestartEvent(line.slice(6));
+          continue;
+        }
+        appendRestartEvent(`${payload.stage || 'event'}: ${payload.detail || ''}`.trim());
+        if (payload.stage === 'done') {
+          doneEvent = payload;
+        }
+        if (payload.stage === 'error') {
+          failed = true;
+        }
+      }
+    }
+
+    if (failed || !doneEvent) {
+      applyStatus.textContent = 'Apply+restart finalizó con error. Revisa la bitácora de eventos.';
+      applyRestartButton.disabled = false;
+      return;
+    }
+
+    try {
+      window.localStorage.setItem(MODEL_RESTART_SIGNAL_KEY, JSON.stringify({
+        at: Date.now(),
+        reason: 'admin_models_apply',
+        text: document.getElementById('text-bundle-id').value || document.getElementById('text-model-name').value.trim() || 'auto',
+        vision: document.getElementById('vision-bundle-id').value || document.getElementById('vision-model-name').value.trim() || 'auto',
+      }));
+    } catch (_) {
+      // no-op: signal is best-effort for chat UX
+    }
+
+    applyStatus.textContent = 'Apply+restart completado. Refrescando vista...';
     window.location.reload();
   });
+
+  textForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    textResult.textContent = 'Ejecutando smoke test de texto...';
+    const response = await fetch('/api/models/runtime/text', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt: textPrompt.value.trim() }),
+    });
+    const payload = await response.json();
+    textResult.textContent = JSON.stringify(payload, null, 2);
+  });
+
+  visionForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    if (!visionFile.files.length) {
+      visionResult.textContent = 'Selecciona una imagen antes de ejecutar el smoke test.';
+      return;
+    }
+    visionResult.textContent = 'Ejecutando smoke test de vision...';
+    const formData = new FormData();
+    formData.append('image', visionFile.files[0]);
+    formData.append('prompt', visionPrompt.value.trim());
+    const response = await fetch('/api/models/runtime/vision', {
+      method: 'POST',
+      body: formData,
+    });
+    const payload = await response.json();
+    visionResult.textContent = JSON.stringify(payload, null, 2);
+  });
+
+  validationRefresh.addEventListener('click', async () => {
+    await refreshValidation();
+  });
+
+  refreshValidation();
 })();
 </script>
 {% endblock %}
