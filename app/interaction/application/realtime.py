@@ -491,11 +491,10 @@ class RealtimeChatService:
                     "identity": ("quien eres", "como te llamas", "cual es tu nombre"),
                     "conversational": ("como sigues", "que opinas", "hablemos", "charlar contigo"),
                     "technical": ("tengo un error", "hay un bug", "necesito ayuda tecnica"),
-                    "narrative": ("cuéntame una historia", "continúa la historia", "sigue narrando", "qué pasó después"),
                     "mixed": ("quiero contexto y opinion", "consulta general con contexto"),
                 },
             )
-            if semantic_intent in {"greeting", "identity", "conversational", "technical", "narrative", "mixed"}:
+            if semantic_intent in {"greeting", "identity", "conversational", "technical", "mixed"}:
                 return semantic_intent
 
         runtime = self.model_runtime
@@ -776,14 +775,14 @@ class RealtimeChatService:
             max_tokens=_policy_preview.max_tokens,
             temperature=_policy_preview.temperature,
             deadline_ms=_policy_preview.deadline_ms,
-            narrative_mode=_policy_preview.intent == "narrative",
+            narrative_mode=not _policy_preview.prefer_short,
             knowledge_matches=[
                 {"label": m.get("label"), "score": m.get("score"), "excerpt": m.get("excerpt")}
                 if isinstance(m, dict) else {}
                 for m in _km
             ],
             history_loaded=len(history_messages),
-            history_injected=min(20 if _policy_preview.intent == "narrative" else 12, len(history_messages)),
+            history_injected=min(20, len(history_messages)),
         )
         user_message = self.interaction_service.record_message(
             InteractionMessageRecordRequest(
@@ -1077,7 +1076,6 @@ class RealtimeChatService:
             embedding_runtime=self.embedding_runtime,
         )
         conversational_mode = policy.intent in {"greeting", "identity"}
-        narrative_mode = policy.intent == "narrative"
         # RAG always runs — even on conversational turns the context can add value.
 
         main_idea = ""
@@ -1136,7 +1134,7 @@ class RealtimeChatService:
         if compact_context_text:
             prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
         if knowledge_matches:
-            match_limit = 8 if narrative_mode else 6
+            match_limit = 8
             prompt_sections.append(
                 "Coincidencias relevantes:\n" + "\n".join(
                     f"- {str(match.get('label') or 'contexto')}: {str(match.get('excerpt') or '').strip()}"
@@ -1145,7 +1143,7 @@ class RealtimeChatService:
             )
 
         # BLOCK 3.5: Conversation history (injected directly, bypasses compact_context_for_prompt).
-        history_window = history_messages[-20:] if narrative_mode else history_messages[-12:]
+        history_window = history_messages[-20:]
         if history_window:
             history_text_block = _format_history(history_window)
             if history_text_block:
@@ -1160,21 +1158,16 @@ class RealtimeChatService:
                 "Responde de forma natural y directa en el tono propio de este personaje. "
                 "No uses encabezados ni razonamiento interno."
             )
-        elif narrative_mode:
-            prompt_sections.append(
-                "Escribe un pasaje narrativo extenso y detallado — mínimo 5 párrafos densos. "
-                "Desarrolla la escena mostrando: diálogos reales entre personajes, descripciones físicas del ambiente y los cuerpos, "
-                "sensaciones táctiles, visuales y auditivas, pensamientos y emociones internas de los personajes. "
-                "Muestra cada acción en tiempo real — nunca la resumas con una frase. "
-                "Mantén los nombres, la relación y los eventos ya establecidos en el historial. "
-                "Usa el vocabulario, el tono y la voz propios de este personaje. "
-                "No uses encabezados, listas, asteriscos ni meta-comentarios. Solo texto narrativo continuo."
-            )
         else:
             prompt_sections.append(
-                "Responde de forma completa y elaborada como lo haría este personaje — desarrolla la idea con detalle, "
-                "no la resumás. Usa al menos 3-4 párrafos si el tema lo permite. "
-                "No uses encabezados ni razonamiento interno."
+                "Responde de forma completa y elaborada — desarrolla la idea con detalle y profundidad, "
+                "nunca resumas con una sola frase. "
+                "Si es narrativa: escribe mínimo 5 párrafos densos con diálogos reales, descripciones físicas, "
+                "sensaciones y pensamientos internos — muestra cada acción en tiempo real. "
+                "Si es conversación o información: usa al menos 3-4 párrafos, con ejemplos y desarrollo real. "
+                "Mantén los nombres, la relación y los eventos ya establecidos en el historial. "
+                "Usa el vocabulario, el tono y la voz propios de este personaje. "
+                "No uses encabezados, listas, asteriscos ni meta-comentarios. Solo texto continuo."
             )
 
         prompt = "\n\n".join(s for s in prompt_sections if s.strip())
@@ -1263,9 +1256,9 @@ class RealtimeChatService:
         immersive_strict = bool(rollout.get("immersive_strict_engram", True))
         immersive_max_retries = int(rollout.get("immersive_retry_max") or 1)
 
-        # Characters budget for sanitization: narrative/long modes get 8000 (~2048 tokens),
-        # conversational gets 1200. This is what actually caps the visible response length.
-        sanitize_max_chars = 9000 if (narrative_mode or not policy.prefer_short) else 1200
+        # Characters budget for sanitization: long modes get 9000 (~2048 tokens),
+        # greeting/identity gets 1200. This is what actually caps the visible response length.
+        sanitize_max_chars = 9000 if not policy.prefer_short else 1200
 
         def _generate_and_sanitize(gen_prompt: str, gen_temperature: float) -> tuple[str, bool]:
             """Call the model and apply sanitization. Returns (reply, ok)."""

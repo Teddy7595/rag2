@@ -29,14 +29,6 @@ _INTENT_PROTOTYPES: dict[str, tuple[str, ...]] = {
         "necesito ayuda tecnica",
         "diagnostica el fallo",
     ),
-    "narrative": (
-        "cuéntame una historia",
-        "continúa la historia",
-        "sigue narrando",
-        "qué pasó después con el personaje",
-        "escríbeme un relato",
-        "prosigue con la narrativa",
-    ),
     "mixed": (
         "quiero contexto y opinion",
         "mezcla de charla y soporte tecnico",
@@ -63,7 +55,7 @@ def build_turn_policy(
     embedding_runtime: SemanticEmbeddingRuntime | None = None,
 ) -> ConversationTurnPolicy:
     intent = (intent_hint or classify_intent(user_text, embedding_runtime=embedding_runtime)).strip().lower()
-    if intent not in {"greeting", "identity", "conversational", "technical", "narrative", "mixed"}:
+    if intent not in {"greeting", "identity", "conversational", "technical", "mixed"}:
         intent = classify_intent(user_text, embedding_runtime=embedding_runtime)
 
     # Greeting/identity stay short — everything else gets a full budget.
@@ -76,22 +68,13 @@ def build_turn_policy(
             deadline_ms=8000,
             prefer_short=True,
         )
-    if intent == "narrative":
-        return ConversationTurnPolicy(
-            intent=intent,
-            max_tokens=2048,
-            temperature=0.82,
-            top_p=0.95,
-            deadline_ms=90000,
-            prefer_short=False,
-        )
-    # Default for conversational, technical, mixed — half A4 page (~768 tokens).
+    # Default for all other intents — up to half an A4 page or full narrative.
     return ConversationTurnPolicy(
         intent=intent,
-        max_tokens=768,
-        temperature=0.72,
+        max_tokens=1536,
+        temperature=0.75,
         top_p=0.95,
-        deadline_ms=45000,
+        deadline_ms=90000,
         prefer_short=False,
     )
 
@@ -128,17 +111,6 @@ def classify_intent(text: str, *, embedding_runtime: SemanticEmbeddingRuntime | 
     )
     if any(marker in lowered for marker in technical_markers):
         return "technical"
-    narrative_markers = (
-        "cuéntame", "cuentame", "historia", "narración", "narracion",
-        "continúa", "continua", "sigue", "siguiente",
-        "que pasó", "que paso", "qué pasó", "qué paso",
-        "y luego", "y entonces", "y después", "y despues",
-        "personaje", "escena", "capítulo", "capitulo",
-        "relato", "cuento", "narra", "prosigue", "adelante",
-        "me gusta la historia", "me gustó la historia",
-    )
-    if any(marker in lowered for marker in narrative_markers):
-        return "narrative"
     return "mixed"
 
 
