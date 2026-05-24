@@ -197,14 +197,50 @@
     align-self: flex-start;
   }
 
+  .avatar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    flex-shrink: 0;
+  }
+
   .avatar {
-    width: 34px;
-    height: 34px;
+    width: 42px;
+    height: 42px;
     border-radius: 8px;
     object-fit: cover;
     border: 1px solid var(--chat-line-hard);
-    flex-shrink: 0;
     background: #0a0a0a;
+    display: block;
+  }
+
+  .avatar-action-btn {
+    width: 42px;
+    height: 22px;
+    background: #151515;
+    border: 1px solid #2a2a2a;
+    border-radius: 6px;
+    color: #555;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: color 0.15s, border-color 0.15s, background 0.15s;
+    padding: 0;
+  }
+
+  .avatar-action-btn:hover,
+  .avatar-action-btn.active {
+    color: var(--chat-accent-color);
+    border-color: var(--chat-accent-color);
+    background: rgba(0, 255, 65, 0.06);
+  }
+
+  .avatar-action-btn svg {
+    width: 12px;
+    height: 12px;
+    pointer-events: none;
   }
 
   .bubble {
@@ -279,12 +315,12 @@
   }
 
   .message-row.user .msg-controls {
-    right: 45px;
+    right: 50px;
   }
 
   .message-row.ai .msg-controls,
   .message-row.system .msg-controls {
-    left: 45px;
+    left: 50px;
     right: auto;
   }
 
@@ -796,7 +832,7 @@
     }
 
     #header-bar .header-btn,
-    #header-bar .session-chip:not(#chat-limits-chip):not(#chat-model-chip) {
+    #header-bar .session-chip {
       display: none;
     }
 
@@ -1420,8 +1456,8 @@
       <span id="chat-session-id">session: pendiente</span>
       <button type="button" id="chat-session-copy" class="session-copy">copiar</button>
     </span>
-    <span class="session-chip" id="chat-limits-chip">ctx=5 · hist=20</span>
-    <span class="session-chip" id="chat-model-chip">txt=pendiente · vis=off</span>
+    <span class="session-chip" id="chat-limits-chip" style="display:none">ctx=5 · hist=20</span>
+    <span class="session-chip" id="chat-model-chip" style="display:none">txt=pendiente · vis=off</span>
     <a href="/admin/session-intel" id="chat-session-intel-link" class="header-btn">Session Intel</a>
     <a href="/admin/context-traces" class="header-btn">Context Traces</a>
     <a href="/admin/engrams" class="header-btn">Engramas</a>
@@ -1643,12 +1679,12 @@
   let preserveInputAfterCommand = false;
 
   const slashCommands = [
+    '/saga', '/saga estado', '/saga nueva <título>', '/saga cmd <texto>',
+    '/saga pausa', '/saga activar', '/saga admin',
     '/help', '/info', '/attach', '/clearfile', '/assets list', '/vault list',
     '/ragcount [engram_id]', '/vision <prompt>', '/mem [message_id]', '/hide [message_id]',
     '/rewind [message_id]', '/trace [trigger]', '/rules show', '/rules <texto>', '/models',
-    '/ctx <1-50>', '/history <1-100>', '/limits',
-    '/saga', '/saga estado', '/saga nueva <título>', '/saga cmd <texto>',
-    '/saga pausa', '/saga activar', '/saga admin'
+    '/ctx <1-50>', '/history <1-100>', '/limits'
   ];
 
   function renderBootstrapMessage() {
@@ -2340,10 +2376,22 @@
       }
     }
 
+    const avatarCol = document.createElement('div');
+    avatarCol.className = 'avatar-col';
+
     const img = document.createElement('img');
     img.className = 'avatar';
     img.src = avatarUrl || currentEngramAvatar;
     img.alt = 'avatar';
+
+    const actionBtn = document.createElement('button');
+    actionBtn.className = 'avatar-action-btn';
+    actionBtn.type = 'button';
+    actionBtn.setAttribute('aria-label', 'Opciones del mensaje');
+    actionBtn.innerHTML = `<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg>`;
+
+    avatarCol.appendChild(img);
+    if (msgId) avatarCol.appendChild(actionBtn);
 
     const body = document.createElement('div');
     const bubble = document.createElement('div');
@@ -2361,9 +2409,9 @@
 
     if (isUser) {
       row.appendChild(body);
-      row.appendChild(img);
+      row.appendChild(avatarCol);
     } else {
-      row.appendChild(img);
+      row.appendChild(avatarCol);
       row.appendChild(body);
     }
 
@@ -2480,6 +2528,28 @@
 
     row.appendChild(controls);
     setupMessageInteractions(row);
+
+    // Botón de avatar: toggle de controles (funciona en desktop y móvil sin long-press)
+    const avatarBtn = row.querySelector('.avatar-action-btn');
+    if (avatarBtn) {
+      avatarBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const isVisible = controls.style.opacity === '1';
+        // Cerrar cualquier otro abierto
+        document.querySelectorAll('.msg-controls').forEach((el) => {
+          el.style.opacity = '';
+          el.style.pointerEvents = '';
+          el.style.transform = '';
+        });
+        document.querySelectorAll('.avatar-action-btn').forEach((btn) => btn.classList.remove('active'));
+        if (!isVisible) {
+          controls.style.opacity = '1';
+          controls.style.pointerEvents = 'auto';
+          controls.style.transform = 'scale(1)';
+          avatarBtn.classList.add('active');
+        }
+      });
+    }
   }
 
   function startProcessingFeedback(initialStage = 'procesando', tone = 'sky') {
@@ -3549,6 +3619,16 @@
 
     chatBox.addEventListener('scroll', () => {
       scrollToBottom(false);
+    }, { passive: true });
+
+    // Cerrar controles de mensaje al hacer click fuera
+    document.addEventListener('click', () => {
+      document.querySelectorAll('.msg-controls').forEach((el) => {
+        el.style.opacity = '';
+        el.style.pointerEvents = '';
+        el.style.transform = '';
+      });
+      document.querySelectorAll('.avatar-action-btn').forEach((btn) => btn.classList.remove('active'));
     }, { passive: true });
 
     if (scrollBottomBtn) {
