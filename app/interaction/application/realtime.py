@@ -1193,13 +1193,46 @@ class RealtimeChatService:
                 prompt_sections.append(f"Historial de conversación:\n{history_text_block}")
 
         # BLOCK 4: The actual request.
-        prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
+        # For continuation turns: inject the tail of the last assistant reply as an
+        # explicit anchor so the model knows exactly where to pick up — prevents
+        # retrograde summaries and cyclic repetition.
+        is_continuation_turn = _is_continuation(input_data.content)
+        continuation_tail = ""
+        if is_continuation_turn and not conversational_mode:
+            recent = _recent_assistant_replies(history_messages, limit=1)
+            if recent:
+                raw_tail = recent[0].strip()
+                # Take the last ~700 chars; try to start at a paragraph boundary
+                # so the anchor begins mid-scene rather than mid-sentence.
+                tail_candidate = raw_tail[-700:]
+                nl_idx = tail_candidate.find("\n")
+                if nl_idx > 80:
+                    tail_candidate = tail_candidate[nl_idx:].strip()
+                continuation_tail = tail_candidate
+
+        if is_continuation_turn and continuation_tail:
+            user_request = input_data.content.strip()
+            prompt_sections.append(
+                f"Solicitud del usuario: {user_request}\n\n"
+                f"Último fragmento escrito — continúa exactamente desde aquí sin repetirlo:\n"
+                f"{continuation_tail}"
+            )
+        else:
+            prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
 
         # BLOCK 5: Output directive — explicit length and style, closest to the lead-in for maximum weight.
         if conversational_mode:
             prompt_sections.append(
                 "Responde de forma natural y directa en el tono propio de este personaje. "
                 "No uses encabezados ni razonamiento interno."
+            )
+        elif is_continuation_turn and continuation_tail:
+            prompt_sections.append(
+                "CONTINUACIÓN DIRECTA: escribe el siguiente bloque narrativo partiendo del último fragmento. "
+                "PROHIBIDO repetir, parafrasear o resumir lo que ya está escrito. "
+                "Empieza con el siguiente evento, acción o diálogo como si la escena no se hubiera interrumpido. "
+                "Mínimo 5 párrafos densos y nuevos. Mismo tono, misma voz, mismo ritmo. "
+                "Sin encabezados, sin retrospectiva, sin meta-comentarios. Solo narración continua."
             )
         else:
             prompt_sections.append(
