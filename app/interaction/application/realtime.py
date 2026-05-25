@@ -23,7 +23,6 @@ from app.interaction.application.governance import (
     meta_rule_permits_roleplay,
     sanitize_generated_reply,
     sanitize_history_content,
-    strip_model_artifacts,
     strip_roleplay_actions,
 )
 from app.interaction.application.pipeline_trace import (
@@ -478,10 +477,6 @@ class RealtimeChatService:
             "immersive_retry_max": int(getattr(settings, "conversation_immersive_retry_max", 1) or 1),
             "immersive_threshold_percent": int(getattr(settings, "conversation_immersive_threshold_percent", 65) or 65),
             "immersive_strict_engram": bool(getattr(settings, "conversation_immersive_strict_engram", True)),
-            # Raw output mode: only strip protocol artifacts, skip all content filtering.
-            "raw_output_mode": bool(getattr(settings, "conversation_raw_output_mode", False)),
-            # Configurable RAG match limit (knowledge fragments injected per turn).
-            "rag_match_limit": max(1, min(80, int(getattr(settings, "conversation_rag_match_limit", 8) or 8))),
         }
 
     # --- Reply embedding cache (per-session, last 4 turns) ---
@@ -1103,8 +1098,6 @@ class RealtimeChatService:
         timeout_enabled = bool(rollout["timeout_enabled"])
         telemetry_enabled = bool(rollout["telemetry_enabled"])
         deadline_scale = max(10, min(500, int(rollout["deadline_scale_percent"])))
-        raw_output_mode = bool(rollout["raw_output_mode"])
-        rag_match_limit = int(rollout["rag_match_limit"])
         intent_hint = self._intent_hint(input_data.content)
         policy = build_turn_policy(
             input_data.content,
@@ -1171,10 +1164,11 @@ class RealtimeChatService:
         if compact_context_text:
             prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
         if knowledge_matches:
+            match_limit = 8
             prompt_sections.append(
                 "Coincidencias relevantes:\n" + "\n".join(
                     f"- {str(match.get('label') or 'contexto')}: {str(match.get('excerpt') or '').strip()}"
-                    for match in knowledge_matches[:rag_match_limit]
+                    for match in knowledge_matches[:match_limit]
                 )
             )
 
@@ -1347,13 +1341,6 @@ class RealtimeChatService:
 
             if isinstance(generated, dict) and generated.get("ok") and best_effort_reply:
                 reply = best_effort_reply
-
-                if raw_output_mode:
-                    # --- RAW / LEGACY mode ---
-                    # Only strip model protocol artifacts (XML tags, role prefixes, tokenizer tokens).
-                    # No content gates, no quality scoring, no retries — equivalent to RAG1 behaviour.
-                    quality_flags["guard_path"] = "raw_output"
-                    return strip_model_artifacts(reply), quality_flags
 
                 # --- Sanitize: strip technical artifacts only (leaked instructions, protocol tags) ---
                 # This mirrors the RAG1 approach: remove format garbage, never block content.

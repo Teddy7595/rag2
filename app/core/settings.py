@@ -127,13 +127,6 @@ class AppSettings:
     conversation_immersive_retry_max: int
     conversation_immersive_threshold_percent: int
     conversation_immersive_strict_engram: bool
-    # Raw output mode: only strip model protocol artifacts (XML tags, role prefixes).
-    # Disables all content-based filtering, quality scoring and retries.
-    # Equivalent to the legacy RAG1 output handling.
-    conversation_raw_output_mode: bool
-    # Maximum number of RAG knowledge matches injected per turn.
-    # Default 8; increase for richer context at the cost of prompt size.
-    conversation_rag_match_limit: int
     chat_trash_retention_hours: int
     embedding_model_dir: Path
     ai_model_dir: Path
@@ -206,8 +199,6 @@ def load_settings(project_root: Path) -> AppSettings:
         conversation_immersive_retry_max=max(0, min(2, _read_int_env("APP_CONVERSATION_IMMERSIVE_RETRY_MAX", 1))),
         conversation_immersive_threshold_percent=max(10, min(95, _read_int_env("APP_CONVERSATION_IMMERSIVE_THRESHOLD_PERCENT", 65))),
         conversation_immersive_strict_engram=_read_bool_env("APP_CONVERSATION_IMMERSIVE_STRICT_ENGRAM", default=True),
-        conversation_raw_output_mode=_read_bool_env("APP_CONVERSATION_RAW_OUTPUT_MODE", default=False),
-        conversation_rag_match_limit=max(1, min(80, _read_int_env("APP_CONVERSATION_RAG_MATCH_LIMIT", 8))),
         chat_trash_retention_hours=max(1, min(168, _read_int_env("APP_CHAT_TRASH_RETENTION_HOURS", 24))),
         embedding_model_dir=embedding_model_dir,
         ai_model_dir=ai_model_dir,

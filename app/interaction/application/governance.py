@@ -4,44 +4,6 @@ from dataclasses import dataclass
 import re
 
 from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
-
-
-# ---------------------------------------------------------------------------
-# Raw / legacy output stripping
-# ---------------------------------------------------------------------------
-
-_PROTOCOL_TAG_RE = re.compile(r"<\|[^|>]*\|>")          # <|im_start|>, <|im_end|>, <|.*|>
-_LEGACY_MARKER_RE = re.compile(r"</?s>|\[UNUSED_TOKEN_[^\]]*\]", re.IGNORECASE)
-_XML_TAG_RE = re.compile(r"<[^>]{1,80}>")                # generic XML/HTML tags
-_ROLE_PREFIX_RE = re.compile(                             # role echo at line start
-    r"^(user|assistant|asistente|usuario|system)\s*:\s*",
-    re.IGNORECASE | re.MULTILINE,
-)
-_SYSTEM_TAG_RE = re.compile(r"\[SYSTEM\]\s*:\s*", re.IGNORECASE)
-_INTERNAL_BLOCK_RE = re.compile(                          # <internal_knowledge>...</internal_knowledge>
-    r"<internal_knowledge>.*?</internal_knowledge>",
-    re.DOTALL | re.IGNORECASE,
-)
-
-
-def strip_model_artifacts(text: str) -> str:
-    """Minimal post-processing: remove model protocol tokens and format garbage.
-
-    This mirrors the legacy RAG1 ``_sanitize_text()`` approach — strip only what
-    the tokenizer/model injects as structural markers, never block content on
-    heuristic grounds.  Safe to use in raw-output mode.
-    """
-    if not text:
-        return text
-    cleaned = _INTERNAL_BLOCK_RE.sub("", text)
-    cleaned = _PROTOCOL_TAG_RE.sub("", cleaned)
-    cleaned = _LEGACY_MARKER_RE.sub("", cleaned)
-    cleaned = _SYSTEM_TAG_RE.sub("", cleaned)
-    cleaned = _ROLE_PREFIX_RE.sub("", cleaned)
-    cleaned = _XML_TAG_RE.sub("", cleaned)
-    # Collapse runs of blank lines left by removed blocks.
-    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
-    return cleaned.strip()
 _INTENT_PROTOTYPES: dict[str, tuple[str, ...]] = {
     "greeting": (
         "hola",
