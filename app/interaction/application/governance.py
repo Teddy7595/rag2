@@ -149,7 +149,7 @@ def classify_intent(text: str, *, embedding_runtime: SemanticEmbeddingRuntime | 
     )
     if any(marker in lowered for marker in technical_markers):
         return "technical"
-    return "mixed"
+    return "conversational"
 
 
 def is_conversational_query(text: str) -> bool:
