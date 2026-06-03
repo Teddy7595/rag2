@@ -9,6 +9,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import StreamingResponse
 
 from app.core.app_context import get_app_context_from_request
+from app.knowledge.events import IdentityResolveRequest, REQUEST_KNOWLEDGE_IDENTITY_RESOLVE
 from app.models.runtime_service import LocalInferenceService
 from app.models.service import ModelCatalogService
 
@@ -112,6 +113,7 @@ async def models_runtime_vision(
     request: Request,
     image: UploadFile = File(...),
     prompt: str | None = Form(default=None),
+    identity_id: str | None = Form(default=None),
 ) -> dict[str, object]:
     content_type = str(image.content_type or "").lower()
     if not content_type.startswith("image/"):
@@ -121,8 +123,40 @@ async def models_runtime_vision(
     temp_path = _runtime_upload_dir(request) / f"{uuid4()}{suffix}"
     data = await image.read()
     temp_path.write_bytes(data)
+
+    # Build engram system prompt so the model responds in the character's voice.
+    system_prompt: str | None = None
+    if identity_id:
+        try:
+            context = get_app_context_from_request(request)
+            identity = context.event_bus.request(
+                REQUEST_KNOWLEDGE_IDENTITY_RESOLVE,
+                IdentityResolveRequest(raw_text=prompt or "", identity_id=identity_id),
+                source_module="models.routes",
+            )
+            if isinstance(identity, dict):
+                parts: list[str] = []
+                name = str(identity.get("name") or "").strip()
+                meta_rule = str(identity.get("meta_rule") or "").strip()
+                behavior_prompt = str(identity.get("behavior_prompt") or "").strip()
+                backstory = str(identity.get("backstory") or "").strip()
+                if name:
+                    parts.append(f"Eres {name}.")
+                if meta_rule:
+                    parts.append(meta_rule)
+                if behavior_prompt:
+                    parts.append(behavior_prompt)
+                if backstory:
+                    parts.append(backstory[:800])
+                if parts:
+                    system_prompt = "\n".join(parts)
+        except Exception:
+            pass  # If identity lookup fails, proceed without engram context.
+
     try:
-        result = _get_runtime_service(request).smoke_vision(str(temp_path), prompt=prompt)
+        result = _get_runtime_service(request).smoke_vision(
+            str(temp_path), prompt=prompt, system_prompt=system_prompt
+        )
     finally:
         temp_path.unlink(missing_ok=True)
     return result

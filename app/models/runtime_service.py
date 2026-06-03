@@ -234,12 +234,18 @@ class LocalInferenceService:
                 "model_path": bundle.primary_text_artifact.relative_path,
             }
 
-    def smoke_vision(self, image_path: str, prompt: str | None = None) -> dict[str, object]:
+    def smoke_vision(
+        self,
+        image_path: str,
+        prompt: str | None = None,
+        system_prompt: str | None = None,
+    ) -> dict[str, object]:
         return self.analyze_image(
             ModelVisionAnalysisRequest(
                 image_path=image_path,
                 prompt=prompt or "Describe la imagen en espanol con foco operativo y contextual.",
-                max_tokens=256,
+                max_tokens=768,
+                system_prompt=system_prompt,
             )
         )
 
@@ -406,18 +412,22 @@ class LocalInferenceService:
             prompt = request.prompt or (
                 "Describe esta imagen en espanol con foco en sujetos, objetos, texto visible, acciones y contexto util."
             )
+            messages: list[dict[str, object]] = []
+            if request.system_prompt:
+                messages.append({"role": "system", "content": request.system_prompt})
+            messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": image_uri}},
+                        {"type": "text", "text": prompt},
+                    ],
+                }
+            )
             response = cast(Any, llm).create_chat_completion(
-                messages=[
-                    {
-                        "role": "user",
-                        "content": [
-                            {"type": "image_url", "image_url": {"url": image_uri}},
-                            {"type": "text", "text": prompt},
-                        ],
-                    }
-                ],
+                messages=messages,
                 max_tokens=request.max_tokens,
-                temperature=0.2,
+                temperature=0.4,
                 stream=False,
             )
             response_payload = cast(dict[str, Any], response) if isinstance(response, dict) else {}

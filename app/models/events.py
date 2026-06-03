@@ -18,6 +18,7 @@ class ModelVisionAnalysisRequest:
     image_path: str
     prompt: str | None = None
     max_tokens: int = 768
+    system_prompt: str | None = None
 
 
 @dataclass(frozen=True)
