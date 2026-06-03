@@ -13,7 +13,6 @@ from app.core.events import EventBus
 from app.interaction.application.governance import (
     build_turn_policy,
     compact_context_for_prompt,
-    dedupe_rule_lines,
     detect_repetition,
     detect_repetition_semantic,
     evaluate_immersive_response,
@@ -1059,17 +1058,17 @@ class RealtimeChatService:
         history_messages = history_messages or []
         identity = context_preview.get("identity", {})
         identity_name = str(identity.get("name") or "assistant")
-        behavior_prompt = dedupe_rule_lines(str(identity.get("behavior_prompt") or ""), max_lines=8)
-        meta_rule = dedupe_rule_lines(str(identity.get("meta_rule") or ""), max_lines=8)
+        behavior_prompt = str(identity.get("behavior_prompt") or "").strip()
+        meta_rule = str(identity.get("meta_rule") or "").strip()
         intellectual_profile = str(identity.get("intellectual_profile") or "").strip()
         backstory_raw = str(identity.get("backstory") or "").strip()
-        backstory = backstory_raw[:420] if backstory_raw else ""
+        backstory = backstory_raw[:2000] if backstory_raw else ""
         context_pack = context_preview.get("context_pack", {})
         knowledge_matches = list(context_pack.get("knowledge_matches", []))
         engram_matches = list(context_pack.get("engram_matches", []))
         context_text = str(context_preview.get("context_text") or "").strip()
         compact_context_text = compact_context_for_prompt(context_text)
-        world_rules = dedupe_rule_lines(world_rules, max_lines=10)
+        world_rules = world_rules.strip()
         route_payload = context_pack.get("route", {}) if isinstance(context_pack, dict) else {}
         route_keywords = route_payload.get("keywords", []) if isinstance(route_payload, dict) else []
 
