@@ -804,6 +804,137 @@
     cursor: not-allowed;
   }
 
+  /* Vision modal */
+  #vision-modal {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 999;
+    background: rgba(0,0,0,0.72);
+    align-items: center;
+    justify-content: center;
+  }
+  #vision-modal.active {
+    display: flex;
+  }
+  #vision-modal-box {
+    background: var(--chat-surface-1);
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 10px;
+    width: min(480px, 94vw);
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    overflow: hidden;
+  }
+  #vision-modal-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--chat-line-soft);
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--chat-text-main);
+    letter-spacing: 0.04em;
+  }
+  #vision-modal-close {
+    background: none;
+    border: none;
+    color: var(--chat-text-dim);
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    line-height: 1;
+  }
+  #vision-modal-close:hover { color: var(--chat-text-main); }
+  #vision-modal-body {
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  #vision-preview-wrap {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-height: 60px;
+  }
+  #vision-preview-img {
+    width: 72px;
+    height: 72px;
+    object-fit: cover;
+    border-radius: 6px;
+    border: 1px solid var(--chat-line-hard);
+    display: none;
+  }
+  #vision-preview-name {
+    font-size: 0.78rem;
+    color: var(--chat-text-dim);
+    word-break: break-all;
+  }
+  #vision-modal-body label {
+    font-size: 0.75rem;
+    color: var(--chat-text-dim);
+    margin-bottom: 4px;
+    display: block;
+    letter-spacing: 0.03em;
+  }
+  #vision-prompt-input {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--chat-surface-2);
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 6px;
+    color: var(--chat-text-main);
+    font-size: 0.85rem;
+    padding: 9px 11px;
+    resize: vertical;
+    min-height: 72px;
+    font-family: var(--chat-font-main);
+  }
+  #vision-prompt-input:focus { outline: 1px solid var(--chat-accent-color); }
+  #vision-engram-select {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--chat-surface-2);
+    border: 1px solid var(--chat-line-hard);
+    border-radius: 6px;
+    color: var(--chat-text-main);
+    font-size: 0.82rem;
+    padding: 8px 10px;
+  }
+  #vision-modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    padding: 12px 18px;
+    border-top: 1px solid var(--chat-line-soft);
+  }
+  #vision-modal-cancel {
+    background: none;
+    border: 1px solid var(--chat-line-hard);
+    color: var(--chat-text-dim);
+    border-radius: 6px;
+    padding: 7px 16px;
+    font-size: 0.82rem;
+    cursor: pointer;
+  }
+  #vision-modal-cancel:hover { color: var(--chat-text-main); }
+  #vision-modal-submit {
+    background: var(--chat-accent-color);
+    border: none;
+    color: #000;
+    font-weight: 700;
+    border-radius: 6px;
+    padding: 7px 20px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    letter-spacing: 0.03em;
+  }
+  #vision-modal-submit:disabled { opacity: 0.45; cursor: not-allowed; }
+
   #autocomplete-list {
     position: absolute;
     bottom: 100%;
@@ -1632,6 +1763,36 @@
     <input type="file" id="ingest-files" style="display:none;" accept=".pdf,.txt,.md,.json,.csv,.doc,.docx,.html,.xml" multiple>
     <input type="file" id="doc-context-upload" style="display:none;" accept=".pdf,.txt,.md,.json,.csv">
     <input type="file" id="vision-upload" style="display:none;" accept="image/*">
+
+    <!-- Vision modal — prompt + engram selector before sending to model -->
+    <div id="vision-modal" role="dialog" aria-modal="true" aria-label="Analizar imagen">
+      <div id="vision-modal-box">
+        <div id="vision-modal-header">
+          <span>Analizar imagen</span>
+          <button id="vision-modal-close" title="Cerrar">✕</button>
+        </div>
+        <div id="vision-modal-body">
+          <div id="vision-preview-wrap">
+            <img id="vision-preview-img" alt="Vista previa">
+            <span id="vision-preview-name"></span>
+          </div>
+          <div>
+            <label for="vision-prompt-input">Prompt (qué quieres saber de la imagen)</label>
+            <textarea id="vision-prompt-input" rows="3" placeholder="Describe lo que ves, extrae texto, analiza la escena..."></textarea>
+          </div>
+          <div>
+            <label for="vision-engram-select">Engrama (voz del análisis)</label>
+            <select id="vision-engram-select">
+              <option value="">— Sin engrama (genérico) —</option>
+            </select>
+          </div>
+        </div>
+        <div id="vision-modal-footer">
+          <button id="vision-modal-cancel">Cancelar</button>
+          <button id="vision-modal-submit">Analizar</button>
+        </div>
+      </div>
+    </div>
     <button class="icon-btn" id="attach-btn" title="Adjuntar archivo (o usa /attach)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
         <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path>
@@ -3317,7 +3478,7 @@
     };
   }
 
-  async function runVisionCommand(promptText, imageFile) {
+  async function runVisionCommand(promptText, imageFile, identityId) {
     if (!visionEnabled) {
       setActionStatus('No hay modelo de vision activo. Configuralo en /admin/models.', 'amber');
       return;
@@ -3337,6 +3498,9 @@
     const formData = new FormData();
     formData.append('image', targetFile);
     formData.append('prompt', promptText || 'Describe la imagen en espanol con foco en sujetos, objetos, texto visible y contexto.');
+    if (identityId) {
+      formData.append('identity_id', identityId);
+    }
 
     try {
       const response = await fetch('/api/models/runtime/vision', { method: 'POST', body: formData });
@@ -3350,6 +3514,73 @@
       visionBtn.classList.remove('vision-loading');
     }
   }
+
+  /* --- Vision modal controls --- */
+  let _visionModalFile = null;
+
+  function openVisionModal(file) {
+    _visionModalFile = file;
+
+    // Preview
+    const img = document.getElementById('vision-preview-img');
+    const nameEl = document.getElementById('vision-preview-name');
+    if (file) {
+      img.src = URL.createObjectURL(file);
+      img.style.display = 'block';
+      nameEl.textContent = file.name;
+    }
+
+    // Populate engram selector from known engrams
+    const sel = document.getElementById('vision-engram-select');
+    sel.innerHTML = '<option value="">— Sin engrama (genérico) —</option>';
+    for (const [id, eng] of knownEngramsById) {
+      const opt = document.createElement('option');
+      opt.value = id;
+      opt.textContent = eng.name || id;
+      if (activeIdentityId && id === activeIdentityId) opt.selected = true;
+      sel.appendChild(opt);
+    }
+
+    // Clear prompt
+    document.getElementById('vision-prompt-input').value = '';
+
+    document.getElementById('vision-modal').classList.add('active');
+    document.getElementById('vision-prompt-input').focus();
+  }
+
+  function closeVisionModal() {
+    document.getElementById('vision-modal').classList.remove('active');
+    const img = document.getElementById('vision-preview-img');
+    if (img.src.startsWith('blob:')) URL.revokeObjectURL(img.src);
+    img.src = '';
+    img.style.display = 'none';
+    _visionModalFile = null;
+    visionUpload.value = '';
+  }
+
+  document.getElementById('vision-modal-close').addEventListener('click', closeVisionModal);
+  document.getElementById('vision-modal-cancel').addEventListener('click', closeVisionModal);
+  document.getElementById('vision-modal').addEventListener('click', (e) => {
+    if (e.target === document.getElementById('vision-modal')) closeVisionModal();
+  });
+  document.getElementById('vision-modal-submit').addEventListener('click', () => {
+    const prompt = document.getElementById('vision-prompt-input').value.trim();
+    const identityId = document.getElementById('vision-engram-select').value || null;
+    const file = _visionModalFile;
+    closeVisionModal();
+    if (file) {
+      attachedFile = file;
+      renderAttachedFile();
+    }
+    runVisionCommand(prompt || undefined, file, identityId);
+  });
+  // Submit with Ctrl+Enter / Cmd+Enter inside the prompt textarea
+  document.getElementById('vision-prompt-input').addEventListener('keydown', (e) => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+      e.preventDefault();
+      document.getElementById('vision-modal-submit').click();
+    }
+  });
 
   function openVisionPicker() {
     if (!visionEnabled) {
@@ -3975,10 +4206,7 @@
   visionUpload.addEventListener('change', () => {
     const file = visionUpload.files && visionUpload.files[0] ? visionUpload.files[0] : null;
     if (!file) return;
-    // Store as attachedFile so /vision slash command can also re-run it.
-    attachedFile = file;
-    renderAttachedFile();
-    runVisionCommand('Describe la imagen en espanol con foco en sujetos, objetos, texto visible y contexto.', file);
+    openVisionModal(file);
   });
 
   docContextUpload.addEventListener('change', () => {
