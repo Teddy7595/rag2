@@ -115,24 +115,9 @@ _CONTINUATION_RE = re.compile(
     re.IGNORECASE,
 )
 
-# Detecta cuando el usuario EXPLÍCITAMENTE pide contenido narrativo/creativo.
-# Solo entonces el modelo recibirá la directiva de 5+ párrafos densos.
-_NARRATIVE_REQUEST_RE = re.compile(
-    r"\b(escribe|escríbeme|redacta|narra|cuenta\s+una|crea\s+(una\s+)?(historia|escena|relato|cuento)|"
-    r"describe\s+la\s+escena|inventa|imagina\s+una|una\s+historia|el\s+relato|la\s+escena|"
-    r"sigue\s+(la\s+)?(historia|escena|relato|trama)|continúa\s+la\s+historia|continúa\s+el\s+relato)\b",
-    re.IGNORECASE,
-)
-
-
 def _is_continuation(user_text: str) -> bool:
     stripped = user_text.strip()
     return len(stripped) < 80 and bool(_CONTINUATION_RE.search(stripped))
-
-
-def _is_narrative_request(user_text: str) -> bool:
-    """Return True cuando el usuario pide explícitamente contenido narrativo/creativo."""
-    return bool(_NARRATIVE_REQUEST_RE.search(user_text))
 
 
 def _build_narrative_rag_query(user_text: str, history_messages: list[dict[str, object]]) -> str:
@@ -303,9 +288,7 @@ def _dynamic_response_token_budget(
     user_text: str,
     *,
     base_max_tokens: int,
-    conversational_mode: bool,
     prefer_short: bool,
-    history_size: int,
     deadline_ms: int,
 ) -> int:
     text = re.sub(r"\s+", " ", str(user_text or "")).strip().lower()
@@ -321,28 +304,15 @@ def _dynamic_response_token_budget(
     asks_brief = bool(re.search(r"\b(breve|corto|en\s+corto|rapido|r[aá]pido|resumen|al\s+grano)\b", text))
     input_chars = len(text)
 
-    if conversational_mode:
-        target = min(target, 640)
-        if prefer_short:
-            target = min(target, 320)
+    # Only greeting/identity get a short cap — everything else lets the engram
+    # define the natural response length through its own behavior_prompt.
+    if prefer_short:
+        target = min(target, 320)
         if input_chars < 120 and question_count <= 1 and not asks_detail:
             target = min(target, 220)
-        if history_size >= 4:
-            target = int(target * 0.82)
-        if history_size >= 8:
-            target = int(target * 0.75)
 
-    if asks_detail:
-        target += 140
-    if question_count > 1:
-        target += min(240, (question_count - 1) * 60)
     if asks_brief:
-        target = min(target, 220 if conversational_mode else 320)
-
-    # Only reduce for short-response modes; narrative/long modes should not be penalized
-    # for having more history — the user wants continuity, not shorter responses.
-    if history_size >= 16 and prefer_short:
-        target = int(target * 0.85)
+        target = min(target, 320)
     if deadline_ms < 3000:
         target = int(target * 0.8)
     elif deadline_ms < 5000:
@@ -1185,12 +1155,13 @@ class RealtimeChatService:
         if world_rules:
             prompt_sections.append(f"Reglas del mundo activas:\n{world_rules}")
         if compact_context_text:
-            prompt_sections.append(f"Contexto recuperado:\n{compact_context_text}")
+            prompt_sections.append(f"Lo que sabes sobre el tema:\n{compact_context_text}")
         if knowledge_matches:
             prompt_sections.append(
-                "Coincidencias relevantes:\n" + "\n".join(
-                    f"- {str(match.get('label') or 'contexto')}: {str(match.get('excerpt') or '').strip()}"
+                "Conocimiento relevante:\n" + "\n".join(
+                    f"- {str(match.get('excerpt') or '').strip()}"
                     for match in knowledge_matches[:rag_match_limit]
+                    if str(match.get('excerpt') or '').strip()
                 )
             )
 
@@ -1236,19 +1207,9 @@ class RealtimeChatService:
         else:
             prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
 
-        # BLOCK 5: Output directive — explicit length and style, closest to the lead-in for maximum weight.
-        # Nivel 1: Saludo/identidad/conversacional/mixed → natural, directo, sin forzar longitud.
-        # Nivel 2: Continuación explícita de historia → narrativa densa (5+ párrafos).
-        # Nivel 3: Petición narrativa explícita → narrativa densa (5+ párrafos).
-        # Nivel 4: Técnico u otro → directo, longitud proporcional a la complejidad.
-        is_narrative = _is_narrative_request(input_data.content)
-        if conversational_mode:
-            prompt_sections.append(
-                "Responde de forma natural y directa en el tono propio de este personaje. "
-                "Ajusta la longitud a lo que la pregunta requiere: corto si es simple, más desarrollado si lo pide. "
-                "No uses encabezados ni razonamiento interno."
-            )
-        elif is_continuation_turn and continuation_tail:
+        # BLOCK 5: Output directive — mínimo necesario, el engrama define la voz y el estilo.
+        # Solo hay dos ramas: continuación estructural (necesita ancla) o hablar como el personaje.
+        if is_continuation_turn and continuation_tail:
             prompt_sections.append(
                 "CONTINUACIÓN DIRECTA: escribe el siguiente bloque narrativo partiendo del último fragmento. "
                 "PROHIBIDO repetir, parafrasear o resumir lo que ya está escrito. "
@@ -1256,22 +1217,11 @@ class RealtimeChatService:
                 "Mínimo 5 párrafos densos y nuevos. Mismo tono, misma voz, mismo ritmo. "
                 "Sin encabezados, sin retrospectiva, sin meta-comentarios. Solo narración continua."
             )
-        elif is_narrative:
-            prompt_sections.append(
-                "El usuario pide contenido narrativo — responde con una escena o relato completo. "
-                "Mínimo 5 párrafos densos con diálogos reales, descripciones físicas, "
-                "sensaciones y pensamientos internos — muestra cada acción en tiempo real. "
-                "Mantén los nombres, la relación y los eventos ya establecidos en el historial. "
-                "Usa el vocabulario, el tono y la voz propios de este personaje. "
-                "Sin encabezados, sin listas, sin asteriscos, sin meta-comentarios. Solo texto continuo."
-            )
         else:
             prompt_sections.append(
-                "Responde directamente con la información o reflexión que la pregunta pide. "
-                "Ajusta la longitud a la complejidad: breve y concreto si la pregunta es simple, "
-                "desarrollado con detalle si lo requiere. "
-                "Usa el tono y la voz propios de este personaje. "
-                "Sin encabezados innecesarios, sin meta-comentarios. Texto continuo."
+                f"Habla como {identity_name}, en tu propia voz. "
+                "Usa tu conocimiento y el contexto de la conversación para responder con naturalidad. "
+                "Sin encabezados, sin razonamiento interno visible."
             )
 
         prompt = "\n\n".join(s for s in prompt_sections if s.strip())
@@ -1342,9 +1292,7 @@ class RealtimeChatService:
         max_tokens = _dynamic_response_token_budget(
             input_data.content,
             base_max_tokens=max_tokens,
-            conversational_mode=conversational_mode,
             prefer_short=bool(policy.prefer_short),
-            history_size=len(history_messages),
             deadline_ms=scaled_deadline_ms,
         )
 
