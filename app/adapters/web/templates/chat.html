@@ -935,6 +935,118 @@
   }
   #vision-modal-submit:disabled { opacity: 0.45; cursor: not-allowed; }
 
+  /* ── Ideas panel ─────────────────────────────────────────────────── */
+  #ideas-toggle {
+    position: fixed;
+    left: 60px;
+    bottom: calc(94px + var(--chat-input-safe-bottom));
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    border: 1px solid var(--chat-line-hard);
+    background: rgba(14, 14, 14, 0.95);
+    color: #e5e7eb;
+    z-index: 120;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #ideas-toggle:hover { border-color: var(--chat-accent-color); color: var(--chat-accent-color); }
+
+  #ideas-panel {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 320px;
+    background: var(--chat-surface-1, #111);
+    border-right: 1px solid var(--chat-line-hard);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+  #ideas-panel.open { transform: translateX(0); }
+  #ideas-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--chat-line-hard);
+    font-family: var(--chat-font-mono);
+    font-size: 0.85rem;
+    color: var(--chat-accent-color);
+    flex-shrink: 0;
+  }
+  #ideas-panel-close {
+    background: none; border: none; cursor: pointer;
+    color: #888; font-size: 1.2rem; line-height: 1;
+  }
+  #ideas-panel-close:hover { color: var(--chat-text-main); }
+  #ideas-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .idea-item {
+    background: var(--chat-msg-bg-ai, #0f0f0f);
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+    position: relative;
+  }
+  .idea-item-label {
+    font-size: 0.72rem;
+    color: var(--chat-accent-color);
+    font-family: var(--chat-font-mono);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .idea-item-content {
+    font-size: 0.82rem;
+    color: #ccc;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 120px;
+    overflow: hidden;
+  }
+  .idea-item-meta {
+    font-size: 0.68rem;
+    color: #555;
+    margin-top: 6px;
+    font-family: var(--chat-font-mono);
+  }
+  .idea-item-del {
+    position: absolute;
+    top: 8px; right: 8px;
+    background: none; border: none; cursor: pointer;
+    color: #555; font-size: 0.9rem;
+  }
+  .idea-item-del:hover { color: #e55; }
+  .idea-item-use {
+    display: inline-block;
+    margin-top: 6px;
+    font-size: 0.72rem;
+    color: var(--chat-accent-color);
+    cursor: pointer;
+    text-decoration: underline;
+    background: none; border: none; padding: 0;
+    font-family: var(--chat-font-mono);
+  }
+  #ideas-panel-empty {
+    text-align: center;
+    color: #555;
+    font-size: 0.82rem;
+    margin-top: 32px;
+    font-family: var(--chat-font-mono);
+  }
+
   #autocomplete-list {
     position: absolute;
     bottom: 100%;
@@ -1692,6 +1804,19 @@
 
 <button id="scroll-bottom-btn" type="button" aria-label="Bajar al final">↓</button>
 <button id="chat-hud-toggle" type="button" aria-label="Abrir panel de chat">Info</button>
+<button id="ideas-toggle" type="button" aria-label="Librito de ideas">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>
+</button>
+
+<div id="ideas-panel" aria-label="Librito de ideas">
+  <div id="ideas-panel-header">
+    <span>Librito de ideas</span>
+    <button id="ideas-panel-close" type="button" aria-label="Cerrar">×</button>
+  </div>
+  <div id="ideas-list">
+    <p id="ideas-panel-empty">Sin ideas guardadas.</p>
+  </div>
+</div>
 
 <aside id="chat-hud" aria-label="Panel de información de chat">
   <div class="hud-header">
@@ -2813,6 +2938,32 @@
       setActionStatus(response.ok && payload.ok ? `Memorizado: ${messageId}` : `No se pudo memorizar ${messageId}`, response.ok && payload.ok ? 'green' : 'danger');
     });
     controls.appendChild(starButton);
+
+    const clipButton = document.createElement('button');
+    clipButton.className = 'ctrl-btn clip';
+    clipButton.type = 'button';
+    clipButton.title = 'Guardar en librito de ideas';
+    clipButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>';
+    clipButton.addEventListener('click', async () => {
+      const text = row.querySelector('.bubble')?.textContent || '';
+      const label = window.prompt('Etiqueta para esta idea (opcional):', '') ?? '';
+      const response = await fetch('/api/ideas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: text, label: label.trim(), source_message_id: messageId, session_id: activeSessionId || null }),
+      });
+      const payload = await response.json();
+      if (response.ok && payload.id) {
+        clipButton.classList.add('active');
+        setActionStatus('Guardado en librito de ideas', 'green');
+        if (document.getElementById('ideas-panel').classList.contains('open')) {
+          loadIdeas();
+        }
+      } else {
+        setActionStatus('No se pudo guardar la idea', 'danger');
+      }
+    });
+    controls.appendChild(clipButton);
 
     const copyButton = document.createElement('button');
     copyButton.className = 'ctrl-btn copy';
@@ -4594,6 +4745,87 @@
   document.querySelectorAll('.message-row').forEach((row) => setupMessageInteractions(row));
   updateSendButtonState();
   scrollToBottom(false);
+
+  // ── Ideas panel ─────────────────────────────────────────────────────────
+  const ideasPanel = document.getElementById('ideas-panel');
+  const ideasToggle = document.getElementById('ideas-toggle');
+  const ideasPanelClose = document.getElementById('ideas-panel-close');
+  const ideasList = document.getElementById('ideas-list');
+
+  async function loadIdeas() {
+    try {
+      const url = activeSessionId ? `/api/ideas?limit=50&session_id=${encodeURIComponent(activeSessionId)}` : '/api/ideas?limit=50';
+      const resp = await fetch(url);
+      const clips = await resp.json();
+      ideasList.innerHTML = '';
+      if (!Array.isArray(clips) || clips.length === 0) {
+        ideasList.innerHTML = '<p id="ideas-panel-empty">Sin ideas guardadas.</p>';
+        return;
+      }
+      clips.forEach((clip) => {
+        const item = document.createElement('div');
+        item.className = 'idea-item';
+        item.dataset.clipId = clip.id;
+
+        const labelEl = document.createElement('div');
+        labelEl.className = 'idea-item-label';
+        labelEl.textContent = clip.label || 'sin etiqueta';
+
+        const contentEl = document.createElement('div');
+        contentEl.className = 'idea-item-content';
+        contentEl.textContent = clip.content || '';
+
+        const metaEl = document.createElement('div');
+        metaEl.className = 'idea-item-meta';
+        const ts = clip.created_at ? new Date(clip.created_at).toLocaleString() : '';
+        metaEl.textContent = ts;
+
+        const useBtn = document.createElement('button');
+        useBtn.className = 'idea-item-use';
+        useBtn.type = 'button';
+        useBtn.textContent = 'usar en chat';
+        useBtn.addEventListener('click', () => {
+          const inputField = document.getElementById('user-input');
+          if (inputField) {
+            inputField.value = clip.content || '';
+            inputField.dispatchEvent(new Event('input'));
+            inputField.focus();
+          }
+          ideasPanel.classList.remove('open');
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'idea-item-del';
+        delBtn.type = 'button';
+        delBtn.innerHTML = '×';
+        delBtn.title = 'Eliminar idea';
+        delBtn.addEventListener('click', async () => {
+          const delResp = await fetch(`/api/ideas/${encodeURIComponent(clip.id)}`, { method: 'DELETE' });
+          if (delResp.ok) {
+            item.remove();
+            if (!ideasList.querySelector('.idea-item')) {
+              ideasList.innerHTML = '<p id="ideas-panel-empty">Sin ideas guardadas.</p>';
+            }
+          }
+        });
+
+        item.appendChild(labelEl);
+        item.appendChild(contentEl);
+        item.appendChild(metaEl);
+        item.appendChild(useBtn);
+        item.appendChild(delBtn);
+        ideasList.appendChild(item);
+      });
+    } catch (e) {
+      ideasList.innerHTML = '<p id="ideas-panel-empty">Error al cargar ideas.</p>';
+    }
+  }
+
+  ideasToggle.addEventListener('click', () => {
+    const isOpen = ideasPanel.classList.toggle('open');
+    if (isOpen) loadIdeas();
+  });
+  ideasPanelClose.addEventListener('click', () => ideasPanel.classList.remove('open'));
 })();
 </script>
 {% endblock %}

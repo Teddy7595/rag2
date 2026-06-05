@@ -1208,19 +1208,25 @@ class RealtimeChatService:
 
         # BLOCK 5: Output directive — mínimo necesario, el engrama define la voz y el estilo.
         # Solo hay dos ramas: continuación estructural (necesita ancla) o hablar como el personaje.
+        # CoT scratchpad: el modelo puede razonar internamente antes de responder usando <think>...</think>.
+        # Recall: si la memoria es fragmentaria, reconocer incertidumbre en lugar de inventar.
         if is_continuation_turn and continuation_tail:
             prompt_sections.append(
                 "CONTINUACIÓN DIRECTA: escribe el siguiente bloque narrativo partiendo del último fragmento. "
                 "PROHIBIDO repetir, parafrasear o resumir lo que ya está escrito. "
                 "Empieza con el siguiente evento, acción o diálogo como si la escena no se hubiera interrumpido. "
                 "Mínimo 5 párrafos densos y nuevos. Mismo tono, misma voz, mismo ritmo. "
-                "Sin encabezados, sin retrospectiva, sin meta-comentarios. Solo narración continua."
+                "Sin encabezados, sin retrospectiva, sin meta-comentarios. Solo narración continua.\n"
+                "Puedes usar <think>...</think> para razonar antes de escribir — ese bloque no se mostrará al usuario."
             )
         else:
             prompt_sections.append(
                 f"Habla como {identity_name}, en tu propia voz. "
                 "Usa tu conocimiento y el contexto de la conversación para responder con naturalidad. "
-                "Sin encabezados, sin razonamiento interno visible."
+                "Si el conocimiento disponible es fragmentario o incompleto, reconoce la incertidumbre — "
+                "di que no recuerdas con precisión en lugar de inventar detalles. "
+                "Puedes usar <think>...</think> para ordenar tus ideas antes de responder — ese bloque no se mostrará al usuario. "
+                "Sin encabezados."
             )
 
         prompt = "\n\n".join(s for s in prompt_sections if s.strip())

@@ -7,7 +7,7 @@ from sqlalchemy import DateTime, Float, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import DatabaseBase
-from app.interaction.domain import ConversationMessage
+from app.interaction.domain import ConversationMessage, IdeaClip
 
 
 def utcnow() -> datetime:
@@ -91,6 +91,44 @@ class SessionConditionsRecord(DatabaseBase):
     session_id: Mapped[str] = mapped_column(String(64), primary_key=True)
     world_rules: Mapped[str] = mapped_column(Text, nullable=False, default="")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+
+
+class IdeaClipRecord(DatabaseBase):
+    __tablename__ = "interaction_idea_clips"
+
+    id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    content: Mapped[str] = mapped_column(Text, nullable=False)
+    label: Mapped[str] = mapped_column(String(255), nullable=False, default="")
+    source_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
+    session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    tags: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
+
+    @classmethod
+    def from_domain(cls, clip: IdeaClip) -> "IdeaClipRecord":
+        return cls(
+            id=str(clip.id),
+            content=clip.content,
+            label=clip.label,
+            source_message_id=clip.source_message_id,
+            session_id=clip.session_id,
+            tags=list(clip.tags),
+            created_at=clip.created_at,
+            updated_at=clip.updated_at,
+        )
+
+    def to_domain(self) -> IdeaClip:
+        return IdeaClip(
+            id=str(self.id),
+            content=self.content,
+            label=self.label,
+            source_message_id=self.source_message_id,
+            session_id=self.session_id,
+            tags=list(self.tags or []),
+            created_at=self.created_at,
+            updated_at=self.updated_at,
+        )
 
 
 class DeletedSessionRecord(DatabaseBase):

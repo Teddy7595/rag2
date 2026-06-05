@@ -6,6 +6,9 @@ from app.interaction.application import InteractionService
 from app.interaction.events import (
     REQUEST_INTERACTION_CONTEXT_TRACES,
     REQUEST_INTERACTION_DELETED_SESSIONS,
+    REQUEST_INTERACTION_IDEA_CLIP_DELETE,
+    REQUEST_INTERACTION_IDEA_CLIP_LIST,
+    REQUEST_INTERACTION_IDEA_CLIP_SAVE,
     REQUEST_INTERACTION_MESSAGE_HIDE,
     REQUEST_INTERACTION_MESSAGE_MEMORIZE,
     REQUEST_INTERACTION_MESSAGE_RECORD,
@@ -81,6 +84,15 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     def handle_context_traces(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
         return service.context_traces(envelope.payload)
 
+    def handle_idea_clip_save(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.save_idea_clip(envelope.payload)
+
+    def handle_idea_clip_list(envelope: EventEnvelope[object]) -> list[dict[str, object]]:
+        return service.list_idea_clips(envelope.payload)
+
+    def handle_idea_clip_delete(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.delete_idea_clip(envelope.payload)
+
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SUMMARY, handle_summary)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_MESSAGES, handle_list)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSIONS, handle_sessions)
@@ -98,3 +110,6 @@ def register_interaction_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_INTERACTION_SESSION_TOPIC_GRAPH, handle_session_topic_graph)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_TURN_METRICS, handle_turn_metrics)
     context.event_bus.subscribe_request(REQUEST_INTERACTION_CONTEXT_TRACES, handle_context_traces)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_IDEA_CLIP_SAVE, handle_idea_clip_save)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_IDEA_CLIP_LIST, handle_idea_clip_list)
+    context.event_bus.subscribe_request(REQUEST_INTERACTION_IDEA_CLIP_DELETE, handle_idea_clip_delete)

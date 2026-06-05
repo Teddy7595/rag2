@@ -1,3 +1,3 @@
-from app.interaction.domain.entities import ConversationMessage
+from app.interaction.domain.entities import ConversationMessage, IdeaClip
 
-__all__ = ["ConversationMessage"]
+__all__ = ["ConversationMessage", "IdeaClip"]

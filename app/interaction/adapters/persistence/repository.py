@@ -7,12 +7,13 @@ from sqlalchemy import delete, func, select
 from app.core.database import DatabaseManager
 from app.interaction.adapters.persistence.models import ConversationMessageRecord
 from app.interaction.adapters.persistence.models import DeletedSessionRecord
+from app.interaction.adapters.persistence.models import IdeaClipRecord
 from app.interaction.adapters.persistence.models import SessionMemorySnapshotRecord
 from app.interaction.adapters.persistence.models import SessionConditionsRecord
 from app.interaction.adapters.persistence.models import SessionTopicGraphRecord
 from app.interaction.adapters.persistence.models import TurnCoherenceMetricRecord
 from app.interaction.application.ports import InteractionMessageRepositoryPort
-from app.interaction.domain import ConversationMessage
+from app.interaction.domain import ConversationMessage, IdeaClip
 
 
 class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
@@ -796,3 +797,36 @@ class SqlAlchemyInteractionMessageRepository(InteractionMessageRepositoryPort):
                 "world_rules": persisted.world_rules,
                 "updated_at": persisted.updated_at.isoformat() if persisted.updated_at else None,
             }
+
+    # ------------------------------------------------------------------
+    # IdeaClip (librito de ideas)
+    # ------------------------------------------------------------------
+
+    def save_idea_clip(self, clip: IdeaClip) -> IdeaClip:
+        record = IdeaClipRecord.from_domain(clip)
+        with self.database.session_scope() as session:
+            persisted = session.merge(record)
+            session.flush()
+            return persisted.to_domain()
+
+    def get_idea_clip(self, clip_id: str) -> IdeaClip | None:
+        with self.database.session_factory() as session:
+            record = session.get(IdeaClipRecord, clip_id)
+            return record.to_domain() if record else None
+
+    def list_idea_clips(self, limit: int = 50, session_id: str | None = None) -> list[IdeaClip]:
+        with self.database.session_factory() as session:
+            stmt = select(IdeaClipRecord).order_by(IdeaClipRecord.created_at.desc())
+            if session_id:
+                stmt = stmt.where(IdeaClipRecord.session_id == session_id)
+            stmt = stmt.limit(limit)
+            records = session.scalars(stmt).all()
+            return [r.to_domain() for r in records]
+
+    def delete_idea_clip(self, clip_id: str) -> bool:
+        with self.database.session_scope() as session:
+            record = session.get(IdeaClipRecord, clip_id)
+            if not record:
+                return False
+            session.delete(record)
+            return True

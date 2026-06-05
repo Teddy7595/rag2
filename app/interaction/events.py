@@ -83,6 +83,26 @@ class InteractionContextTraceRequest:
     limit: int = 100
 
 
+@dataclass(frozen=True)
+class IdeaClipSaveRequest:
+    content: str
+    label: str = ""
+    source_message_id: str | None = None
+    session_id: str | None = None
+    tags: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class IdeaClipListRequest:
+    limit: int = 50
+    session_id: str | None = None
+
+
+@dataclass(frozen=True)
+class IdeaClipDeleteRequest:
+    clip_id: str
+
+
 REQUEST_INTERACTION_SUMMARY = EventSpec[InteractionSummaryRequest, dict](
     name="interaction.summary.request",
     kind=EventKind.REQUEST,
@@ -219,6 +239,30 @@ REQUEST_INTERACTION_CONTEXT_TRACES = EventSpec[InteractionContextTraceRequest, l
     output_type=list,
 )
 
+REQUEST_INTERACTION_IDEA_CLIP_SAVE = EventSpec[IdeaClipSaveRequest, dict](
+    name="interaction.idea_clip.save.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=IdeaClipSaveRequest,
+    output_type=dict,
+)
+
+REQUEST_INTERACTION_IDEA_CLIP_LIST = EventSpec[IdeaClipListRequest, list](
+    name="interaction.idea_clip.list.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=IdeaClipListRequest,
+    output_type=list,
+)
+
+REQUEST_INTERACTION_IDEA_CLIP_DELETE = EventSpec[IdeaClipDeleteRequest, dict](
+    name="interaction.idea_clip.delete.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=IdeaClipDeleteRequest,
+    output_type=dict,
+)
+
 PUBLISH_INTERACTION_MESSAGE_RECORDED = EventSpec[dict, dict](
     name="interaction.message.recorded",
     kind=EventKind.PUBLISH,
@@ -269,6 +313,9 @@ PUBLISH_INTERACTION_REALTIME_SESSION_ENDED = EventSpec[dict, dict](
 
 
 __all__ = [
+    "IdeaClipDeleteRequest",
+    "IdeaClipListRequest",
+    "IdeaClipSaveRequest",
     "InteractionHistoryRequest",
     "InteractionContextTraceRequest",
     "InteractionMessageRecordRequest",
@@ -288,6 +335,9 @@ __all__ = [
     "PUBLISH_INTERACTION_REALTIME_SESSION_STARTED",
     "PUBLISH_INTERACTION_REALTIME_TURN_COMPLETED",
     "REQUEST_INTERACTION_CONTEXT_TRACES",
+    "REQUEST_INTERACTION_IDEA_CLIP_DELETE",
+    "REQUEST_INTERACTION_IDEA_CLIP_LIST",
+    "REQUEST_INTERACTION_IDEA_CLIP_SAVE",
     "REQUEST_INTERACTION_MESSAGE_HIDE",
     "REQUEST_INTERACTION_MESSAGE_MEMORIZE",
     "REQUEST_INTERACTION_MESSAGE_RECORD",

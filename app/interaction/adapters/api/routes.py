@@ -7,6 +7,9 @@ from app.core.app_context import get_app_context_from_request
 from app.interaction.adapters.realtime import build_realtime_stream
 from app.interaction.application.realtime import RealtimeChatService
 from app.interaction.events import (
+    IdeaClipDeleteRequest,
+    IdeaClipListRequest,
+    IdeaClipSaveRequest,
     InteractionContextTraceRequest,
     InteractionDeletedSessionsRequest,
     InteractionHistoryRequest,
@@ -21,6 +24,9 @@ from app.interaction.events import (
     InteractionSessionsRequest,
     REQUEST_INTERACTION_CONTEXT_TRACES,
     REQUEST_INTERACTION_DELETED_SESSIONS,
+    REQUEST_INTERACTION_IDEA_CLIP_DELETE,
+    REQUEST_INTERACTION_IDEA_CLIP_LIST,
+    REQUEST_INTERACTION_IDEA_CLIP_SAVE,
     REQUEST_INTERACTION_MESSAGE_HIDE,
     REQUEST_INTERACTION_MESSAGE_MEMORIZE,
     REQUEST_INTERACTION_MESSAGE_RECORD,
@@ -59,6 +65,14 @@ class InteractionRealtimeInputModel(BaseModel):
 
 class InteractionSessionConditionsInput(BaseModel):
     world_rules: str = ""
+
+
+class IdeaClipInput(BaseModel):
+    content: str
+    label: str = ""
+    source_message_id: str | None = None
+    session_id: str | None = None
+    tags: list[str] = []
 
 
 interaction_router = APIRouter(prefix="/api/interaction", tags=["interaction"])
@@ -267,6 +281,50 @@ async def list_context_traces(
     )
 
 
+ideas_router = APIRouter(prefix="/api/ideas", tags=["ideas"])
+
+
+@ideas_router.post("")
+async def save_idea_clip(request: Request, payload: IdeaClipInput) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_IDEA_CLIP_SAVE,
+        IdeaClipSaveRequest(
+            content=payload.content,
+            label=payload.label,
+            source_message_id=payload.source_message_id,
+            session_id=payload.session_id,
+            tags=tuple(payload.tags),
+        ),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@ideas_router.get("")
+async def list_idea_clips(
+    request: Request,
+    limit: int = 50,
+    session_id: str | None = None,
+) -> list[dict[str, object]]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_IDEA_CLIP_LIST,
+        IdeaClipListRequest(limit=limit, session_id=session_id),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
+@ideas_router.delete("/{clip_id}")
+async def delete_idea_clip(request: Request, clip_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_INTERACTION_IDEA_CLIP_DELETE,
+        IdeaClipDeleteRequest(clip_id=clip_id),
+        source_module="interaction.adapters.api.routes",
+    )
+
+
 router = APIRouter()
 router.include_router(interaction_router)
 router.include_router(admin_router)
+router.include_router(ideas_router)

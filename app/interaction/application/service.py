@@ -4,7 +4,11 @@ from typing import Callable
 
 from app.core.events import EventBus
 from app.interaction.domain import ConversationMessage
+from app.interaction.domain import IdeaClip
 from app.interaction.events import (
+    IdeaClipDeleteRequest,
+    IdeaClipListRequest,
+    IdeaClipSaveRequest,
     InteractionContextTraceRequest,
     InteractionHistoryRequest,
     InteractionMessageActionRequest,
@@ -188,3 +192,26 @@ class InteractionService:
 
     def set_session_conditions(self, request: InteractionSessionConditionsRequest) -> dict[str, object]:
         return self.repository.save_session_conditions(request.session_id, world_rules=request.world_rules)
+
+    # ------------------------------------------------------------------
+    # IdeaClip (librito de ideas)
+    # ------------------------------------------------------------------
+
+    def save_idea_clip(self, request: IdeaClipSaveRequest) -> dict[str, object]:
+        clip = IdeaClip(
+            content=request.content,
+            label=request.label,
+            source_message_id=request.source_message_id,
+            session_id=request.session_id,
+            tags=list(request.tags),
+        )
+        persisted = self.repository.save_idea_clip(clip)
+        return persisted.as_dict()
+
+    def list_idea_clips(self, request: IdeaClipListRequest) -> list[dict[str, object]]:
+        clips = self.repository.list_idea_clips(limit=request.limit, session_id=request.session_id)
+        return [c.as_dict() for c in clips]
+
+    def delete_idea_clip(self, request: IdeaClipDeleteRequest) -> dict[str, object]:
+        ok = self.repository.delete_idea_clip(request.clip_id)
+        return {"ok": ok, "clip_id": request.clip_id}

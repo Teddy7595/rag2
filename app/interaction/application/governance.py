@@ -22,6 +22,10 @@ _INTERNAL_BLOCK_RE = re.compile(                          # <internal_knowledge>
     r"<internal_knowledge>.*?</internal_knowledge>",
     re.DOTALL | re.IGNORECASE,
 )
+_COT_BLOCK_RE = re.compile(                               # <think>...</think> CoT scratchpad
+    r"<think>.*?</think>",
+    re.DOTALL | re.IGNORECASE,
+)
 
 
 def strip_model_artifacts(text: str) -> str:
@@ -33,7 +37,8 @@ def strip_model_artifacts(text: str) -> str:
     """
     if not text:
         return text
-    cleaned = _INTERNAL_BLOCK_RE.sub("", text)
+    cleaned = _COT_BLOCK_RE.sub("", text)
+    cleaned = _INTERNAL_BLOCK_RE.sub("", cleaned)
     cleaned = _PROTOCOL_TAG_RE.sub("", cleaned)
     cleaned = _LEGACY_MARKER_RE.sub("", cleaned)
     cleaned = _SYSTEM_TAG_RE.sub("", cleaned)
