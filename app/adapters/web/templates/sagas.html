@@ -2,1466 +2,1879 @@
 
 {% block head_extra %}
 <style>
-  /* ── SAGA ENGINE — CYBERPUNK OVERRIDE ─────────────────────────────── */
+  /* ── SAGA WORKSPACE ───────────────────────────────────────────────── */
   :root {
     --saga-bg:       #050505;
     --saga-bg2:      #0a0a0a;
     --saga-bg3:      #0f0f0f;
     --saga-card:     #111;
-    --saga-border:   #222;
-    --saga-border2:  #333;
+    --saga-border:   #1e1e1e;
+    --saga-border2:  #2a2a2a;
     --saga-accent:   #00ff41;
     --saga-danger:   #ff0055;
-    --saga-muted:    #888;
-    --saga-text:     #e0e0e0;
+    --saga-muted:    #666;
+    --saga-text:     #d4d4d4;
     --saga-mono:     'Consolas', 'Courier New', monospace;
+    --saga-header-h: 50px;
+    --saga-acts-h:   42px;
+    --saga-input-h:  90px;
+    --saga-drawer-w: min(320px, 92vw);
   }
 
-  body { background: var(--saga-bg) !important; color: var(--saga-text) !important; }
-
-  .shell {
-    max-width: 100%;
-    padding: 16px 12px 32px;
-    background: var(--saga-bg);
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--saga-bg) !important;
+    color: var(--saga-text) !important;
+    height: 100dvh;
+    overflow: hidden;
   }
 
-  /* ── HERO ─────────────────────────────────────────────────────────── */
-  .hero { gap: 8px; margin-bottom: 18px; }
-
-  .eyebrow {
-    font-family: var(--saga-mono);
-    font-size: 0.72rem;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-    color: var(--saga-accent);
-    margin: 0;
+  /* Override base .shell so saga takes full screen */
+  main.shell {
+    max-width: 100% !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    width: 100%;
   }
 
-  .headline {
-    max-width: 100%;
-    font-family: var(--saga-mono);
-    font-size: clamp(1.6rem, 7vw, 2.4rem);
-    line-height: 1.05;
-    color: #fff;
-    letter-spacing: -0.5px;
-    margin: 0;
+  /* ── LAYOUT ──────────────────────────────────────────────────────── */
+  #saga-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    position: fixed;
+    inset: 0;
   }
 
-  .description {
-    font-size: 0.88rem;
-    line-height: 1.55;
-    color: var(--saga-muted);
-    margin: 0;
-  }
-
-  /* ── STAT CARDS ───────────────────────────────────────────────────── */
-  .stats {
-    display: grid;
-    grid-template-columns: 1fr;
+  /* ── HEADER ──────────────────────────────────────────────────────── */
+  #saga-header {
+    height: var(--saga-header-h);
+    display: flex;
+    align-items: center;
     gap: 8px;
-    margin-bottom: 14px;
+    padding: 0 10px;
+    border-bottom: 1px solid var(--saga-border);
+    background: var(--saga-bg2);
+    flex-shrink: 0;
+    z-index: 10;
   }
 
-  .stat-card {
-    background: var(--saga-card);
-    border: 1px solid var(--saga-border);
-    border-radius: 6px;
-    padding: 12px 14px;
-    transition: border-color 0.2s;
+  #saga-list-btn {
+    min-width: 38px; min-height: 38px;
+    border: 1px solid var(--saga-border2);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--saga-text);
+    font-size: 1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
   }
+  #saga-list-btn:hover { border-color: var(--saga-accent); color: var(--saga-accent); }
 
-  .stat-card:hover { border-color: #444; }
-
-  .stat-label {
-    font-family: var(--saga-mono);
-    font-size: 0.7rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--saga-muted);
-    display: block;
-  }
-
-  .stat-value {
-    font-family: var(--saga-mono);
-    font-size: 1.3rem;
-    color: var(--saga-accent);
-    display: block;
-    margin: 4px 0 2px;
-  }
-
-  .stat-copy {
-    font-size: 0.75rem;
-    color: #555;
-    display: block;
+  #saga-title-wrap {
+    flex: 1;
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
-  .stat-card a { color: var(--saga-accent); text-decoration: none; }
-  .stat-card a:hover { text-decoration: underline; }
-
-  /* ── LAYOUT ───────────────────────────────────────────────────────── */
-  .layout {
-    display: grid;
-    grid-template-columns: 1fr;
-    gap: 10px;
-  }
-
-  /* ── PANELS ───────────────────────────────────────────────────────── */
-  .panel {
-    background: var(--saga-card);
-    border: 1px solid var(--saga-border);
-    border-radius: 6px;
-    padding: 14px;
-    transition: border-color 0.2s;
-  }
-
-  .panel:hover { border-color: #333; }
-
-  .panel-title {
+  #saga-title {
     font-family: var(--saga-mono);
-    font-size: 0.78rem;
+    font-size: 0.85rem;
+    letter-spacing: 0.04em;
+    color: var(--saga-accent);
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--saga-muted);
-    margin: 0 0 12px;
-    padding-bottom: 8px;
-    border-bottom: 1px solid var(--saga-border);
   }
 
-  .panel-body { line-height: 1.5; }
+  #saga-status-dot {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: var(--saga-muted);
+    flex-shrink: 0;
+  }
+  #saga-status-dot.active { background: var(--saga-accent); }
+  #saga-status-dot.connecting { background: #f0a; animation: pulse-dot 1s infinite; }
 
-  /* ── FORMS ────────────────────────────────────────────────────────── */
-  .form-stack { display: grid; gap: 8px; }
+  @keyframes pulse-dot { 0%,100%{opacity:1} 50%{opacity:.3} }
 
-  .control-label {
+  #saga-header-engram {
+    display: flex; align-items: center; gap: 6px;
+  }
+
+  #saga-engram-avatar {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 1px solid var(--saga-border2);
+    cursor: pointer; object-fit: cover;
+    flex-shrink: 0;
+  }
+
+  #saga-engram-name {
+    font-family: var(--saga-mono);
+    font-size: 0.72rem;
+    color: var(--saga-muted);
+    max-width: 80px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    cursor: pointer;
+  }
+  #saga-engram-name:hover { color: var(--saga-text); }
+
+  /* ── ACT TABS ─────────────────────────────────────────────────────── */
+  #saga-acts-nav {
+    height: var(--saga-acts-h);
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid var(--saga-border);
+    background: var(--saga-bg);
+    flex-shrink: 0;
+    padding: 0 4px;
+    gap: 2px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  #saga-acts-nav::-webkit-scrollbar { display: none; }
+  #saga-acts-nav.hidden { display: none; }
+
+  .act-tab {
+    flex-shrink: 0;
+    height: 28px;
+    padding: 0 14px;
+    border: 1px solid var(--saga-border2);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--saga-muted);
+    font-family: var(--saga-mono);
+    font-size: 0.72rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .act-tab:hover { border-color: var(--saga-border2); color: var(--saga-text); }
+  .act-tab.active {
+    border-color: var(--saga-accent);
+    color: var(--saga-accent);
+    background: rgba(0,255,65,0.05);
+  }
+  .act-tab.closed { opacity: 0.5; }
+
+  #saga-act-add-btn {
+    flex-shrink: 0;
+    height: 28px; width: 28px;
+    border: 1px dashed var(--saga-border2);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--saga-muted);
+    font-size: 1.1rem; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    margin-left: 4px;
+  }
+  #saga-act-add-btn:hover { border-color: var(--saga-accent); color: var(--saga-accent); }
+
+  /* ── NARRATIVE AREA ───────────────────────────────────────────────── */
+  #saga-narrative-area {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 14px 8px;
+    scroll-behavior: smooth;
+  }
+
+  /* Empty state */
+  #saga-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: 16px;
+    text-align: center;
+  }
+
+  #saga-empty-state p {
+    font-family: var(--saga-mono);
+    font-size: 0.82rem;
+    color: var(--saga-muted);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+
+  .saga-empty-btn {
+    padding: 10px 24px;
+    border: 1px solid var(--saga-accent);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--saga-accent);
+    font-family: var(--saga-mono);
+    font-size: 0.82rem;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+  }
+  .saga-empty-btn:hover { background: rgba(0,255,65,0.08); }
+
+  /* Act divider */
+  .act-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin: 24px 0 14px;
+  }
+  .act-divider-line {
+    flex: 1;
+    height: 1px;
+    background: var(--saga-border2);
+  }
+  .act-divider-label {
     font-family: var(--saga-mono);
     font-size: 0.7rem;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--saga-muted);
-    display: block;
-  }
-
-  .control-input,
-  .control-select,
-  .search-input {
-    background: var(--saga-bg2);
-    border: 1px solid var(--saga-border2);
-    color: #fff;
-    padding: 9px 11px;
-    border-radius: 4px;
-    font-family: var(--saga-mono);
-    font-size: 0.88rem;
-    min-height: 40px;
-    outline: none;
-    width: 100%;
-    box-sizing: border-box;
-    transition: border-color 0.2s;
-  }
-
-  .control-input:focus,
-  .control-select:focus,
-  .search-input:focus { border-color: var(--saga-accent); }
-
-  .control-select option { background: var(--saga-bg2); }
-
-  textarea.control-input {
-    min-height: 90px;
-    resize: vertical;
-    line-height: 1.4;
-  }
-
-  /* ── BUTTONS ──────────────────────────────────────────────────────── */
-  .save-button,
-  .link-button {
-    background: var(--saga-bg2);
-    border: 1px solid var(--saga-border2);
-    color: var(--saga-muted);
-    padding: 8px 14px;
-    border-radius: 4px;
-    font-family: var(--saga-mono);
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    cursor: pointer;
-    min-height: 38px;
-    width: 100%;
-    transition: color 0.2s, border-color 0.2s, background 0.2s;
-    text-decoration: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-  }
-
-  .save-button:hover,
-  .link-button:hover {
+    letter-spacing: 0.1em;
     color: var(--saga-accent);
-    border-color: var(--saga-accent);
-    background: rgba(0, 255, 65, 0.05);
+    white-space: nowrap;
   }
-
-  .save-button:active { background: rgba(0, 255, 65, 0.1); }
-
-  /* ── ACTIONS ROW ──────────────────────────────────────────────────── */
-  .row-actions {
-    display: grid;
-    gap: 6px;
-    grid-template-columns: 1fr;
-  }
-
-  /* ── SAGA LIST ROWS ───────────────────────────────────────────────── */
-  .route-search { margin: 0 0 8px; }
-
-  .search-label {
+  .act-divider-objective {
     font-family: var(--saga-mono);
     font-size: 0.68rem;
-    text-transform: uppercase;
-    letter-spacing: 1px;
     color: var(--saga-muted);
-    display: block;
-    margin-bottom: 4px;
+    margin-top: 4px;
+    margin-bottom: 18px;
+    padding-left: 2px;
+  }
+  .act-divider.close .act-divider-label { color: var(--saga-muted); }
+
+  /* Narrative command (user direction) */
+  .narrative-command {
+    display: flex;
+    gap: 8px;
+    margin: 10px 0 4px;
+    align-items: flex-start;
+  }
+  .narrative-cmd-arrow {
+    font-family: var(--saga-mono);
+    color: var(--saga-accent);
+    font-size: 0.8rem;
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  .narrative-cmd-text {
+    font-family: var(--saga-mono);
+    font-size: 0.8rem;
+    color: var(--saga-accent);
+    line-height: 1.5;
+    word-break: break-word;
+    opacity: 0.75;
   }
 
-  .route-rows { display: grid; gap: 6px; }
+  /* Narrative response (AI prose) */
+  .narrative-response {
+    margin: 4px 0 12px 18px;
+    font-size: 0.9rem;
+    line-height: 1.75;
+    color: var(--saga-text);
+    word-break: break-word;
+    white-space: pre-wrap;
+  }
+  .narrative-response.streaming { border-left: 2px solid var(--saga-accent); padding-left: 10px; }
 
-  .route-row {
-    background: var(--saga-bg3);
-    border: 1px solid var(--saga-border);
-    border-radius: 4px;
-    padding: 10px 12px;
+  /* Structural messages (act markers sent as user) — hidden visually */
+  .narrative-structural { display: none; }
+
+  /* ── STATUS BAR ──────────────────────────────────────────────────── */
+  #saga-status-bar {
+    height: 22px;
+    display: flex;
+    align-items: center;
+    padding: 0 12px;
+    font-family: var(--saga-mono);
+    font-size: 0.68rem;
+    color: var(--saga-muted);
+    background: var(--saga-bg2);
+    border-top: 1px solid var(--saga-border);
+    flex-shrink: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* ── INPUT AREA ───────────────────────────────────────────────────── */
+  #saga-input-area {
+    flex-shrink: 0;
+    background: var(--saga-bg2);
+    border-top: 1px solid var(--saga-border);
+    padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
+  }
+  #saga-input-area.hidden { display: none; }
+
+  #saga-toolbar {
+    display: flex;
+    gap: 6px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+
+  .saga-tool-btn {
+    height: 34px; min-width: 34px;
+    border: 1px solid var(--saga-border2);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--saga-muted);
+    font-size: 0.95rem;
     cursor: pointer;
-    transition: border-color 0.2s, background 0.2s;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .saga-tool-btn:hover, .saga-tool-btn.active { border-color: var(--saga-accent); color: var(--saga-accent); }
+
+  #saga-input-row {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
   }
 
-  .route-row:hover {
-    border-color: #444;
-    background: var(--saga-card);
-  }
-
-  .route-row.active {
-    border-color: var(--saga-accent);
-    background: rgba(0, 255, 65, 0.04);
-    box-shadow: 0 0 0 1px rgba(0, 255, 65, 0.15);
-  }
-
-  .route-path {
+  #saga-input {
+    flex: 1;
+    min-height: 38px;
+    max-height: 120px;
+    border: 1px solid var(--saga-border2);
+    border-radius: 10px;
+    background: var(--saga-bg3);
+    color: var(--saga-text);
     font-family: var(--saga-mono);
     font-size: 0.85rem;
-    color: #ccc;
-    margin: 0 0 4px;
+    padding: 9px 12px;
+    resize: none;
+    outline: none;
+    overflow-y: auto;
+    line-height: 1.45;
+    field-sizing: content;
   }
+  #saga-input:focus { border-color: var(--saga-accent); }
+  #saga-input::placeholder { color: var(--saga-muted); }
+  #saga-input:disabled { opacity: 0.4; }
 
-  .route-row.active .route-path { color: var(--saga-accent); }
-
-  .route-meta {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    align-items: center;
-  }
-
-  /* ── PILLS ────────────────────────────────────────────────────────── */
-  .pill {
-    background: var(--saga-bg2);
+  #saga-send-btn {
+    height: 38px; min-width: 38px;
     border: 1px solid var(--saga-border2);
+    border-radius: 10px;
+    background: transparent;
     color: var(--saga-muted);
-    padding: 2px 8px;
-    border-radius: 20px;
+    font-size: 1.1rem;
+    cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+    transition: border-color .15s, color .15s;
+  }
+  #saga-send-btn:hover:not(:disabled) { border-color: var(--saga-accent); color: var(--saga-accent); }
+  #saga-send-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+  /* ── OVERLAY ──────────────────────────────────────────────────────── */
+  #saga-overlay {
+    position: fixed; inset: 0; z-index: 300;
+    background: rgba(0,0,0,0.6);
+    display: none;
+  }
+  #saga-overlay.visible { display: block; }
+
+  /* ── DRAWERS ──────────────────────────────────────────────────────── */
+  .saga-drawer {
+    position: fixed; top: 0; bottom: 0; z-index: 400;
+    width: var(--saga-drawer-w);
+    background: var(--saga-bg2);
+    display: flex; flex-direction: column;
+    transition: transform .22s ease;
+  }
+  .saga-drawer.left  { left: 0;  transform: translateX(-100%); border-right: 1px solid var(--saga-border); }
+  .saga-drawer.right { right: 0; transform: translateX(100%);  border-left:  1px solid var(--saga-border); }
+  .saga-drawer.open  { transform: translateX(0); }
+
+  .drawer-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--saga-border);
     font-family: var(--saga-mono);
-    font-size: 0.68rem;
+    font-size: 0.78rem;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    display: inline-block;
+    letter-spacing: 0.08em;
+    color: var(--saga-accent);
+    flex-shrink: 0;
+  }
+  .drawer-close-btn {
+    background: none; border: none; cursor: pointer;
+    color: var(--saga-muted); font-size: 1.3rem; line-height: 1;
+  }
+  .drawer-close-btn:hover { color: var(--saga-text); }
+
+  .drawer-body {
+    flex: 1; overflow-y: auto;
+    padding: 14px 16px;
+    display: flex; flex-direction: column; gap: 12px;
   }
 
-  .route-row.active .pill { border-color: #333; }
-
-  /* ── NOTES & STATUS ───────────────────────────────────────────────── */
-  .small-note {
+  /* Drawer form elements */
+  .drw-label {
     font-family: var(--saga-mono);
-    font-size: 0.75rem;
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
     color: var(--saga-muted);
-    margin: 6px 0 0;
+    margin-bottom: 4px;
+    display: block;
   }
-
-  .meta-grid {
-    display: grid;
-    gap: 8px;
-    grid-template-columns: 1fr;
+  .drw-input, .drw-textarea, .drw-select {
+    width: 100%;
+    background: var(--saga-bg3);
+    border: 1px solid var(--saga-border2);
+    border-radius: 7px;
+    color: var(--saga-text);
     font-family: var(--saga-mono);
     font-size: 0.82rem;
-    color: #aaa;
+    padding: 8px 10px;
+    outline: none;
+    box-sizing: border-box;
   }
+  .drw-input:focus, .drw-textarea:focus, .drw-select:focus { border-color: var(--saga-accent); }
+  .drw-textarea { resize: vertical; min-height: 80px; }
 
-  .meta-grid strong { color: var(--saga-muted); font-weight: normal; }
-  .meta-grid span { color: var(--saga-accent); }
-
-  /* ── SEED ─────────────────────────────────────────────────────────── */
-  .seed-grid { display: grid; gap: 8px; }
-
-  .seed-progress {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 4px;
+  .drw-btn {
+    padding: 9px 16px;
+    border: 1px solid var(--saga-border2);
+    border-radius: 8px;
+    background: transparent;
+    color: var(--saga-text);
+    font-family: var(--saga-mono);
+    font-size: 0.78rem;
+    cursor: pointer;
+    text-align: center;
   }
+  .drw-btn:hover { border-color: var(--saga-accent); color: var(--saga-accent); }
+  .drw-btn.primary { border-color: var(--saga-accent); color: var(--saga-accent); }
+  .drw-btn.primary:hover { background: rgba(0,255,65,0.08); }
+  .drw-btn.danger { border-color: var(--saga-danger); color: var(--saga-danger); }
+  .drw-btn.danger:hover { background: rgba(255,0,85,0.08); }
+  .drw-btn:disabled { opacity: 0.4; cursor: not-allowed; }
 
-  .seed-progress .pill { font-size: 0.65rem; }
+  .drw-row { display: flex; gap: 8px; }
+  .drw-row .drw-btn { flex: 1; }
 
-  /* ── JSON OUTPUT ──────────────────────────────────────────────────── */
-  .json-box {
-    background: var(--saga-bg2);
+  .drw-section { display: flex; flex-direction: column; gap: 6px; }
+
+  .drw-msg {
+    font-family: var(--saga-mono);
+    font-size: 0.72rem;
+    min-height: 18px;
+  }
+  .drw-msg.ok { color: var(--saga-accent); }
+  .drw-msg.err { color: var(--saga-danger); }
+
+  /* Saga list items */
+  .saga-list-item {
+    padding: 10px 12px;
     border: 1px solid var(--saga-border);
+    border-radius: 8px;
+    cursor: pointer;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    background: transparent;
+    transition: border-color .15s;
+  }
+  .saga-list-item:hover { border-color: var(--saga-border2); }
+  .saga-list-item.selected { border-color: var(--saga-accent); }
+  .saga-list-item-title {
+    font-family: var(--saga-mono);
+    font-size: 0.82rem;
+    color: var(--saga-text);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .saga-list-item-meta {
+    font-family: var(--saga-mono);
+    font-size: 0.68rem;
+    color: var(--saga-muted);
+  }
+  .saga-status-pill {
+    display: inline-block;
+    padding: 1px 7px;
     border-radius: 4px;
-    color: #0f0;
+    font-size: 0.65rem;
+    font-family: var(--saga-mono);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+  .saga-status-pill.active { background: rgba(0,255,65,0.12); color: var(--saga-accent); }
+  .saga-status-pill.paused { background: rgba(255,200,0,0.10); color: #f0c000; }
+  .saga-status-pill.closed { background: rgba(255,255,255,0.05); color: var(--saga-muted); }
+
+  .saga-list-filters {
+    display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 4px;
+  }
+  .filter-pill {
+    padding: 4px 10px;
+    border: 1px solid var(--saga-border2);
+    border-radius: 20px;
+    font-family: var(--saga-mono);
+    font-size: 0.7rem;
+    cursor: pointer;
+    color: var(--saga-muted);
+    background: transparent;
+  }
+  .filter-pill.on { border-color: var(--saga-accent); color: var(--saga-accent); }
+
+  /* Consistency display */
+  #drw-consistency-score {
+    font-family: var(--saga-mono);
+    font-size: 2rem;
+    font-weight: bold;
+    text-align: center;
+    color: var(--saga-accent);
+    margin: 8px 0;
+  }
+  #drw-contradictions {
     font-family: var(--saga-mono);
     font-size: 0.75rem;
-    max-height: 40dvh;
-    overflow: auto;
+    color: var(--saga-muted);
     white-space: pre-wrap;
-    overflow-wrap: anywhere;
+    word-break: break-word;
+    max-height: 180px;
+    overflow-y: auto;
+  }
+
+  /* ── WIZARD MODAL ─────────────────────────────────────────────────── */
+  #saga-wizard {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  #saga-wizard.hidden { display: none; }
+
+  #wizard-box {
+    width: 100%; max-width: 480px;
+    background: var(--saga-bg2);
+    border: 1px solid var(--saga-border2);
+    border-radius: 14px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+    max-height: 90dvh;
+  }
+
+  #wizard-header {
+    padding: 16px 20px 12px;
+    border-bottom: 1px solid var(--saga-border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  #wizard-title {
+    font-family: var(--saga-mono);
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--saga-accent);
+  }
+  #wizard-close {
+    background: none; border: none; cursor: pointer;
+    color: var(--saga-muted); font-size: 1.3rem;
+  }
+  #wizard-close:hover { color: var(--saga-text); }
+
+  #wizard-progress {
+    height: 3px;
+    background: var(--saga-border);
+    flex-shrink: 0;
+  }
+  #wizard-progress-bar {
+    height: 100%;
+    background: var(--saga-accent);
+    transition: width .2s ease;
+  }
+
+  #wizard-body {
+    flex: 1; overflow-y: auto;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+
+  #wizard-step-label {
+    font-family: var(--saga-mono);
+    font-size: 0.7rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--saga-muted);
+  }
+  #wizard-step-question {
+    font-size: 0.92rem;
+    color: var(--saga-text);
+    line-height: 1.5;
+  }
+  #wizard-step-hint {
+    font-family: var(--saga-mono);
+    font-size: 0.72rem;
+    color: var(--saga-muted);
+    font-style: italic;
+  }
+  #wizard-answer {
+    width: 100%;
+    box-sizing: border-box;
+    background: var(--saga-bg3);
+    border: 1px solid var(--saga-border2);
+    border-radius: 8px;
+    color: var(--saga-text);
+    font-family: var(--saga-mono);
+    font-size: 0.85rem;
+    padding: 10px 12px;
+    resize: none;
+    outline: none;
+    min-height: 60px;
+  }
+  #wizard-answer:focus { border-color: var(--saga-accent); }
+
+  #wizard-footer {
+    display: flex; gap: 8px;
+    padding: 14px 20px;
+    border-top: 1px solid var(--saga-border);
+    flex-shrink: 0;
+  }
+  #wizard-footer button { flex: 1; }
+  #wizard-skip { color: var(--saga-muted); border-color: transparent; }
+  #wizard-skip:hover { color: var(--saga-text); border-color: var(--saga-border2); }
+
+  /* ── NEW ACT MODAL ────────────────────────────────────────────────── */
+  #new-act-modal {
+    position: fixed; inset: 0; z-index: 500;
+    background: rgba(0,0,0,0.85);
+    display: flex; align-items: center; justify-content: center;
+    padding: 16px;
+  }
+  #new-act-modal.hidden { display: none; }
+  #new-act-box {
+    width: 100%; max-width: 400px;
+    background: var(--saga-bg2);
+    border: 1px solid var(--saga-border2);
+    border-radius: 14px;
+    padding: 20px;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #new-act-box h3 {
+    font-family: var(--saga-mono);
+    font-size: 0.82rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--saga-accent);
     margin: 0;
-    padding: 10px;
-    line-height: 1.45;
   }
-
-  /* ── SCROLLBAR ────────────────────────────────────────────────────── */
-  ::-webkit-scrollbar { width: 6px; height: 6px; }
-  ::-webkit-scrollbar-track { background: var(--saga-bg); }
-  ::-webkit-scrollbar-thumb { background: #333; border-radius: 3px; }
-  ::-webkit-scrollbar-thumb:hover { background: #555; }
-
-  /* ── RESPONSIVE ───────────────────────────────────────────────────── */
-  @media (min-width: 720px) {
-    .shell { padding: 20px 16px 34px; }
-    .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .row-actions { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .meta-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  #new-act-objective {
+    width: 100%; box-sizing: border-box;
+    background: var(--saga-bg3);
+    border: 1px solid var(--saga-border2);
+    border-radius: 8px;
+    color: var(--saga-text);
+    font-family: var(--saga-mono);
+    font-size: 0.83rem;
+    padding: 10px 12px;
+    resize: vertical; min-height: 70px;
+    outline: none;
   }
+  #new-act-objective:focus { border-color: var(--saga-accent); }
+  #new-act-footer { display: flex; gap: 8px; }
+  #new-act-footer button { flex: 1; }
 
-  @media (min-width: 1040px) {
-    .shell {
-      max-width: 1380px;
-      margin: 0 auto;
-      padding: 30px 20px 56px;
-    }
-    .stats { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-    .layout {
-      grid-template-columns: minmax(280px, 0.85fr) minmax(0, 1.7fr);
-      align-items: start;
-    }
-    .save-button,
-    .link-button { width: auto; min-width: 150px; }
+  /* ── ENGRAM PICKER (in drawer-list) ───────────────────────────────── */
+  .engram-picker-item {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px;
+    border: 1px solid var(--saga-border);
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .engram-picker-item:hover { border-color: var(--saga-border2); }
+  .engram-picker-item.selected { border-color: var(--saga-accent); }
+  .engram-picker-avatar { width: 28px; height: 28px; border-radius: 50%; }
+  .engram-picker-name { font-family: var(--saga-mono); font-size: 0.8rem; color: var(--saga-text); }
+
+  /* ── RESPONSIVE ADJUSTMENTS ───────────────────────────────────────── */
+  @media (min-width: 640px) {
+    #saga-narrative-area { padding: 20px 10% 12px; }
+    .narrative-response { margin-left: 24px; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<section class="hero">
-  <p class="eyebrow">{{ eyebrow }}</p>
-  <h1 class="headline">{{ headline }}</h1>
-  <p class="description">{{ description }}</p>
-</section>
+<div id="saga-shell">
 
-<section class="stats">
-  <article class="stat-card">
-    <span class="stat-label">Runtime texto</span>
-    <strong class="stat-value">{{ 'listo' if runtime.local_text_ready else 'pendiente' }}</strong>
-    <span class="stat-copy">{{ runtime.selected_text_model_path or 'sin modelo local activo' }}</span>
-  </article>
-  <article class="stat-card">
-    <span class="stat-label">Runtime vision</span>
-    <strong class="stat-value">{{ 'lista' if runtime.local_vision_ready else 'pendiente' }}</strong>
-    <span class="stat-copy">{{ runtime.selected_vision_mmproj_path or 'sin mmproj local' }}</span>
-  </article>
-  <article class="stat-card">
-    <span class="stat-label">Binding llama.cpp</span>
-    <strong class="stat-value">{{ 'ok' if runtime.llama_cpp_binding_available else 'pendiente' }}</strong>
-    <span class="stat-copy">{{ runtime.binding_version or 'sin version detectada' }}</span>
-  </article>
-  <article class="stat-card">
-    <span class="stat-label">Acceso rapido</span>
-    <strong class="stat-value"><a href="/admin/context-graph">context graph</a></strong>
-    <span class="stat-copy">complementa el workspace con analisis de contexto</span>
-  </article>
-</section>
-
-<section class="layout">
-  <article class="panel">
-    <h2 class="panel-title">Sagas registradas</h2>
-    <div class="panel-body" style="display: grid; gap: 12px;">
-      <div class="route-search" style="margin: 0;">
-        <label class="search-label" for="filter-status">Filtrar por estado</label>
-        <select id="filter-status" class="control-select">
-          <option value="">todos</option>
-          <option value="active">active</option>
-          <option value="paused">paused</option>
-          <option value="closed">closed</option>
-        </select>
-      </div>
-      <div class="row-actions">
-        <button id="refresh-list" class="save-button" type="button">Refrescar lista</button>
-        <button id="clear-selection" class="save-button" type="button">Limpiar seleccion</button>
-      </div>
-      <p class="small-note" id="list-status">Cargando sagas...</p>
-      <div class="route-rows" id="saga-list"></div>
+  <!-- HEADER -->
+  <header id="saga-header">
+    <button id="saga-list-btn" aria-label="Sagas">
+      <svg viewBox="0 0 20 20" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.8">
+        <line x1="3" y1="5" x2="17" y2="5"/><line x1="3" y1="10" x2="17" y2="10"/><line x1="3" y1="15" x2="17" y2="15"/>
+      </svg>
+    </button>
+    <span id="saga-status-dot"></span>
+    <div id="saga-title-wrap">
+      <span id="saga-title">Sin saga activa</span>
     </div>
-  </article>
+    <div id="saga-header-engram">
+      <span id="saga-engram-name">—</span>
+      <img id="saga-engram-avatar" src="https://ui-avatars.com/api/?name=S&background=222&color=888" alt="engram">
+    </div>
+  </header>
 
-  <div style="display: grid; gap: 12px;">
-    <article class="panel">
-      <h2 class="panel-title">Seed wizard + crear saga</h2>
-      <div class="panel-body">
-        <div class="seed-grid">
-          <label class="control-label" for="seed-question">Pregunta guiada (dimensiones pendientes)</label>
-          <textarea id="seed-question" class="control-input" readonly></textarea>
+  <!-- ACT TABS -->
+  <nav id="saga-acts-nav" class="hidden" aria-label="Actos">
+    <div id="saga-acts-tabs" style="display:flex;gap:4px;align-items:center;padding:0 4px;"></div>
+    <button id="saga-act-add-btn" aria-label="Nuevo acto">+</button>
+  </nav>
 
-          <label class="control-label" for="seed-answer">Respuesta</label>
-          <textarea id="seed-answer" class="control-input" placeholder="Escribe la respuesta para esta dimension."></textarea>
-
-          <div class="row-actions">
-            <button id="seed-save-next" class="save-button" type="button">Guardar y siguiente</button>
-            <button id="seed-skip-next" class="save-button" type="button">Saltar dimension</button>
-            <button id="seed-apply" class="save-button" type="button">Aplicar seed al formulario</button>
-            <button id="seed-reset" class="save-button" type="button">Reset seed</button>
-          </div>
-
-          <div class="seed-progress" id="seed-progress"></div>
-          <p class="small-note" id="seed-status">Seed wizard inicializado.</p>
-        </div>
-
-        <form id="create-form" class="form-stack">
-          <label class="control-label" for="create-title">Titulo</label>
-          <input id="create-title" class="control-input" type="text" required placeholder="Atlas y la ciudad sumergida">
-
-          <label class="control-label" for="create-premise">Premisa</label>
-          <textarea id="create-premise" class="control-input" placeholder="Situacion inicial, tono y conflicto de arranque."></textarea>
-
-          <label class="control-label" for="create-summary">Resumen inicial</label>
-          <textarea id="create-summary" class="control-input" placeholder="Resumen corto que servira de ancla narrativa."></textarea>
-
-          <label class="control-label" for="create-world">World building</label>
-          <textarea id="create-world" class="control-input" placeholder="Reglas del mundo, facciones y limites."></textarea>
-
-          <label class="control-label" for="create-command">Comando inicial</label>
-          <input id="create-command" class="control-input" type="text" placeholder="Inicia el acto 1 con un conflicto en la frontera.">
-
-          <button class="save-button" type="submit">Crear saga</button>
-        </form>
-        <p class="small-note" id="create-status">Sin acciones recientes.</p>
-      </div>
-    </article>
-
-    <article class="panel">
-      <h2 class="panel-title">Detalle y mantenimiento</h2>
-      <div class="panel-body" style="display: grid; gap: 12px;">
-        <div class="meta-grid">
-          <div>
-            <strong>Saga activa:</strong> <span id="active-saga-id">-</span>
-          </div>
-          <div>
-            <strong>Estado:</strong> <span id="active-saga-status">-</span>
-          </div>
-          <div>
-            <strong>Comandos:</strong> <span id="active-saga-count">0</span>
-          </div>
-        </div>
-
-        <form id="update-form" class="form-stack">
-          <label class="control-label" for="update-title">Titulo</label>
-          <input id="update-title" class="control-input" type="text" placeholder="Titulo de saga">
-
-          <label class="control-label" for="update-premise">Premisa</label>
-          <textarea id="update-premise" class="control-input" placeholder="Premisa actualizada"></textarea>
-
-          <label class="control-label" for="update-summary">Resumen</label>
-          <textarea id="update-summary" class="control-input" placeholder="Resumen actual"></textarea>
-
-          <label class="control-label" for="update-world">World building</label>
-          <textarea id="update-world" class="control-input" placeholder="Mundo actual"></textarea>
-
-          <label class="control-label" for="update-status">Estado</label>
-          <select id="update-status" class="control-select">
-            <option value="active">active</option>
-            <option value="paused">paused</option>
-            <option value="closed">closed</option>
-          </select>
-
-          <div class="row-actions">
-            <button class="save-button" type="submit">Guardar cambios</button>
-            <button id="delete-saga" class="save-button" type="button">Eliminar saga</button>
-          </div>
-        </form>
-        <p class="small-note" id="update-status-msg">Selecciona una saga para editar.</p>
-      </div>
-    </article>
-
-    <article class="panel">
-      <h2 class="panel-title">Actos, debate y cierre canonico</h2>
-      <div class="panel-body" style="display: grid; gap: 10px;">
-        <form id="act-form" class="form-stack">
-          <label class="control-label" for="act-number">Acto actual</label>
-          <input id="act-number" class="control-input" type="number" min="1" value="1">
-
-          <label class="control-label" for="act-goal">Objetivo del acto</label>
-          <textarea id="act-goal" class="control-input" placeholder="Que debe quedar resuelto al cerrar este acto."></textarea>
-
-          <label class="control-label" for="act-pre-debate">Debate pre-cierre (opcional)</label>
-          <textarea id="act-pre-debate" class="control-input" placeholder="Pregunta de debate antes de cerrar el acto."></textarea>
-
-          <label class="control-label" for="act-post-debate">Debate post-cierre (opcional)</label>
-          <textarea id="act-post-debate" class="control-input" placeholder="Debate de ajuste despues del cierre."></textarea>
-
-          <div class="row-actions">
-            <button id="act-open" class="save-button" type="button">Abrir checkpoint de acto</button>
-            <button id="act-close" class="save-button" type="button">Cerrar acto con resumen</button>
-          </div>
-        </form>
-
-        <form id="command-form" class="form-stack">
-          <label class="control-label" for="command-input">Nuevo comando narrativo</label>
-          <textarea id="command-input" class="control-input" placeholder="Describe el siguiente paso narrativo."></textarea>
-
-          <label class="control-label" for="command-note">Nota</label>
-          <input id="command-note" class="control-input" type="text" placeholder="Contexto del comando (opcional)">
-
-          <button class="save-button" type="submit">Agregar comando</button>
-        </form>
-
-        <form id="debate-form" class="form-stack">
-          <label class="control-label" for="debate-topic">Tema de debate</label>
-          <textarea id="debate-topic" class="control-input" placeholder="Contrasta dos decisiones narrativas antes del siguiente acto."></textarea>
-
-          <label class="control-label" for="debate-note">Nota de debate</label>
-          <input id="debate-note" class="control-input" type="text" placeholder="Restricciones o tono">
-
-          <label class="control-label" for="debate-identity">Engrama</label>
-          <input id="debate-identity" class="control-input" type="text" value="System">
-
-          <button class="save-button" type="submit">Debatir y guardar memoria</button>
-        </form>
-        <p class="small-note" id="actions-status">Aun sin comandos o debate.</p>
-      </div>
-    </article>
-
-    <article class="panel">
-      <h2 class="panel-title">Contexto N+1 (sliding + recall)</h2>
-      <div class="panel-body" style="display: grid; gap: 10px;">
-        <label class="control-label" for="next-act-prompt">Prompt para siguiente acto</label>
-        <textarea id="next-act-prompt" class="control-input" placeholder="Que quieres desarrollar en el siguiente acto."></textarea>
-
-        <div class="row-actions">
-          <button id="prepare-context" class="save-button" type="button">Preparar contexto baseline</button>
-          <button id="inject-context-command" class="save-button" type="button">Enviar a comando narrativo</button>
-        </div>
-
-        <label class="control-label" for="next-act-context">Contexto propuesto</label>
-        <textarea id="next-act-context" class="control-input" placeholder="Aqui aparece la combinacion de resumen canonico, ventana activa y recall profundo."></textarea>
-        <p class="small-note" id="context-status">Todavia sin contexto preparado.</p>
-      </div>
-    </article>
-
-    <article class="panel">
-      <h2 class="panel-title">Consistencia y retcon</h2>
-      <div class="panel-body" style="display: grid; gap: 10px;">
-        <div class="row-actions">
-          <button id="check-consistency" class="save-button" type="button">Analizar consistencia</button>
-          <button id="preview-retcon" class="save-button" type="button">Retcon sugerido</button>
-          <button id="apply-retcon" class="save-button" type="button">Aplicar retcon</button>
-        </div>
-        <p class="small-note" id="consistency-status">Sin analisis ejecutado.</p>
-      </div>
-    </article>
-
-    <article class="panel">
-      <h2 class="panel-title">Salida JSON</h2>
-      <div class="panel-body">
-        <pre id="json-output" class="json-box">Esperando interaccion...</pre>
-      </div>
-    </article>
+  <!-- NARRATIVE AREA -->
+  <div id="saga-narrative-area">
+    <div id="saga-empty-state">
+      <p>Sala de continuidad narrativa</p>
+      <button class="saga-empty-btn" id="btn-open-saga-list">Abrir saga</button>
+      <button class="saga-empty-btn" id="btn-start-wizard">Nueva saga</button>
+    </div>
+    <div id="saga-narrative-content" style="display:none;"></div>
   </div>
-</section>
+
+  <!-- STATUS BAR -->
+  <div id="saga-status-bar">Listo</div>
+
+  <!-- INPUT AREA -->
+  <div id="saga-input-area" class="hidden">
+    <div id="saga-toolbar">
+      <button class="saga-tool-btn" data-drawer="info"        title="Info y edición">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/></svg>
+      </button>
+      <button class="saga-tool-btn" data-drawer="act"         title="Gestión de acto">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+      </button>
+      <button class="saga-tool-btn" data-drawer="context"     title="Contexto N+1">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+      </button>
+      <button class="saga-tool-btn" data-drawer="consistency" title="Consistencia y retcon">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20z"/><path d="M12 8v4l3 3"/></svg>
+      </button>
+      <button class="saga-tool-btn" data-drawer="debate"      title="Debate">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      </button>
+      <button class="saga-tool-btn" data-drawer="engram"      title="Engrama narrador" id="saga-engram-tool-btn">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </button>
+    </div>
+    <div id="saga-input-row">
+      <textarea id="saga-input" rows="1" placeholder="Escribe el comando narrativo…" disabled></textarea>
+      <button id="saga-send-btn" disabled aria-label="Enviar">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+      </button>
+    </div>
+  </div>
+
+</div><!-- /saga-shell -->
+
+<!-- OVERLAY -->
+<div id="saga-overlay"></div>
+
+<!-- ── LEFT DRAWER: Saga list ─────────────────────────────────────── -->
+<div id="drawer-saga-list" class="saga-drawer left">
+  <div class="drawer-header">
+    <span>Sagas</span>
+    <button class="drawer-close-btn" data-close="saga-list">×</button>
+  </div>
+  <div class="drawer-body">
+    <button class="drw-btn primary" id="drw-new-saga-btn">+ Nueva saga</button>
+    <div class="saga-list-filters">
+      <button class="filter-pill on" data-filter="active">Activas</button>
+      <button class="filter-pill on" data-filter="paused">Pausadas</button>
+      <button class="filter-pill"    data-filter="closed">Cerradas</button>
+    </div>
+    <div id="saga-list-items" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Info / Edit ──────────────────────────────────── -->
+<div id="drawer-info" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Info y edición</span>
+    <button class="drawer-close-btn" data-close="info">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drw-section">
+      <label class="drw-label">Título</label>
+      <input class="drw-input" id="drw-title" type="text">
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">Premisa</label>
+      <textarea class="drw-textarea" id="drw-premise"></textarea>
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">Resumen canónico</label>
+      <textarea class="drw-textarea" id="drw-summary"></textarea>
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">World Building / Reglas</label>
+      <textarea class="drw-textarea" id="drw-world"></textarea>
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">Estado</label>
+      <select class="drw-select" id="drw-status">
+        <option value="active">Activa</option>
+        <option value="paused">Pausada</option>
+        <option value="closed">Cerrada</option>
+      </select>
+    </div>
+    <div class="drw-row">
+      <button class="drw-btn primary" id="drw-save-info">Guardar</button>
+      <button class="drw-btn danger"  id="drw-delete-saga">Eliminar</button>
+    </div>
+    <div class="drw-msg" id="drw-info-msg"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Act ──────────────────────────────────────────── -->
+<div id="drawer-act" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Gestión de acto</span>
+    <button class="drawer-close-btn" data-close="act">×</button>
+  </div>
+  <div class="drawer-body">
+    <div id="drw-act-status" style="font-family:var(--saga-mono);font-size:0.78rem;color:var(--saga-muted);padding:6px 0;">—</div>
+    <div class="drw-section">
+      <label class="drw-label">Objetivo del acto activo</label>
+      <textarea class="drw-textarea" id="drw-act-goal" placeholder="¿Qué debe resolverse en este acto?"></textarea>
+    </div>
+    <button class="drw-btn primary" id="drw-close-act-btn">Cerrar acto actual</button>
+    <hr style="border-color:var(--saga-border);border-style:solid;border-width:0 0 1px;">
+    <p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-muted);margin:0;">El siguiente acto se abrirá con su objetivo definido en el wizard de nuevo acto.</p>
+    <div class="drw-msg" id="drw-act-msg"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Context ─────────────────────────────────────── -->
+<div id="drawer-context" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Contexto N+1</span>
+    <button class="drawer-close-btn" data-close="context">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drw-section">
+      <label class="drw-label">Prompt de ancla (opcional)</label>
+      <textarea class="drw-textarea" id="drw-ctx-prompt" placeholder="Temática del próximo acto…"></textarea>
+    </div>
+    <div class="drw-row">
+      <button class="drw-btn primary" id="drw-ctx-build">Preparar baseline</button>
+      <button class="drw-btn" id="drw-ctx-inject" disabled>Inyectar</button>
+    </div>
+    <div class="drw-msg" id="drw-ctx-msg"></div>
+    <div id="drw-ctx-result" style="font-family:var(--saga-mono);font-size:0.75rem;color:var(--saga-muted);white-space:pre-wrap;word-break:break-word;max-height:280px;overflow-y:auto;"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Consistency ─────────────────────────────────── -->
+<div id="drawer-consistency" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Consistencia</span>
+    <button class="drawer-close-btn" data-close="consistency">×</button>
+  </div>
+  <div class="drawer-body">
+    <div id="drw-consistency-score">—</div>
+    <div id="drw-contradictions"></div>
+    <div class="drw-row">
+      <button class="drw-btn primary" id="drw-analyze-btn">Analizar</button>
+      <button class="drw-btn" id="drw-retcon-preview-btn">Preview retcon</button>
+    </div>
+    <button class="drw-btn danger" id="drw-retcon-apply-btn">Aplicar retcon</button>
+    <div class="drw-msg" id="drw-consistency-msg"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Debate ───────────────────────────────────────── -->
+<div id="drawer-debate" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Debate</span>
+    <button class="drawer-close-btn" data-close="debate">×</button>
+  </div>
+  <div class="drawer-body">
+    <div class="drw-section">
+      <label class="drw-label">Tema a debatir</label>
+      <textarea class="drw-textarea" id="drw-debate-topic" placeholder="¿Qué aspecto narrativo o lore quieres explorar?"></textarea>
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">Nota interna</label>
+      <input class="drw-input" id="drw-debate-note" type="text" placeholder="Contexto o fase del debate…">
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">Engrama del debate</label>
+      <select class="drw-select" id="drw-debate-engram"></select>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <input type="checkbox" id="drw-debate-persist" checked style="accent-color:var(--saga-accent);">
+      <label for="drw-debate-persist" style="font-family:var(--saga-mono);font-size:0.78rem;color:var(--saga-muted);cursor:pointer;">Guardar en memoria RAG</label>
+    </div>
+    <button class="drw-btn primary" id="drw-debate-submit">Debatir y persistir</button>
+    <div class="drw-msg" id="drw-debate-msg"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Engram picker ───────────────────────────────── -->
+<div id="drawer-engram" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Engrama narrador</span>
+    <button class="drawer-close-btn" data-close="engram">×</button>
+  </div>
+  <div class="drawer-body">
+    <p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-muted);margin:0 0 8px;">El engrama seleccionado narra las respuestas del modelo en esta saga.</p>
+    <div id="drw-engram-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
+<!-- ── WIZARD: Create saga ────────────────────────────────────────── -->
+<div id="saga-wizard" class="hidden">
+  <div id="wizard-box">
+    <div id="wizard-header">
+      <span id="wizard-title">Nueva Saga</span>
+      <button id="wizard-close">×</button>
+    </div>
+    <div id="wizard-progress"><div id="wizard-progress-bar" style="width:0%"></div></div>
+    <div id="wizard-body">
+      <div id="wizard-step-label"></div>
+      <div id="wizard-step-question"></div>
+      <div id="wizard-step-hint"></div>
+      <textarea id="wizard-answer" rows="3"></textarea>
+    </div>
+    <div id="wizard-footer">
+      <button class="drw-btn" id="wizard-back">← Atrás</button>
+      <button class="drw-btn" id="wizard-skip">Saltar</button>
+      <button class="drw-btn primary" id="wizard-next">Siguiente →</button>
+    </div>
+  </div>
+</div>
+
+<!-- ── NEW ACT MODAL ──────────────────────────────────────────────── -->
+<div id="new-act-modal" class="hidden">
+  <div id="new-act-box">
+    <h3>Abrir nuevo acto</h3>
+    <p style="font-family:var(--saga-mono);font-size:0.75rem;color:var(--saga-muted);margin:0;">Define el objetivo narrativo que debe resolverse.</p>
+    <textarea id="new-act-objective" placeholder="Objetivo del acto…"></textarea>
+    <div id="new-act-footer">
+      <button class="drw-btn" id="new-act-cancel">Cancelar</button>
+      <button class="drw-btn primary" id="new-act-confirm">Abrir Acto</button>
+    </div>
+  </div>
+</div>
+
 {% endblock %}
 
 {% block scripts %}
 <script>
 (() => {
-  // Aplicar color del engrama activo guardado por el chat
-  try {
-    const accent = localStorage.getItem('rag2.engram.accent');
-    if (accent && /^#[0-9a-fA-F]{3,8}$/.test(accent)) {
-      document.documentElement.style.setProperty('--saga-accent', accent);
-    }
-  } catch (_) {}
+  'use strict';
 
-  const listStatus = document.getElementById('list-status');
-  const sagaList = document.getElementById('saga-list');
-  const filterStatus = document.getElementById('filter-status');
-  const refreshList = document.getElementById('refresh-list');
-  const clearSelection = document.getElementById('clear-selection');
+  // ── State ────────────────────────────────────────────────────────────
+  let activeSagaId = null;
+  let activeSaga   = null;
+  let activeActNum = null;   // act number currently being viewed (null = prologue)
+  let parsedActs   = [];     // [{number, objective, closed, commands:[]}]
+  let socket       = null;
+  let activeIdentityId   = null;
+  let activeIdentityName = 'System';
+  let allEngrams   = [];
+  let wsSessionOpen = false;
+  let currentNarrativeEl = null;  // streaming target
+  let socketReconnectTimer = null;
+  let filterActive = { active: true, paused: true, closed: false };
+  let ctxBaselineText = '';
 
-  const createForm = document.getElementById('create-form');
-  const createStatus = document.getElementById('create-status');
-
-  const seedQuestion = document.getElementById('seed-question');
-  const seedAnswer = document.getElementById('seed-answer');
-  const seedSaveNext = document.getElementById('seed-save-next');
-  const seedSkipNext = document.getElementById('seed-skip-next');
-  const seedApply = document.getElementById('seed-apply');
-  const seedReset = document.getElementById('seed-reset');
-  const seedProgress = document.getElementById('seed-progress');
-  const seedStatus = document.getElementById('seed-status');
-
-  const activeSagaId = document.getElementById('active-saga-id');
-  const activeSagaStatus = document.getElementById('active-saga-status');
-  const activeSagaCount = document.getElementById('active-saga-count');
-
-  const updateForm = document.getElementById('update-form');
-  const updateStatusMsg = document.getElementById('update-status-msg');
-  const deleteSaga = document.getElementById('delete-saga');
-
-  const commandForm = document.getElementById('command-form');
-  const debateForm = document.getElementById('debate-form');
-  const actionsStatus = document.getElementById('actions-status');
-
-  const actOpen = document.getElementById('act-open');
-  const actClose = document.getElementById('act-close');
-  const actNumber = document.getElementById('act-number');
-  const actGoal = document.getElementById('act-goal');
-  const actPreDebate = document.getElementById('act-pre-debate');
-  const actPostDebate = document.getElementById('act-post-debate');
-
-  const prepareContext = document.getElementById('prepare-context');
-  const injectContextCommand = document.getElementById('inject-context-command');
-  const nextActPrompt = document.getElementById('next-act-prompt');
-  const nextActContext = document.getElementById('next-act-context');
-  const contextStatus = document.getElementById('context-status');
-
-  const checkConsistency = document.getElementById('check-consistency');
-  const previewRetcon = document.getElementById('preview-retcon');
-  const applyRetcon = document.getElementById('apply-retcon');
-  const consistencyStatus = document.getElementById('consistency-status');
-
-  const jsonOutput = document.getElementById('json-output');
-
-  const fields = {
-    create: {
-      title: document.getElementById('create-title'),
-      premise: document.getElementById('create-premise'),
-      summary: document.getElementById('create-summary'),
-      worldBuilding: document.getElementById('create-world'),
-      initialCommand: document.getElementById('create-command'),
-    },
-    update: {
-      title: document.getElementById('update-title'),
-      premise: document.getElementById('update-premise'),
-      summary: document.getElementById('update-summary'),
-      worldBuilding: document.getElementById('update-world'),
-      status: document.getElementById('update-status'),
-    },
-    command: {
-      command: document.getElementById('command-input'),
-      note: document.getElementById('command-note'),
-    },
-    debate: {
-      topic: document.getElementById('debate-topic'),
-      note: document.getElementById('debate-note'),
-      identity: document.getElementById('debate-identity'),
-    },
-  };
-
-  let selectedSagaId = '';
-  let selectedSaga = null;
-
-  const seedOrder = [
-    'genre',
-    'tone',
-    'setting',
-    'timeline',
-    'pov',
-    'conflict',
-    'cast',
-    'stakes',
+  // Wizard state
+  const WIZARD_DIMS = [
+    { key: 'genre',    label: 'Paso 1 / 9', q: 'Género',    hint: '¿Qué tipo de historia es? (Ej: ciencia ficción, fantasía oscura, thriller político…)' },
+    { key: 'tone',     label: 'Paso 2 / 9', q: 'Tono',      hint: '¿Cuál es el registro emocional dominante? (Ej: épico y solemne, oscuro y visceral, irónico…)' },
+    { key: 'setting',  label: 'Paso 3 / 9', q: 'Escenario', hint: '¿Dónde y cuándo ocurre? Describe el mundo o la atmósfera base.' },
+    { key: 'timeline', label: 'Paso 4 / 9', q: 'Línea temporal', hint: '¿Hay restricciones de tiempo? (Ej: 72 horas, siglo XXII, era post-colapso…)' },
+    { key: 'pov',      label: 'Paso 5 / 9', q: 'Punto de vista', hint: '¿Desde qué perspectiva se narra? (Ej: primera persona, múltiple, narrador omnisciente…)' },
+    { key: 'conflict', label: 'Paso 6 / 9', q: 'Conflicto central', hint: '¿Cuál es la tensión principal que mueve la historia?' },
+    { key: 'cast',     label: 'Paso 7 / 9', q: 'Personajes', hint: '¿Quiénes son los protagonistas y antagonistas clave?' },
+    { key: 'stakes',   label: 'Paso 8 / 9', q: 'Consecuencias', hint: '¿Qué se pierde si el conflicto no se resuelve? ¿Qué está en juego?' },
+    { key: '_meta',    label: 'Paso 9 / 9', q: 'Título y premisa', hint: 'Escribe el título y una premisa de 1-2 frases que resuma la esencia de la saga.', isMeta: true },
   ];
+  let wizardStep    = 0;
+  let wizardAnswers = {};
 
-  const seedPrompts = {
-    genre: 'Genero: Que tipo de historia quieres (fantasia, sci-fi, noir, etc.)?',
-    tone: 'Tono: Cual es el tono emocional (oscuro, epico, intimo, ironico)?',
-    setting: 'Escenario: Donde sucede la historia y cual es su atmosfera base?',
-    timeline: 'Restricciones temporales: En que epoca y con que limites de tiempo?',
-    pov: 'POV: Desde que perspectiva principal se narra?',
-    conflict: 'Conflicto clave: Cual es la tension central que mueve el acto 1?',
-    cast: 'Elenco: Quienes son los personajes centrales y su rol breve?',
-    stakes: 'Stakes: Que se pierde si fallan los protagonistas?',
-  };
+  // ── DOM refs ─────────────────────────────────────────────────────────
+  const sagaTitle        = document.getElementById('saga-title');
+  const sagaStatusDot    = document.getElementById('saga-status-dot');
+  const sagaActsNav      = document.getElementById('saga-acts-nav');
+  const sagaActsTabs     = document.getElementById('saga-acts-tabs');
+  const sagaActAddBtn    = document.getElementById('saga-act-add-btn');
+  const narrativeArea    = document.getElementById('saga-narrative-area');
+  const emptyState       = document.getElementById('saga-empty-state');
+  const narrativeContent = document.getElementById('saga-narrative-content');
+  const sagaStatusBar    = document.getElementById('saga-status-bar');
+  const sagaInputArea    = document.getElementById('saga-input-area');
+  const sagaInput        = document.getElementById('saga-input');
+  const sagaSendBtn      = document.getElementById('saga-send-btn');
+  const sagaOverlay      = document.getElementById('saga-overlay');
+  const sagaEngramAvatar = document.getElementById('saga-engram-avatar');
+  const sagaEngramName   = document.getElementById('saga-engram-name');
 
-  let seedAnswers = {
-    genre: '',
-    tone: '',
-    setting: '',
-    timeline: '',
-    pov: '',
-    conflict: '',
-    cast: '',
-    stakes: '',
-  };
-  let seedQueue = [...seedOrder];
+  // ── Helpers ──────────────────────────────────────────────────────────
+  function setStatus(msg) { sagaStatusBar.textContent = msg; }
 
-  const tokenize = (text) => {
-    return String(text || '')
-      .toLowerCase()
-      .replace(/[^a-z0-9\s]/g, ' ')
-      .split(/\s+/)
-      .filter((item) => item.length >= 4);
-  };
+  function setDot(state) {
+    sagaStatusDot.className = '';
+    if (state) sagaStatusDot.classList.add(state);
+  }
 
-  const uniqueTokens = (tokens) => {
-    const out = [];
-    for (const item of tokens) {
-      if (!out.includes(item)) {
-        out.push(item);
-      }
-    }
-    return out;
-  };
+  function isActMarker(text) {
+    return /\[ACT\s+\d+\s+(OPEN|CLOSE|SUMMARY)\]/i.test(text);
+  }
 
-  const unresolvedSeedKeys = () => {
-    return seedOrder.filter((key) => !String(seedAnswers[key] || '').trim());
-  };
+  function parseActMarker(text) {
+    const m = text.match(/\[ACT\s+(\d+)\s+(OPEN|CLOSE|SUMMARY)\]/i);
+    if (!m) return null;
+    const objMatch = text.match(/objetivo=([^;]+)/i);
+    return { number: parseInt(m[1]), action: m[2].toUpperCase(), objective: objMatch ? objMatch[1].trim() : '' };
+  }
 
-  const currentSeedKey = () => {
-    for (const key of seedQueue) {
-      if (!String(seedAnswers[key] || '').trim()) {
-        return key;
-      }
-    }
-    return null;
-  };
+  // ── Engrams ──────────────────────────────────────────────────────────
+  async function loadEngrams() {
+    try {
+      const res = await fetch('/api/knowledge/engrams?limit=120');
+      if (!res.ok) return;
+      const data = await res.json();
+      allEngrams = Array.isArray(data) ? data : (data.items || []);
+      renderEngramPicker();
+      populateDebateEngramSelect();
+    } catch (_) {}
+  }
 
-  const renderSeedProgress = () => {
-    seedProgress.innerHTML = '';
-    for (const key of seedOrder) {
-      const done = Boolean(String(seedAnswers[key] || '').trim());
-      const pill = document.createElement('span');
-      pill.className = 'pill';
-      pill.dataset.uppercase = 'false';
-      pill.textContent = `${done ? 'ok' : 'pendiente'}:${key}`;
-      seedProgress.appendChild(pill);
-    }
-  };
-
-  const updateSeedQuestion = () => {
-    const key = currentSeedKey();
-    if (!key) {
-      seedQuestion.value = 'Seed completo. Puedes aplicar al formulario y crear saga.';
-      seedStatus.textContent = 'Todas las dimensiones requeridas estan completas.';
-      seedAnswer.value = '';
-      renderSeedProgress();
-      return;
-    }
-    seedQuestion.value = seedPrompts[key];
-    seedAnswer.value = String(seedAnswers[key] || '');
-    seedStatus.textContent = `Dimension pendiente: ${key}. Quedan ${unresolvedSeedKeys().length}.`;
-    renderSeedProgress();
-  };
-
-  const applySeedToCreateForm = () => {
-    const unresolved = unresolvedSeedKeys();
-    if (unresolved.length) {
-      seedStatus.textContent = `Faltan dimensiones: ${unresolved.join(', ')}`;
-      return;
-    }
-
-    if (!fields.create.title.value.trim()) {
-      const baseTitle = `${seedAnswers.genre} | ${seedAnswers.setting}`.trim();
-      fields.create.title.value = baseTitle || 'Saga sin titulo';
-    }
-
-    fields.create.premise.value = [
-      `Genero: ${seedAnswers.genre}`,
-      `Tono: ${seedAnswers.tone}`,
-      `Escenario: ${seedAnswers.setting}`,
-      `Timeline: ${seedAnswers.timeline}`,
-      `POV: ${seedAnswers.pov}`,
-      `Conflicto: ${seedAnswers.conflict}`,
-      `Elenco: ${seedAnswers.cast}`,
-      `Stakes: ${seedAnswers.stakes}`,
-    ].join('\n');
-
-    fields.create.summary.value = [
-      `${seedAnswers.pov} enfrenta ${seedAnswers.conflict}.`,
-      `En ${seedAnswers.setting}, con tono ${seedAnswers.tone} y reglas temporales: ${seedAnswers.timeline}.`,
-      `Si falla: ${seedAnswers.stakes}.`,
-    ].join(' ');
-
-    fields.create.worldBuilding.value = [
-      `Escenario base: ${seedAnswers.setting}`,
-      `Reglas temporales: ${seedAnswers.timeline}`,
-      `Actores clave: ${seedAnswers.cast}`,
-      `Riesgo narrativo: ${seedAnswers.stakes}`,
-    ].join('\n');
-
-    fields.create.initialCommand.value = `Acto 1: ${seedAnswers.conflict}`;
-    seedStatus.textContent = 'Seed aplicado al formulario de creacion.';
-  };
-
-  const readSagaCommands = (saga) => {
-    if (!saga || !Array.isArray(saga.command_history)) {
-      return [];
-    }
-    return saga.command_history.map((item) => String(item || '').trim()).filter(Boolean);
-  };
-
-  const latestCanonicalSummary = (saga) => {
-    const commands = readSagaCommands(saga);
-    for (let index = commands.length - 1; index >= 0; index -= 1) {
-      const value = commands[index];
-      if (value.startsWith('[ACT') && value.includes('SUMMARY]')) {
-        return value;
-      }
-    }
-    return '';
-  };
-
-  const deepRecall = (commands, promptText, limit = 3) => {
-    const activeWindowSize = 6;
-    const windowSlice = commands.slice(Math.max(0, commands.length - activeWindowSize));
-    const olderSlice = commands.slice(0, Math.max(0, commands.length - activeWindowSize));
-    const promptTokens = uniqueTokens(tokenize(promptText));
-    if (!promptTokens.length || !olderSlice.length) {
-      return { windowSlice, recallHits: [] };
-    }
-
-    const ranked = olderSlice
-      .map((entry) => {
-        const entryTokens = uniqueTokens(tokenize(entry));
-        const overlap = entryTokens.filter((token) => promptTokens.includes(token));
-        return { entry, score: overlap.length };
-      })
-      .filter((item) => item.score > 0)
-      .sort((left, right) => right.score - left.score)
-      .slice(0, limit);
-
-    return {
-      windowSlice,
-      recallHits: ranked.map((item) => item.entry),
-    };
-  };
-
-  const appendCommand = async (sagaId, command, note = '') => {
-    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}/commands`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ command, note }),
+  function renderEngramPicker() {
+    const list = document.getElementById('drw-engram-list');
+    list.innerHTML = '';
+    allEngrams.forEach((e) => {
+      const item = document.createElement('div');
+      item.className = 'engram-picker-item' + (e.id === activeIdentityId ? ' selected' : '');
+      item.dataset.id = e.id;
+      item.innerHTML = `
+        <img class="engram-picker-avatar" src="${e.avatar || ''}" alt="${e.name}">
+        <span class="engram-picker-name">${e.name}</span>
+      `;
+      item.addEventListener('click', () => applyEngram(e));
+      list.appendChild(item);
     });
-    const payload = await readJson(response);
-    if (!payload.appended || !payload.saga) {
-      throw new Error('No se pudo guardar el comando en saga.');
-    }
-    return payload.saga;
-  };
+  }
 
-  const debateSaga = async (sagaId, topic, note) => {
-    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}/debate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        topic,
-        note,
-        identity_name: fields.debate.identity.value.trim() || 'System',
-        persist_memory: true,
-      }),
+  function populateDebateEngramSelect() {
+    const sel = document.getElementById('drw-debate-engram');
+    sel.innerHTML = '<option value="System">System</option>';
+    allEngrams.forEach((e) => {
+      const opt = document.createElement('option');
+      opt.value = e.name;
+      opt.textContent = e.name;
+      if (e.id === activeIdentityId) opt.selected = true;
+      sel.appendChild(opt);
     });
-    const payload = await readJson(response);
-    if (!payload.debated || !payload.saga) {
-      throw new Error(payload.detail || 'No se pudo completar el debate.');
-    }
-    return payload.saga;
-  };
+  }
 
-  const updateSagaSummary = async (sagaId, sagaPayload, appendText) => {
-    const existingSummary = String((sagaPayload && sagaPayload.summary) || '').trim();
-    const mergedSummary = existingSummary ? `${existingSummary}\n\n${appendText}` : appendText;
-    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: String(sagaPayload.title || ''),
-        premise: String(sagaPayload.premise || ''),
-        summary: mergedSummary,
-        world_building: String(sagaPayload.world_building || ''),
-        status: String(sagaPayload.status || 'active'),
-      }),
+  function applyEngram(e) {
+    activeIdentityId   = e.id;
+    activeIdentityName = e.name;
+    sagaEngramAvatar.src  = e.avatar || '';
+    sagaEngramName.textContent = e.name;
+    document.documentElement.style.setProperty('--saga-accent', e.color_hex || '#00ff41');
+    try { localStorage.setItem('rag2.saga.identity', e.id); } catch(_) {}
+    document.querySelectorAll('.engram-picker-item').forEach((el) => {
+      el.classList.toggle('selected', el.dataset.id === e.id);
     });
-    const payload = await readJson(response);
-    if (!payload.updated || !payload.saga) {
-      throw new Error('No se pudo persistir el resumen canonico del acto.');
-    }
-    return payload.saga;
-  };
+    // Update debate select
+    const sel = document.getElementById('drw-debate-engram');
+    for (const opt of sel.options) { opt.selected = opt.value === e.name; }
+    closeAllDrawers();
+    setStatus(`Engrama: ${e.name}`);
+  }
 
-  const buildActSummary = (sagaPayload, actIdx, goal, consistency) => {
-    const commands = readSagaCommands(sagaPayload).filter((item) => !item.startsWith('[ACT'));
-    const highlights = commands.slice(Math.max(0, commands.length - 5));
-    const contradictionCount = Array.isArray(consistency && consistency.contradictions)
-      ? consistency.contradictions.length
-      : 0;
-    const coherenceScore = typeof (consistency && consistency.coherence_score) === 'number'
-      ? consistency.coherence_score
-      : 'n/a';
-
-    const highlightsText = highlights.length ? highlights.join(' | ') : 'sin hitos registrados';
-    return `[ACT ${actIdx} SUMMARY] objetivo=${goal || 'no definido'}; coherence=${coherenceScore}; contradictions=${contradictionCount}; hitos=${highlightsText}`;
-  };
-
-  const setJson = (payload) => {
-    jsonOutput.textContent = JSON.stringify(payload, null, 2);
-  };
-
-  const setSelectedSaga = (payload) => {
-    const saga = payload && payload.id ? payload : null;
-    selectedSagaId = saga ? String(saga.id) : '';
-    selectedSaga = saga;
-
-    activeSagaId.textContent = selectedSagaId || '-';
-    activeSagaStatus.textContent = saga ? String(saga.status || '-') : '-';
-    activeSagaCount.textContent = saga ? String(saga.command_count || 0) : '0';
-
-    fields.update.title.value = saga ? String(saga.title || '') : '';
-    fields.update.premise.value = saga ? String(saga.premise || '') : '';
-    fields.update.summary.value = saga ? String(saga.summary || '') : '';
-    fields.update.worldBuilding.value = saga ? String(saga.world_building || '') : '';
-    fields.update.status.value = saga ? String(saga.status || 'active') : 'active';
-
-    for (const row of sagaList.querySelectorAll('.route-row')) {
-      row.classList.toggle('active', row.dataset.sagaId === selectedSagaId);
-    }
-
-    if (saga) {
-      const nextActIdx = Math.max(1, Number(actNumber.value || 1));
-      const summary = latestCanonicalSummary(saga);
-      if (summary && !nextActContext.value.trim()) {
-        nextActContext.value = `${summary}\n\nWindow baseline: pendiente de preparar`;
+  function restoreSavedEngram() {
+    try {
+      const saved = localStorage.getItem('rag2.saga.identity');
+      if (saved && allEngrams.length) {
+        const found = allEngrams.find((e) => e.id === saved);
+        if (found) applyEngram(found);
       }
-      actNumber.value = String(nextActIdx);
-    }
-  };
+    } catch (_) {}
+  }
 
-  const readJson = async (response) => {
-    const payload = await response.json();
-    if (!response.ok) {
-      const detail = payload && payload.detail ? String(payload.detail) : `HTTP ${response.status}`;
-      throw new Error(detail);
-    }
-    return payload;
-  };
-
-  const fetchSagaDetail = async (sagaId) => {
-    const response = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}`);
-    const data = await readJson(response);
-    if (data && data.found === false) {
-      throw new Error('Saga no encontrada');
-    }
-    return data;
-  };
-
-  const renderSagaList = (sagas) => {
-    sagaList.innerHTML = '';
-    if (!Array.isArray(sagas) || !sagas.length) {
-      const row = document.createElement('div');
-      row.className = 'route-row';
-      const line = document.createElement('p');
-      line.className = 'route-path';
-      line.textContent = 'No hay sagas para este filtro.';
-      row.appendChild(line);
-      sagaList.appendChild(row);
-      return;
-    }
-
-    for (const saga of sagas) {
-      const row = document.createElement('div');
-      row.className = 'route-row';
-      row.dataset.sagaId = String(saga.id || '');
-
-      const title = document.createElement('p');
-      title.className = 'route-path';
-      title.textContent = `${saga.title || 'sin titulo'} · ${saga.id || 'sin id'}`;
-
-      const meta = document.createElement('div');
-      meta.className = 'route-meta';
-
-      const statusPill = document.createElement('span');
-      statusPill.className = 'pill';
-      statusPill.textContent = String(saga.status || 'active');
-
-      const commandsPill = document.createElement('span');
-      commandsPill.className = 'pill';
-      commandsPill.dataset.uppercase = 'false';
-      commandsPill.textContent = `commands=${saga.command_count || 0}`;
-
-      meta.append(statusPill, commandsPill);
-      row.append(title, meta);
-
-      row.addEventListener('click', async () => {
-        const sagaId = String(saga.id || '');
-        if (!sagaId) {
-          return;
-        }
-        listStatus.textContent = `Cargando detalle de ${sagaId}...`;
-        try {
-          const detail = await fetchSagaDetail(sagaId);
-          setSelectedSaga(detail);
-          setJson(detail);
-          updateStatusMsg.textContent = `Saga ${detail.title || sagaId} cargada para edicion.`;
-          listStatus.textContent = `Saga activa: ${detail.title || sagaId}`;
-        } catch (error) {
-          listStatus.textContent = `No se pudo cargar la saga: ${String(error)}`;
-        }
+  // ── Saga list ─────────────────────────────────────────────────────────
+  async function loadSagas() {
+    const statuses = Object.keys(filterActive).filter((k) => filterActive[k]).join(',') || 'active';
+    const container = document.getElementById('saga-list-items');
+    container.innerHTML = '<p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-muted);">Cargando…</p>';
+    try {
+      const res = await fetch(`/api/operations/sagas?limit=60&statuses=${encodeURIComponent(statuses)}`);
+      const items = await res.json();
+      container.innerHTML = '';
+      if (!items.length) {
+        container.innerHTML = '<p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-muted);">Sin sagas.</p>';
+        return;
+      }
+      items.forEach((s) => {
+        const el = document.createElement('div');
+        el.className = 'saga-list-item' + (s.id === activeSagaId ? ' selected' : '');
+        el.innerHTML = `
+          <div class="saga-list-item-title">${s.title || 'Sin título'}</div>
+          <div class="saga-list-item-meta">
+            <span class="saga-status-pill ${s.status}">${s.status}</span>
+            &nbsp;${s.command_count || 0} comandos
+          </div>`;
+        el.addEventListener('click', () => {
+          selectSaga(s.id);
+          closeAllDrawers();
+        });
+        container.appendChild(el);
       });
-
-      sagaList.appendChild(row);
+    } catch (err) {
+      container.innerHTML = '<p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-danger);">Error al cargar.</p>';
     }
-  };
+  }
 
-  const loadSagas = async () => {
-    listStatus.textContent = 'Actualizando lista de sagas...';
-    const selectedStatus = String(filterStatus.value || '').trim();
-    const params = new URLSearchParams({ limit: '50' });
-    if (selectedStatus) {
-      params.set('statuses', selectedStatus);
-    }
+  async function selectSaga(sagaId) {
+    if (sagaId === activeSagaId) return;
+    disconnectSocket();
+    activeSagaId = sagaId;
+    try { localStorage.setItem('rag2.saga.active', sagaId); } catch (_) {}
+    await fetchAndRenderSaga(sagaId);
+    connectSocket(sagaId);
+  }
 
+  async function fetchAndRenderSaga(sagaId) {
+    setStatus('Cargando saga…');
+    setDot('connecting');
     try {
-      const response = await fetch(`/api/operations/sagas?${params.toString()}`);
-      const sagas = await readJson(response);
-      renderSagaList(sagas);
-      listStatus.textContent = `Sagas visibles: ${Array.isArray(sagas) ? sagas.length : 0}`;
-      if (selectedSagaId) {
-        const stillExists = Array.isArray(sagas) && sagas.some((item) => String(item.id || '') === selectedSagaId);
-        if (!stillExists) {
-          setSelectedSaga(null);
-          updateStatusMsg.textContent = 'La saga seleccionada no esta en el filtro actual.';
-        }
-      }
-    } catch (error) {
-      listStatus.textContent = `Error cargando sagas: ${String(error)}`;
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(sagaId)}`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      activeSaga = await res.json();
+    } catch (err) {
+      setStatus(`Error: ${err.message}`);
+      setDot('');
+      return;
     }
-  };
+    sagaTitle.textContent = activeSaga.title || 'Sin título';
+    parsedActs = parseActsFromHistory(activeSaga.command_history || []);
+    renderActTabs();
+    // Show input area
+    emptyState.style.display = 'none';
+    narrativeContent.style.display = '';
+    sagaInputArea.classList.remove('hidden');
+    sagaActsNav.classList.remove('hidden');
+    // Populate info drawer fields
+    document.getElementById('drw-title').value   = activeSaga.title || '';
+    document.getElementById('drw-premise').value = activeSaga.premise || '';
+    document.getElementById('drw-summary').value = activeSaga.summary || '';
+    document.getElementById('drw-world').value   = activeSaga.world_building || '';
+    document.getElementById('drw-status').value  = activeSaga.status || 'active';
+    // Show last act by default
+    const lastAct = parsedActs.length ? parsedActs[parsedActs.length - 1] : null;
+    viewAct(lastAct ? lastAct.number : null);
+    updateActDrawerStatus();
+    setStatus(`Saga: ${activeSaga.title}`);
+  }
 
-  createForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    const title = fields.create.title.value.trim();
-    if (!title) {
-      createStatus.textContent = 'Debes indicar un titulo para crear saga.';
+  // ── Act parsing ───────────────────────────────────────────────────────
+  function parseActsFromHistory(history) {
+    const acts = [];
+    const prologue = { number: 0, label: 'Prólogo', objective: '', closed: false, commands: [] };
+    let currentAct = null;
+
+    history.forEach((cmd) => {
+      const marker = parseActMarker(cmd);
+      if (marker) {
+        if (marker.action === 'OPEN') {
+          currentAct = { number: marker.number, label: `Acto ${marker.number}`, objective: marker.objective, closed: false, commands: [] };
+          acts.push(currentAct);
+        } else if (marker.action === 'CLOSE') {
+          const a = acts.find((x) => x.number === marker.number);
+          if (a) a.closed = true;
+        }
+        // SUMMARY — ignore for tab structure
+      } else {
+        if (currentAct) currentAct.commands.push(cmd);
+        else prologue.commands.push(cmd);
+      }
+    });
+
+    const result = [];
+    if (prologue.commands.length) result.push(prologue);
+    result.push(...acts);
+    return result;
+  }
+
+  // ── Act tabs ──────────────────────────────────────────────────────────
+  function renderActTabs() {
+    sagaActsTabs.innerHTML = '';
+    parsedActs.forEach((act) => {
+      const btn = document.createElement('button');
+      btn.className = 'act-tab' + (act.closed ? ' closed' : '') + (act.number === activeActNum ? ' active' : '');
+      btn.textContent = act.label;
+      btn.addEventListener('click', () => viewAct(act.number));
+      sagaActsTabs.appendChild(btn);
+    });
+  }
+
+  function viewAct(actNum) {
+    activeActNum = actNum;
+    // Update tab highlights
+    document.querySelectorAll('.act-tab').forEach((btn, i) => {
+      btn.classList.toggle('active', parsedActs[i] && parsedActs[i].number === actNum);
+    });
+    // Scroll narrative to act divider
+    const divider = narrativeContent.querySelector(`[data-act="${actNum}"]`);
+    if (divider) divider.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function activeActObj() {
+    return parsedActs.find((a) => !a.closed) || null;
+  }
+
+  function nextActNumber() {
+    const nums = parsedActs.filter((a) => a.number > 0).map((a) => a.number);
+    return nums.length ? Math.max(...nums) + 1 : 1;
+  }
+
+  function updateActDrawerStatus() {
+    const a = activeActObj();
+    const el = document.getElementById('drw-act-status');
+    if (a && a.number > 0) {
+      el.textContent = `Acto ${a.number} abierto — ${a.objective || 'sin objetivo definido'}`;
+      el.style.color = 'var(--saga-accent)';
+    } else {
+      el.textContent = 'Sin acto abierto. Usa el botón + en las pestañas para crear uno.';
+      el.style.color = 'var(--saga-muted)';
+    }
+  }
+
+  // ── Narrative rendering ───────────────────────────────────────────────
+  function clearNarrative() {
+    narrativeContent.innerHTML = '';
+    currentNarrativeEl = null;
+  }
+
+  function appendActDivider(actNum, label, objective, isClose = false) {
+    const div = document.createElement('div');
+    div.setAttribute('data-act', actNum);
+    div.innerHTML = `
+      <div class="act-divider${isClose ? ' close' : ''}">
+        <div class="act-divider-line"></div>
+        <div class="act-divider-label">${label}</div>
+        <div class="act-divider-line"></div>
+      </div>
+      ${objective && !isClose ? `<div class="act-divider-objective">▸ ${objective}</div>` : ''}
+    `;
+    narrativeContent.appendChild(div);
+  }
+
+  function appendNarrativeCommand(text) {
+    const el = document.createElement('div');
+    el.className = 'narrative-command';
+    el.innerHTML = `<span class="narrative-cmd-arrow">▷</span><span class="narrative-cmd-text">${text.replace(/</g,'&lt;')}</span>`;
+    narrativeContent.appendChild(el);
+    scrollToBottom();
+  }
+
+  function appendNarrativeResponse(text, streaming = false) {
+    if (streaming && currentNarrativeEl) {
+      currentNarrativeEl.textContent += text;
+      scrollToBottom();
+      return currentNarrativeEl;
+    }
+    const el = document.createElement('div');
+    el.className = 'narrative-response' + (streaming ? ' streaming' : '');
+    el.textContent = text;
+    narrativeContent.appendChild(el);
+    currentNarrativeEl = streaming ? el : null;
+    scrollToBottom();
+    return el;
+  }
+
+  function finalizeNarrativeStream() {
+    if (currentNarrativeEl) {
+      currentNarrativeEl.classList.remove('streaming');
+      currentNarrativeEl = null;
+    }
+  }
+
+  function injectHistoryMessage(msg) {
+    const content = (msg.content || '').trim();
+    const isUser  = (msg.author || 'user') === 'user';
+
+    // Check for act markers
+    const marker = parseActMarker(content);
+    if (marker) {
+      const act = parsedActs.find((a) => a.number === marker.number);
+      const label = marker.number === 0 ? 'Prólogo' : `Acto ${marker.number}`;
+      if (marker.action === 'OPEN') {
+        appendActDivider(marker.number, label, act ? act.objective : '', false);
+      } else if (marker.action === 'CLOSE') {
+        appendActDivider(marker.number, `— ${label} cerrado —`, '', true);
+      }
       return;
     }
 
-    createStatus.textContent = 'Creando saga...';
-    const payload = {
-      title,
-      premise: fields.create.premise.value.trim(),
-      summary: fields.create.summary.value.trim(),
-      world_building: fields.create.worldBuilding.value.trim(),
-      initial_command: fields.create.initialCommand.value.trim(),
-    };
+    if (isUser) {
+      appendNarrativeCommand(content);
+    } else {
+      appendNarrativeResponse(content, false);
+    }
+  }
 
-    try {
-      const response = await fetch('/api/operations/sagas', {
+  function scrollToBottom() {
+    narrativeArea.scrollTop = narrativeArea.scrollHeight;
+  }
+
+  // ── WebSocket ─────────────────────────────────────────────────────────
+  function connectSocket(sagaId) {
+    if (socket) disconnectSocket();
+    const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
+    const url   = `${proto}://${window.location.host}/ws/chat?session_id=${encodeURIComponent(sagaId)}&saga_id=${encodeURIComponent(sagaId)}`;
+    setDot('connecting');
+    setStatus('Conectando…');
+    socket = new WebSocket(url);
+
+    socket.addEventListener('open', () => {
+      wsSessionOpen = true;
+      setDot('active');
+      sagaInput.disabled  = false;
+      sagaSendBtn.disabled = false;
+      setStatus(`${activeSaga?.title || ''} — conectado`);
+    });
+
+    socket.addEventListener('close', () => {
+      wsSessionOpen = false;
+      sagaInput.disabled  = true;
+      sagaSendBtn.disabled = true;
+      setDot('');
+      if (activeSagaId) {
+        setStatus('Desconectado. Reconectando…');
+        socketReconnectTimer = window.setTimeout(() => connectSocket(activeSagaId), 3000);
+      }
+    });
+
+    socket.addEventListener('message', (event) => {
+      const packet = JSON.parse(event.data);
+      handleWsPacket(packet);
+    });
+  }
+
+  function disconnectSocket() {
+    if (socketReconnectTimer) { clearTimeout(socketReconnectTimer); socketReconnectTimer = null; }
+    if (socket) {
+      socket.onclose = null;
+      socket.close();
+      socket = null;
+    }
+    wsSessionOpen = false;
+    sagaInput.disabled  = true;
+    sagaSendBtn.disabled = true;
+  }
+
+  function handleWsPacket(packet) {
+    switch (packet.type) {
+      case 'session_started':
+        // Bootstrap done — clear and prepare for history messages
+        clearNarrative();
+        break;
+
+      case 'history_message': {
+        const msg = packet.message || {};
+        injectHistoryMessage(msg);
+        break;
+      }
+
+      case 'token': {
+        const text = String(packet.content || packet.token || '');
+        if (!currentNarrativeEl) {
+          // Start new response block
+          currentNarrativeEl = appendNarrativeResponse('', true);
+        }
+        appendNarrativeResponse(text, true);
+        break;
+      }
+
+      case 'reply':
+      case 'message': {
+        // Full reply (non-streaming)
+        finalizeNarrativeStream();
+        if (packet.content) appendNarrativeResponse(packet.content, false);
+        break;
+      }
+
+      case 'turn_end':
+      case 'end':
+        finalizeNarrativeStream();
+        setStatus(`${activeSaga?.title || ''} — listo`);
+        break;
+
+      case 'error':
+        finalizeNarrativeStream();
+        setStatus(`Error: ${packet.detail || 'desconocido'}`);
+        break;
+    }
+  }
+
+  // ── Send narrative command ────────────────────────────────────────────
+  async function sendNarrativeCommand() {
+    const text = sagaInput.value.trim();
+    if (!text || !activeSagaId || !wsSessionOpen) return;
+
+    sagaInput.value = '';
+    sagaInput.style.height = '';
+
+    // Determine current act for marker
+    const currentAct = activeActObj();
+    const note = currentAct ? `ACT ${currentAct.number}` : '';
+
+    // Save to saga (fire-and-forget, non-blocking)
+    fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: text, note }),
+    }).catch(() => {});
+
+    // Display command immediately
+    appendNarrativeCommand(text);
+
+    // Send via WS for narrative generation
+    socket.send(JSON.stringify({
+      content: text,
+      channel: 'saga',
+      saga_id: activeSagaId,
+      identity_id: activeIdentityId || null,
+      context_limit: 6,
+      history_limit: 30,
+    }));
+
+    setStatus('Generando narrativa…');
+  }
+
+  // ── Act management ────────────────────────────────────────────────────
+  async function openNewAct(objective) {
+    if (!activeSagaId) return;
+    const num = nextActNumber();
+    const marker = `[ACT ${num} OPEN] objetivo=${objective || 'por definir'}`;
+
+    // Close current act first if open
+    const current = activeActObj();
+    if (current && current.number > 0) {
+      await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/commands`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ command: `[ACT ${current.number} CLOSE]`, note: 'auto-close' }),
       });
-      const data = await readJson(response);
-      createStatus.textContent = `Saga creada: ${data.title || data.id}`;
-      setSelectedSaga(data);
-      setJson(data);
-      fields.create.title.value = '';
-      fields.create.premise.value = '';
-      fields.create.summary.value = '';
-      fields.create.worldBuilding.value = '';
-      fields.create.initialCommand.value = '';
-      await loadSagas();
-      seedStatus.textContent = 'Saga creada desde flujo de seed/create.';
-    } catch (error) {
-      createStatus.textContent = `Fallo creando saga: ${String(error)}`;
-    }
-  });
-
-  updateForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!selectedSagaId) {
-      updateStatusMsg.textContent = 'Selecciona una saga antes de guardar.';
-      return;
     }
 
-    updateStatusMsg.textContent = 'Guardando cambios de saga...';
-    const payload = {
-      title: fields.update.title.value.trim(),
-      premise: fields.update.premise.value.trim(),
-      summary: fields.update.summary.value.trim(),
-      world_building: fields.update.worldBuilding.value.trim(),
-      status: fields.update.status.value,
+    await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: marker, note: `ACT ${num}` }),
+    });
+
+    // Refresh saga data and narrative
+    await fetchAndRenderSaga(activeSagaId);
+    connectSocket(activeSagaId);
+  }
+
+  async function closeCurrentAct() {
+    const current = activeActObj();
+    if (!current || current.number === 0) {
+      drwMsg('drw-act-msg', 'Sin acto abierto.', false); return;
+    }
+    const goal = document.getElementById('drw-act-goal').value.trim();
+    const summaryCmd = goal ? `[ACT ${current.number} SUMMARY] objetivo=${goal}; coherence=pendiente` : `[ACT ${current.number} CLOSE]`;
+    await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/commands`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ command: `[ACT ${current.number} CLOSE]`, note: 'closed' }),
+    });
+    if (goal) {
+      await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/commands`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ command: summaryCmd, note: 'summary' }),
+      });
+    }
+    drwMsg('drw-act-msg', `Acto ${current.number} cerrado.`, true);
+    await fetchAndRenderSaga(activeSagaId);
+    connectSocket(activeSagaId);
+  }
+
+  // ── Drawers ──────────────────────────────────────────────────────────
+  function openDrawer(name) {
+    closeAllDrawers(false);
+    const el = document.getElementById(`drawer-${name}`);
+    if (el) el.classList.add('open');
+    sagaOverlay.classList.add('visible');
+    if (name === 'engram') renderEngramPicker();
+  }
+
+  function closeAllDrawers(hideOverlay = true) {
+    document.querySelectorAll('.saga-drawer').forEach((el) => el.classList.remove('open'));
+    if (hideOverlay) sagaOverlay.classList.remove('visible');
+  }
+
+  // ── Info drawer ───────────────────────────────────────────────────────
+  async function saveInfo() {
+    if (!activeSagaId) return;
+    const body = {
+      title:         document.getElementById('drw-title').value.trim(),
+      premise:       document.getElementById('drw-premise').value.trim(),
+      summary:       document.getElementById('drw-summary').value.trim(),
+      world_building:document.getElementById('drw-world').value.trim(),
+      status:        document.getElementById('drw-status').value,
     };
-
     try {
-      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}`, {
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(body),
       });
-      const data = await readJson(response);
-      if (!data.updated || !data.saga) {
-        throw new Error(data.detail || 'No se pudo actualizar la saga');
-      }
-      setSelectedSaga(data.saga);
-      setJson(data);
-      updateStatusMsg.textContent = 'Saga actualizada.';
-      await loadSagas();
-    } catch (error) {
-      updateStatusMsg.textContent = `Fallo al actualizar: ${String(error)}`;
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      activeSaga = await res.json();
+      sagaTitle.textContent = activeSaga.title || 'Sin título';
+      drwMsg('drw-info-msg', 'Guardado.', true);
+      loadSagas();
+    } catch (err) {
+      drwMsg('drw-info-msg', err.message, false);
     }
-  });
+  }
 
-  deleteSaga.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      updateStatusMsg.textContent = 'No hay saga seleccionada para eliminar.';
-      return;
-    }
-
-    updateStatusMsg.textContent = `Eliminando ${selectedSagaId}...`;
+  async function deleteSagaAction() {
+    if (!activeSagaId || !confirm('¿Eliminar esta saga? Esta acción no se puede deshacer.')) return;
     try {
-      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}`, {
-        method: 'DELETE',
+      await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}`, { method: 'DELETE' });
+      activeSagaId = null; activeSaga = null;
+      sagaTitle.textContent = 'Sin saga activa';
+      emptyState.style.display = '';
+      narrativeContent.style.display = 'none';
+      sagaInputArea.classList.add('hidden');
+      sagaActsNav.classList.add('hidden');
+      disconnectSocket();
+      closeAllDrawers();
+      loadSagas();
+      try { localStorage.removeItem('rag2.saga.active'); } catch(_) {}
+    } catch (err) { drwMsg('drw-info-msg', err.message, false); }
+  }
+
+  // ── Context drawer ────────────────────────────────────────────────────
+  async function buildContext() {
+    if (!activeSagaId) return;
+    const prompt = document.getElementById('drw-ctx-prompt').value.trim();
+    drwMsg('drw-ctx-msg', 'Preparando…', true);
+    const injectBtn = document.getElementById('drw-ctx-inject');
+    injectBtn.disabled = true;
+    try {
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/next-context`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ prompt, window_size: 6, recall_limit: 4 }),
       });
-      const data = await readJson(response);
-      if (!data.deleted) {
-        throw new Error('No se elimino la saga');
-      }
-      setJson(data);
-      setSelectedSaga(null);
-      updateStatusMsg.textContent = 'Saga eliminada.';
-      await loadSagas();
-    } catch (error) {
-      updateStatusMsg.textContent = `Fallo al eliminar: ${String(error)}`;
-    }
-  });
+      const data = await res.json();
+      ctxBaselineText = data.baseline_context || '';
+      document.getElementById('drw-ctx-result').textContent = ctxBaselineText;
+      drwMsg('drw-ctx-msg', 'Baseline listo.', true);
+      injectBtn.disabled = false;
+    } catch (err) { drwMsg('drw-ctx-msg', err.message, false); }
+  }
 
-  commandForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!selectedSagaId) {
-      actionsStatus.textContent = 'Selecciona una saga antes de agregar comando.';
-      return;
+  function injectContext() {
+    if (ctxBaselineText) {
+      sagaInput.value = ctxBaselineText;
+      sagaInput.dispatchEvent(new Event('input'));
+      sagaInput.focus();
+      closeAllDrawers();
     }
-    const command = fields.command.command.value.trim();
-    if (!command) {
-      actionsStatus.textContent = 'El comando no puede estar vacio.';
-      return;
-    }
+  }
 
-    actionsStatus.textContent = 'Agregando comando narrativo...';
-
+  // ── Consistency drawer ────────────────────────────────────────────────
+  async function analyzeConsistency() {
+    if (!activeSagaId) return;
+    drwMsg('drw-consistency-msg', 'Analizando…', true);
     try {
-      const updatedSaga = await appendCommand(
-        selectedSagaId,
-        command,
-        fields.command.note.value.trim(),
-      );
-      setSelectedSaga(updatedSaga);
-      setJson({ appended: true, saga: updatedSaga });
-      fields.command.command.value = '';
-      fields.command.note.value = '';
-      actionsStatus.textContent = 'Comando agregado a la saga.';
-      await loadSagas();
-    } catch (error) {
-      actionsStatus.textContent = `Fallo al agregar comando: ${String(error)}`;
-    }
-  });
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/consistency`);
+      const data = await res.json();
+      const score = Math.round((data.coherence_score || 0) * 100);
+      document.getElementById('drw-consistency-score').textContent = `${score}%`;
+      const contradictions = [
+        ...(data.contradictions || []).map((c) => `• ${c}`),
+      ];
+      document.getElementById('drw-contradictions').textContent =
+        contradictions.length ? contradictions.join('\n') : 'Sin contradicciones detectadas.';
+      drwMsg('drw-consistency-msg', '', true);
+    } catch (err) { drwMsg('drw-consistency-msg', err.message, false); }
+  }
 
-  debateForm.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    if (!selectedSagaId) {
-      actionsStatus.textContent = 'Selecciona una saga antes de debatir.';
-      return;
-    }
-
-    const topic = fields.debate.topic.value.trim();
-    if (!topic) {
-      actionsStatus.textContent = 'Debes indicar un tema para el debate.';
-      return;
-    }
-
-    actionsStatus.textContent = 'Enviando debate de saga...';
-
+  async function previewRetcon() {
+    if (!activeSagaId) return;
+    drwMsg('drw-consistency-msg', 'Generando preview…', true);
     try {
-      const updatedSaga = await debateSaga(selectedSagaId, topic, fields.debate.note.value.trim());
-      setSelectedSaga(updatedSaga);
-      setJson({ debated: true, saga: updatedSaga });
-      fields.debate.topic.value = '';
-      fields.debate.note.value = '';
-      actionsStatus.textContent = 'Debate registrado y memoria persistida.';
-      await loadSagas();
-    } catch (error) {
-      actionsStatus.textContent = `Fallo en debate: ${String(error)}`;
-    }
-  });
-
-  checkConsistency.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      consistencyStatus.textContent = 'Selecciona una saga para analizar consistencia.';
-      return;
-    }
-
-    consistencyStatus.textContent = 'Analizando consistencia...';
-    try {
-      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/consistency`);
-      const data = await readJson(response);
-      setJson(data);
-      if (!data.found) {
-        throw new Error('Saga no encontrada durante el analisis');
-      }
-      const score = typeof data.coherence_score === 'number' ? data.coherence_score : 'n/a';
-      consistencyStatus.textContent = `Consistencia lista. score=${score} contradicciones=${data.contradictions ? data.contradictions.length : 0}`;
-    } catch (error) {
-      consistencyStatus.textContent = `Fallo en consistencia: ${String(error)}`;
-    }
-  });
-
-  previewRetcon.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      consistencyStatus.textContent = 'Selecciona una saga para generar retcon.';
-      return;
-    }
-
-    consistencyStatus.textContent = 'Generando retcon sugerido...';
-    try {
-      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/retcon`, {
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/retcon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apply: false }),
       });
-      const data = await readJson(response);
-      setJson(data);
-      consistencyStatus.textContent = data.retcon
-        ? 'Retcon sugerido listo. Revisa la salida JSON.'
-        : 'No hubo retcon sugerido para esta saga.';
-    } catch (error) {
-      consistencyStatus.textContent = `Fallo al generar retcon: ${String(error)}`;
-    }
-  });
+      const data = await res.json();
+      document.getElementById('drw-contradictions').textContent = data.retcon || 'Sin sugerencia.';
+      drwMsg('drw-consistency-msg', 'Preview listo.', true);
+    } catch (err) { drwMsg('drw-consistency-msg', err.message, false); }
+  }
 
-  applyRetcon.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      consistencyStatus.textContent = 'Selecciona una saga para aplicar retcon.';
-      return;
-    }
-
-    consistencyStatus.textContent = 'Aplicando retcon automatico...';
+  async function applyRetcon() {
+    if (!activeSagaId || !confirm('¿Aplicar retcon? Se añadirá como comando correctivo.')) return;
+    drwMsg('drw-consistency-msg', 'Aplicando…', true);
     try {
-      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/retcon`, {
+      await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/retcon`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ apply: true }),
       });
-      const data = await readJson(response);
-      setJson(data);
-      if (data.result && data.result.saga) {
-        setSelectedSaga(data.result.saga);
-      }
-      consistencyStatus.textContent = data.applied
-        ? 'Retcon aplicado como comando adicional.'
-        : 'No se aplico retcon (revisar salida).';
-      await loadSagas();
-    } catch (error) {
-      consistencyStatus.textContent = `Fallo aplicando retcon: ${String(error)}`;
-    }
-  });
+      drwMsg('drw-consistency-msg', 'Retcon aplicado.', true);
+      await fetchAndRenderSaga(activeSagaId);
+      connectSocket(activeSagaId);
+    } catch (err) { drwMsg('drw-consistency-msg', err.message, false); }
+  }
 
-  refreshList.addEventListener('click', () => {
-    void loadSagas();
-  });
-
-  filterStatus.addEventListener('change', () => {
-    void loadSagas();
-  });
-
-  clearSelection.addEventListener('click', () => {
-    setSelectedSaga(null);
-    updateStatusMsg.textContent = 'Seleccion limpiada.';
-    contextStatus.textContent = 'Seleccion limpia, contexto no disponible.';
-  });
-
-  seedSaveNext.addEventListener('click', () => {
-    const key = currentSeedKey();
-    if (!key) {
-      seedStatus.textContent = 'El seed ya esta completo.';
-      return;
-    }
-    const answer = seedAnswer.value.trim();
-    if (!answer) {
-      seedStatus.textContent = `Falta responder la dimension ${key}.`;
-      return;
-    }
-    seedAnswers[key] = answer;
-    seedQueue = seedQueue.filter((item) => item !== key);
-    seedQueue.push(key);
-    updateSeedQuestion();
-  });
-
-  seedSkipNext.addEventListener('click', () => {
-    const key = currentSeedKey();
-    if (!key) {
-      seedStatus.textContent = 'No quedan dimensiones pendientes.';
-      return;
-    }
-    seedQueue = seedQueue.filter((item) => item !== key);
-    seedQueue.push(key);
-    seedStatus.textContent = `Dimension ${key} saltada temporalmente.`;
-    updateSeedQuestion();
-  });
-
-  seedApply.addEventListener('click', () => {
-    applySeedToCreateForm();
-  });
-
-  seedReset.addEventListener('click', () => {
-    seedAnswers = {
-      genre: '',
-      tone: '',
-      setting: '',
-      timeline: '',
-      pov: '',
-      conflict: '',
-      cast: '',
-      stakes: '',
-    };
-    seedQueue = [...seedOrder];
-    updateSeedQuestion();
-  });
-
-  actOpen.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      actionsStatus.textContent = 'Selecciona una saga antes de abrir checkpoint de acto.';
-      return;
-    }
-
-    const actIdx = Math.max(1, Number(actNumber.value || 1));
-    const goal = actGoal.value.trim();
-    const command = `[ACT ${actIdx} OPEN] objetivo=${goal || 'sin objetivo'}`;
-    actionsStatus.textContent = 'Registrando apertura de acto...';
+  // ── Debate drawer ─────────────────────────────────────────────────────
+  async function submitDebate() {
+    if (!activeSagaId) return;
+    const topic    = document.getElementById('drw-debate-topic').value.trim();
+    const note     = document.getElementById('drw-debate-note').value.trim();
+    const engram   = document.getElementById('drw-debate-engram').value;
+    const persist  = document.getElementById('drw-debate-persist').checked;
+    if (!topic) { drwMsg('drw-debate-msg', 'El tema es obligatorio.', false); return; }
+    drwMsg('drw-debate-msg', 'Debatiendo…', true);
     try {
-      const sagaPayload = await appendCommand(selectedSagaId, command, `act:${actIdx}:open`);
-      setSelectedSaga(sagaPayload);
-      setJson({ action: 'act_open', act: actIdx, saga: sagaPayload });
-      actionsStatus.textContent = `Acto ${actIdx} abierto.`;
-      await loadSagas();
-    } catch (error) {
-      actionsStatus.textContent = `Fallo al abrir acto: ${String(error)}`;
-    }
-  });
-
-  actClose.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      actionsStatus.textContent = 'Selecciona una saga antes de cerrar acto.';
-      return;
-    }
-
-    const actIdx = Math.max(1, Number(actNumber.value || 1));
-    const goal = actGoal.value.trim();
-    const preTopic = actPreDebate.value.trim();
-    const postTopic = actPostDebate.value.trim();
-
-    actionsStatus.textContent = `Cerrando acto ${actIdx} con chequeo de coherencia...`;
-    try {
-      let workingSaga = selectedSaga;
-      if (preTopic) {
-        workingSaga = await debateSaga(selectedSagaId, preTopic, `act:${actIdx}:pre-close`);
-      }
-
-      const consistencyResponse = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/consistency`);
-      const consistency = await readJson(consistencyResponse);
-      const summaryCommand = buildActSummary(workingSaga || selectedSaga, actIdx, goal, consistency);
-
-      workingSaga = await appendCommand(selectedSagaId, summaryCommand, `act:${actIdx}:summary`);
-      const closeMarker = `[ACT ${actIdx} CLOSE] coherencia=${consistency.coherence_score || 'n/a'} contradicciones=${Array.isArray(consistency.contradictions) ? consistency.contradictions.length : 0}`;
-      workingSaga = await appendCommand(selectedSagaId, closeMarker, `act:${actIdx}:close`);
-
-      workingSaga = await updateSagaSummary(selectedSagaId, workingSaga, summaryCommand);
-
-      if (postTopic) {
-        workingSaga = await debateSaga(selectedSagaId, postTopic, `act:${actIdx}:post-close`);
-      }
-
-      const composedContext = [
-        summaryCommand,
-        '',
-        `Continuidad base acto ${actIdx + 1}: arranca desde este resumen canonico.`,
-      ].join('\n');
-      nextActContext.value = composedContext;
-      contextStatus.textContent = `Resumen canonico de acto ${actIdx} listo para continuidad N+1.`;
-
-      setSelectedSaga(workingSaga);
-      setJson({
-        action: 'act_close',
-        act: actIdx,
-        consistency,
-        saga: workingSaga,
-      });
-      actionsStatus.textContent = `Acto ${actIdx} cerrado con resumen canonico.`;
-      actNumber.value = String(actIdx + 1);
-      actPreDebate.value = '';
-      actPostDebate.value = '';
-      await loadSagas();
-    } catch (error) {
-      actionsStatus.textContent = `Fallo al cerrar acto: ${String(error)}`;
-    }
-  });
-
-  prepareContext.addEventListener('click', async () => {
-    if (!selectedSagaId) {
-      contextStatus.textContent = 'Selecciona una saga para preparar contexto.';
-      return;
-    }
-
-    contextStatus.textContent = 'Componiendo contexto baseline (window + recall)...';
-    try {
-      const promptText = nextActPrompt.value.trim();
-      const response = await fetch(`/api/operations/sagas/${encodeURIComponent(selectedSagaId)}/next-context`, {
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/debate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          prompt: promptText,
-          window_size: 6,
-          recall_limit: 4,
-        }),
+        body: JSON.stringify({ topic, note, identity_name: engram, persist_memory: persist }),
       });
-      const data = await readJson(response);
-      if (!data.found) {
-        throw new Error('Saga no encontrada al preparar contexto.');
-      }
-      nextActContext.value = String(data.baseline_context || '');
-      contextStatus.textContent = `Contexto preparado con ${Array.isArray(data.active_window) ? data.active_window.length : 0} items en ventana y ${Array.isArray(data.deep_recall) ? data.deep_recall.length : 0} de recall.`;
-      setJson(data);
-    } catch (error) {
-      contextStatus.textContent = `Fallo preparando contexto: ${String(error)}`;
-    }
-  });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      drwMsg('drw-debate-msg', 'Debate registrado' + (persist ? ' y guardado en memoria.' : '.'), true);
+      document.getElementById('drw-debate-topic').value = '';
+      document.getElementById('drw-debate-note').value  = '';
+    } catch (err) { drwMsg('drw-debate-msg', err.message, false); }
+  }
 
-  injectContextCommand.addEventListener('click', () => {
-    const contextText = nextActContext.value.trim();
-    if (!contextText) {
-      contextStatus.textContent = 'No hay contexto preparado para inyectar.';
+  // ── Wizard ────────────────────────────────────────────────────────────
+  function startWizard() {
+    wizardStep    = 0;
+    wizardAnswers = {};
+    renderWizardStep();
+    document.getElementById('saga-wizard').classList.remove('hidden');
+  }
+
+  function renderWizardStep() {
+    const step  = WIZARD_DIMS[wizardStep];
+    const total = WIZARD_DIMS.length;
+    const pct   = Math.round((wizardStep / total) * 100);
+    document.getElementById('wizard-progress-bar').style.width = `${pct}%`;
+    document.getElementById('wizard-step-label').textContent    = step.label;
+    document.getElementById('wizard-step-question').textContent = step.q;
+    document.getElementById('wizard-step-hint').textContent     = step.hint;
+
+    const ans = document.getElementById('wizard-answer');
+    ans.value = wizardAnswers[step.key] || '';
+    ans.placeholder = step.isMeta ? 'Título: ...\nPremisa: ...' : `Describe ${step.q.toLowerCase()}…`;
+
+    document.getElementById('wizard-back').style.visibility = wizardStep === 0 ? 'hidden' : 'visible';
+    document.getElementById('wizard-next').textContent = wizardStep === total - 1 ? 'Crear saga →' : 'Siguiente →';
+    document.getElementById('wizard-skip').style.display = step.isMeta ? 'none' : '';
+  }
+
+  async function wizardNext() {
+    const step = WIZARD_DIMS[wizardStep];
+    const val  = document.getElementById('wizard-answer').value.trim();
+    if (step.isMeta && !val) { return; }
+    wizardAnswers[step.key] = val;
+
+    if (wizardStep === WIZARD_DIMS.length - 1) {
+      await createSagaFromWizard();
       return;
     }
-    fields.command.command.value = contextText;
-    fields.command.note.value = `act:${Math.max(1, Number(actNumber.value || 1))}:context-baseline`;
-    contextStatus.textContent = 'Contexto inyectado en el formulario de comando narrativo.';
+    wizardStep++;
+    renderWizardStep();
+  }
+
+  function wizardBack() {
+    if (wizardStep > 0) { wizardStep--; renderWizardStep(); }
+  }
+
+  function wizardSkip() {
+    wizardStep++;
+    if (wizardStep >= WIZARD_DIMS.length) wizardStep = WIZARD_DIMS.length - 1;
+    renderWizardStep();
+  }
+
+  async function createSagaFromWizard() {
+    const meta  = wizardAnswers['_meta'] || '';
+    // Parse title/premise from meta field
+    const lines = meta.split('\n').map((l) => l.trim()).filter(Boolean);
+    const titleLine   = lines.find((l) => /^t[ií]tulo\s*:/i.test(l));
+    const premisaLine = lines.find((l) => /^premisa\s*:/i.test(l));
+    const title   = titleLine   ? titleLine.replace(/^t[ií]tulo\s*:\s*/i,'').trim()  : (lines[0] || 'Nueva Saga');
+    const premise = premisaLine ? premisaLine.replace(/^premisa\s*:\s*/i,'').trim() : (lines.slice(1).join(' ') || '');
+
+    const worldParts = [];
+    ['genre','tone','setting','timeline','pov','conflict','cast','stakes'].forEach((k) => {
+      const label = WIZARD_DIMS.find((d) => d.key === k)?.q || k;
+      if (wizardAnswers[k]) worldParts.push(`${label}: ${wizardAnswers[k]}`);
+    });
+    const world_building = worldParts.join('\n');
+
+    document.getElementById('wizard-next').textContent = 'Creando…';
+    document.getElementById('wizard-next').disabled = true;
+
+    try {
+      const res = await fetch('/api/operations/sagas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, premise, summary: '', world_building, initial_command: '' }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const saga = await res.json();
+      document.getElementById('saga-wizard').classList.add('hidden');
+      await loadSagas();
+      selectSaga(saga.id);
+    } catch (err) {
+      document.getElementById('wizard-next').textContent = 'Crear saga →';
+      document.getElementById('wizard-next').disabled = false;
+      alert(`Error creando saga: ${err.message}`);
+    }
+  }
+
+  // ── New act modal ─────────────────────────────────────────────────────
+  function showNewActModal() {
+    document.getElementById('new-act-objective').value = '';
+    document.getElementById('new-act-modal').classList.remove('hidden');
+  }
+
+  async function confirmNewAct() {
+    const objective = document.getElementById('new-act-objective').value.trim();
+    document.getElementById('new-act-modal').classList.add('hidden');
+    await openNewAct(objective);
+  }
+
+  // ── Utility ───────────────────────────────────────────────────────────
+  function drwMsg(id, text, ok) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.textContent = text;
+    el.className = 'drw-msg ' + (ok ? 'ok' : 'err');
+  }
+
+  // ── Event wiring ──────────────────────────────────────────────────────
+  // Header
+  document.getElementById('saga-list-btn').addEventListener('click', () => { loadSagas(); openDrawer('saga-list'); });
+  document.getElementById('saga-engram-avatar').addEventListener('click', () => openDrawer('engram'));
+  document.getElementById('saga-engram-name').addEventListener('click',   () => openDrawer('engram'));
+
+  // Empty state
+  document.getElementById('btn-open-saga-list').addEventListener('click', () => { loadSagas(); openDrawer('saga-list'); });
+  document.getElementById('btn-start-wizard').addEventListener('click',   startWizard);
+
+  // New saga in drawer
+  document.getElementById('drw-new-saga-btn').addEventListener('click', () => { closeAllDrawers(); startWizard(); });
+
+  // Saga list filters
+  document.querySelectorAll('.filter-pill').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const f = btn.dataset.filter;
+      filterActive[f] = !filterActive[f];
+      btn.classList.toggle('on', filterActive[f]);
+      loadSagas();
+    });
   });
 
-  updateSeedQuestion();
+  // Drawer close buttons
+  document.querySelectorAll('.drawer-close-btn').forEach((btn) => {
+    btn.addEventListener('click', closeAllDrawers);
+  });
 
-  void loadSagas();
+  // Overlay close
+  sagaOverlay.addEventListener('click', closeAllDrawers);
+
+  // Toolbar buttons → open drawers
+  document.querySelectorAll('.saga-tool-btn').forEach((btn) => {
+    btn.addEventListener('click', () => openDrawer(btn.dataset.drawer));
+  });
+
+  // Act tabs — new act
+  sagaActAddBtn.addEventListener('click', showNewActModal);
+
+  // Input
+  sagaInput.addEventListener('input', () => {
+    sagaInput.style.height = 'auto';
+    sagaInput.style.height = Math.min(sagaInput.scrollHeight, 120) + 'px';
+  });
+  sagaInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendNarrativeCommand(); }
+  });
+  sagaSendBtn.addEventListener('click', sendNarrativeCommand);
+
+  // Info drawer
+  document.getElementById('drw-save-info').addEventListener('click', saveInfo);
+  document.getElementById('drw-delete-saga').addEventListener('click', deleteSagaAction);
+
+  // Act drawer
+  document.getElementById('drw-close-act-btn').addEventListener('click', () => {
+    closeCurrentAct().then(() => updateActDrawerStatus());
+  });
+
+  // Context drawer
+  document.getElementById('drw-ctx-build').addEventListener('click', buildContext);
+  document.getElementById('drw-ctx-inject').addEventListener('click', injectContext);
+
+  // Consistency drawer
+  document.getElementById('drw-analyze-btn').addEventListener('click', analyzeConsistency);
+  document.getElementById('drw-retcon-preview-btn').addEventListener('click', previewRetcon);
+  document.getElementById('drw-retcon-apply-btn').addEventListener('click', applyRetcon);
+
+  // Debate drawer
+  document.getElementById('drw-debate-submit').addEventListener('click', submitDebate);
+
+  // Wizard
+  document.getElementById('wizard-next').addEventListener('click', wizardNext);
+  document.getElementById('wizard-back').addEventListener('click', wizardBack);
+  document.getElementById('wizard-skip').addEventListener('click', wizardSkip);
+  document.getElementById('wizard-close').addEventListener('click', () => {
+    document.getElementById('saga-wizard').classList.add('hidden');
+  });
+
+  // New act modal
+  document.getElementById('new-act-cancel').addEventListener('click', () => {
+    document.getElementById('new-act-modal').classList.add('hidden');
+  });
+  document.getElementById('new-act-confirm').addEventListener('click', confirmNewAct);
+  document.getElementById('new-act-objective').addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); confirmNewAct(); }
+  });
+
+  // ── Boot ──────────────────────────────────────────────────────────────
+  (async () => {
+    // Apply saved accent
+    try {
+      const accent = localStorage.getItem('rag2.engram.accent');
+      if (accent && /^#[0-9a-fA-F]{3,8}$/.test(accent)) {
+        document.documentElement.style.setProperty('--saga-accent', accent);
+      }
+    } catch (_) {}
+
+    await loadEngrams();
+    restoreSavedEngram();
+
+    // Restore last active saga
+    try {
+      const saved = localStorage.getItem('rag2.saga.active');
+      if (saved) {
+        await selectSaga(saved);
+        return;
+      }
+    } catch (_) {}
+  })();
 })();
 </script>
 {% endblock %}
