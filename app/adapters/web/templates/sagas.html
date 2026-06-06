@@ -1383,8 +1383,7 @@
   function handleWsPacket(packet) {
     switch (packet.type) {
       case 'session_started':
-        // Server is about to replay history — clear narrative so we don't duplicate.
-        // Use a small delay so any in-flight streaming block is finalized first.
+        // Server is about to replay history — wipe so we don't duplicate.
         finalizeNarrativeStream();
         clearNarrative();
         break;
@@ -1395,34 +1394,57 @@
         break;
       }
 
-      case 'token': {
-        const text = String(packet.content || packet.token || '');
+      case 'meta_update': {
+        // Sync narrating identity shown in header if no manual selection
+        if (!activeIdentityId && packet.name) {
+          activeIdentityName        = packet.name;
+          sagaEngramName.textContent = packet.name;
+          if (packet.avatar) sagaEngramAvatar.src = packet.avatar;
+          if (packet.color)  document.documentElement.style.setProperty('--saga-accent', packet.color);
+        }
+        break;
+      }
+
+      case 'assistant_token': {
+        // Streaming token — append to current block, or open a new one
+        const tok = String(packet.token || '');
+        if (!tok) break;
         if (!currentNarrativeEl) {
-          // Start new response block
           currentNarrativeEl = appendNarrativeResponse('', true);
         }
-        appendNarrativeResponse(text, true);
+        currentNarrativeEl.textContent += tok;
+        scrollToBottom();
         break;
       }
 
-      case 'reply':
-      case 'message': {
-        // Full reply (non-streaming)
+      case 'assistant_message': {
+        // Full reply delivered after all tokens
         finalizeNarrativeStream();
-        if (packet.content) appendNarrativeResponse(packet.content, false);
+        const msg     = packet.message || {};
+        const content = String(msg.content || '').trim();
+        if (content && !currentNarrativeEl) {
+          // Non-streaming path: model returned full reply at once
+          appendNarrativeResponse(content, false);
+        }
         break;
       }
 
-      case 'turn_end':
-      case 'end':
+      case 'turn_complete':
         finalizeNarrativeStream();
         setStatus(`${activeSaga?.title || ''} — listo`);
+        break;
+
+      case 'turn_progress':
+        // Show stage label in status bar while model thinks
+        setStatus(packet.label || packet.stage || '…');
         break;
 
       case 'error':
         finalizeNarrativeStream();
         setStatus(`Error: ${packet.detail || 'desconocido'}`);
         break;
+
+      // Silently ignore other bootstrap packets (welcome, turn_started, etc.)
     }
   }
 
