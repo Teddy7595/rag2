@@ -690,6 +690,90 @@
   .engram-picker-avatar { width: 28px; height: 28px; border-radius: 50%; }
   .engram-picker-name { font-family: var(--saga-mono); font-size: 0.8rem; color: var(--saga-text); }
 
+  /* ── NARRATIVE SAGA HEADER ───────────────────────────────────────── */
+  .narrative-saga-header {
+    border: 1px solid var(--saga-border2);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 18px;
+    background: rgba(0,255,65,0.03);
+    font-family: var(--saga-mono);
+  }
+  .narrative-saga-header-title {
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--saga-accent);
+    margin-bottom: 8px;
+  }
+  .narrative-saga-header-row {
+    margin-top: 8px;
+    font-size: 0.75rem;
+    color: var(--saga-muted);
+    line-height: 1.5;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+  .narrative-saga-header-label {
+    color: var(--saga-text);
+    display: block;
+    font-size: 0.67rem;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-bottom: 2px;
+    opacity: 0.7;
+  }
+
+  /* ── ACT TAB DELETE ──────────────────────────────────────────────── */
+  .act-tab-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 1px;
+  }
+  .act-tab-delete {
+    background: transparent;
+    border: none;
+    color: var(--saga-danger);
+    font-size: 0.72rem;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    opacity: 0;
+    transition: opacity 0.15s;
+    border-radius: 4px;
+  }
+  .act-tab-wrap:hover .act-tab-delete { opacity: 0.7; }
+  .act-tab-wrap:hover .act-tab-delete:hover { opacity: 1; }
+
+  /* ── PLOT ASPECTS CHECKBOXES ─────────────────────────────────────── */
+  .drw-plot-aspects {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .drw-plot-aspects label {
+    font-family: var(--saga-mono);
+    font-size: 0.8rem;
+    color: var(--saga-text);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .drw-plot-aspects input[type="checkbox"] {
+    accent-color: var(--saga-accent);
+  }
+  #drw-plot-premise-text {
+    font-family: var(--saga-mono);
+    font-size: 0.75rem;
+    color: var(--saga-muted);
+    line-height: 1.5;
+    max-height: 80px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
   /* ── RESPONSIVE ADJUSTMENTS ───────────────────────────────────────── */
   @media (min-width: 640px) {
     #saga-narrative-area { padding: 20px 10% 12px; }
@@ -757,6 +841,9 @@
       </button>
       <button class="saga-tool-btn" data-drawer="engram"      title="Engrama narrador" id="saga-engram-tool-btn">
         <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+      </button>
+      <button class="saga-tool-btn" data-drawer="plot"        title="Generador de elementos de trama">
+        <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>
       </button>
     </div>
     <div id="saga-input-row">
@@ -922,6 +1009,34 @@
   <div class="drawer-body">
     <p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-muted);margin:0 0 8px;">El engrama seleccionado narra las respuestas del modelo en esta saga.</p>
     <div id="drw-engram-list" style="display:flex;flex-direction:column;gap:8px;"></div>
+  </div>
+</div>
+
+<!-- ── RIGHT DRAWER: Plot elements ───────────────────────────────── -->
+<div id="drawer-plot" class="saga-drawer right">
+  <div class="drawer-header">
+    <span>Elementos de trama</span>
+    <button class="drawer-close-btn" data-close="plot">×</button>
+  </div>
+  <div class="drawer-body">
+    <p style="font-family:var(--saga-mono);font-size:0.72rem;color:var(--saga-muted);margin:0 0 8px;">El modelo generará elementos narrativos basándose en la premisa y el mundo de tu saga.</p>
+    <div class="drw-section">
+      <label class="drw-label">Premisa activa</label>
+      <div id="drw-plot-premise-text">—</div>
+    </div>
+    <div class="drw-section">
+      <label class="drw-label">¿Qué generar?</label>
+      <div class="drw-plot-aspects">
+        <label><input type="checkbox" class="plot-aspect" value="personajes" checked> Personajes</label>
+        <label><input type="checkbox" class="plot-aspect" value="conflictos" checked> Conflictos</label>
+        <label><input type="checkbox" class="plot-aspect" value="giros narrativos" checked> Giros narrativos</label>
+        <label><input type="checkbox" class="plot-aspect" value="escenarios" checked> Escenarios</label>
+        <label><input type="checkbox" class="plot-aspect" value="objetos y artefactos"> Objetos y artefactos</label>
+        <label><input type="checkbox" class="plot-aspect" value="facciones y grupos"> Facciones y grupos</label>
+      </div>
+    </div>
+    <button class="drw-btn primary" id="drw-plot-generate">Generar elementos →</button>
+    <div class="drw-msg" id="drw-plot-msg"></div>
   </div>
 </div>
 
@@ -1208,11 +1323,29 @@
   function renderActTabs() {
     sagaActsTabs.innerHTML = '';
     parsedActs.forEach((act) => {
+      if (act.number === 0) {
+        // Prologue — no delete button
+        const btn = document.createElement('button');
+        btn.className = 'act-tab' + (act.number === activeActNum ? ' active' : '');
+        btn.textContent = act.label;
+        btn.addEventListener('click', () => viewAct(act.number));
+        sagaActsTabs.appendChild(btn);
+        return;
+      }
+      const wrap = document.createElement('div');
+      wrap.className = 'act-tab-wrap';
       const btn = document.createElement('button');
       btn.className = 'act-tab' + (act.closed ? ' closed' : '') + (act.number === activeActNum ? ' active' : '');
       btn.textContent = act.label;
       btn.addEventListener('click', () => viewAct(act.number));
-      sagaActsTabs.appendChild(btn);
+      const delBtn = document.createElement('button');
+      delBtn.className = 'act-tab-delete';
+      delBtn.title = `Borrar ${act.label}`;
+      delBtn.textContent = '×';
+      delBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteAct(act.number); });
+      wrap.appendChild(btn);
+      wrap.appendChild(delBtn);
+      sagaActsTabs.appendChild(wrap);
     });
   }
 
@@ -1245,6 +1378,45 @@
     } else {
       el.textContent = 'Sin acto abierto. Usa el botón + en las pestañas para crear uno.';
       el.style.color = 'var(--saga-muted)';
+    }
+  }
+
+  // ── Saga metadata header ──────────────────────────────────────────────
+  function escHtml(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function renderSagaHeader() {
+    if (!activeSaga) return;
+    const el = document.createElement('div');
+    el.className = 'narrative-saga-header';
+    let html = `<div class="narrative-saga-header-title">${escHtml(activeSaga.title || 'Saga')}</div>`;
+    if (activeSaga.premise) {
+      html += `<div class="narrative-saga-header-row"><span class="narrative-saga-header-label">Premisa</span>${escHtml(activeSaga.premise)}</div>`;
+    }
+    if (activeSaga.world_building) {
+      html += `<div class="narrative-saga-header-row"><span class="narrative-saga-header-label">Mundo</span>${escHtml(activeSaga.world_building)}</div>`;
+    }
+    if (activeSaga.summary && activeSaga.summary !== activeSaga.premise) {
+      html += `<div class="narrative-saga-header-row"><span class="narrative-saga-header-label">Resumen canónico</span>${escHtml(activeSaga.summary)}</div>`;
+    }
+    el.innerHTML = html;
+    narrativeContent.insertBefore(el, narrativeContent.firstChild);
+  }
+
+  // ── Delete act ────────────────────────────────────────────────────────
+  async function deleteAct(actNum) {
+    if (!activeSagaId || !confirm(`¿Borrar el Acto ${actNum} y todos sus comandos? Esta acción no se puede deshacer.`)) return;
+    setStatus(`Borrando Acto ${actNum}…`);
+    try {
+      const res = await fetch(`/api/operations/sagas/${encodeURIComponent(activeSagaId)}/acts/${actNum}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = await res.json();
+      if (!data.deleted) throw new Error(data.detail || 'No se pudo borrar');
+      await fetchAndRenderSaga(activeSagaId);
+      connectSocket(activeSagaId);
+    } catch (err) {
+      setStatus(`Error: ${err.message}`);
     }
   }
 
@@ -1386,6 +1558,8 @@
         // Server is about to replay history — wipe so we don't duplicate.
         finalizeNarrativeStream();
         clearNarrative();
+        // Show saga metadata at top so world_building and summary are always visible
+        renderSagaHeader();
         break;
 
       case 'history_message': {
@@ -1691,6 +1865,50 @@
     } catch (err) { drwMsg('drw-debate-msg', err.message, false); }
   }
 
+  // ── Plot elements ─────────────────────────────────────────────────────
+  function openPlotDrawer() {
+    const premiseEl = document.getElementById('drw-plot-premise-text');
+    if (activeSaga) {
+      const parts = [];
+      if (activeSaga.premise) parts.push(activeSaga.premise);
+      if (activeSaga.world_building) parts.push(`[Mundo] ${activeSaga.world_building.slice(0, 300)}`);
+      premiseEl.textContent = parts.join('\n\n') || '—';
+    } else {
+      premiseEl.textContent = '—';
+    }
+    openDrawer('plot');
+  }
+
+  async function generatePlotElements() {
+    if (!activeSagaId || !wsSessionOpen) {
+      drwMsg('drw-plot-msg', 'Conecta a una saga primero.', false); return;
+    }
+    const aspects = [...document.querySelectorAll('.plot-aspect:checked')].map((el) => el.value);
+    if (!aspects.length) { drwMsg('drw-plot-msg', 'Selecciona al menos un aspecto.', false); return; }
+
+    const worldCtx = activeSaga?.world_building ? `\nMundo: ${activeSaga.world_building}` : '';
+    const aspectStr = aspects.join(', ');
+    const prompt = (
+      `[GENERADOR DE ELEMENTOS DE TRAMA]\n` +
+      `Saga: ${activeSaga?.title || ''}\n` +
+      `Premisa: ${activeSaga?.premise || activeSaga?.title || ''}${worldCtx}\n\n` +
+      `Genera ideas concretas para: ${aspectStr}.\n` +
+      `Para cada categoría, propón 3-4 opciones con nombre, descripción breve (2-3 frases) y rol narrativo.`
+    );
+
+    socket.send(JSON.stringify({
+      content: prompt,
+      channel: 'saga',
+      saga_id: activeSagaId,
+      identity_id: activeIdentityId || null,
+      context_limit: 4,
+      history_limit: 10,
+    }));
+
+    closeAllDrawers();
+    setStatus('Generando elementos de trama…');
+  }
+
   // ── Wizard ────────────────────────────────────────────────────────────
   function startWizard() {
     wizardStep    = 0;
@@ -1831,7 +2049,10 @@
 
   // Toolbar buttons → open drawers
   document.querySelectorAll('.saga-tool-btn').forEach((btn) => {
-    btn.addEventListener('click', () => openDrawer(btn.dataset.drawer));
+    btn.addEventListener('click', () => {
+      if (btn.dataset.drawer === 'plot') { openPlotDrawer(); return; }
+      openDrawer(btn.dataset.drawer);
+    });
   });
 
   // Act tabs — new act
@@ -1867,6 +2088,9 @@
 
   // Debate drawer
   document.getElementById('drw-debate-submit').addEventListener('click', submitDebate);
+
+  // Plot elements drawer
+  document.getElementById('drw-plot-generate').addEventListener('click', generatePlotElements);
 
   // Wizard
   document.getElementById('wizard-next').addEventListener('click', wizardNext);

@@ -1207,9 +1207,10 @@ class RealtimeChatService:
             prompt_sections.append(f"Mensaje del usuario: {input_data.content.strip()}")
 
         # BLOCK 5: Output directive — mínimo necesario, el engrama define la voz y el estilo.
-        # Solo hay dos ramas: continuación estructural (necesita ancla) o hablar como el personaje.
+        # Ramas: continuación estructural (ancla), canal saga (anti-repetición narrativa), genérico.
         # CoT scratchpad: el modelo puede razonar internamente antes de responder usando <think>...</think>.
         # Recall: si la memoria es fragmentaria, reconocer incertidumbre en lugar de inventar.
+        is_saga_channel = input_data.channel == "saga" or bool(input_data.saga_id)
         if is_continuation_turn and continuation_tail:
             prompt_sections.append(
                 "CONTINUACIÓN DIRECTA: escribe el siguiente bloque narrativo partiendo del último fragmento. "
@@ -1218,6 +1219,16 @@ class RealtimeChatService:
                 "Mínimo 5 párrafos densos y nuevos. Mismo tono, misma voz, mismo ritmo. "
                 "Sin encabezados, sin retrospectiva, sin meta-comentarios. Solo narración continua.\n"
                 "Puedes usar <think>...</think> para razonar antes de escribir — ese bloque no se mostrará al usuario."
+            )
+        elif is_saga_channel:
+            prompt_sections.append(
+                f"Escribe el próximo fragmento narrativo de la saga en la voz de {identity_name}. "
+                "Cada párrafo debe AVANZAR la escena con eventos, acciones o diálogos nuevos. "
+                "PROHIBIDO repetir, parafrasear o resumir cualquier fragmento ya narrado en el historial anterior. "
+                "Si llegas al cierre natural de la escena, termina con una imagen concreta o un detalle sensorial — "
+                "NUNCA con un bucle o eco de lo que ya ocurrió. "
+                "Puedes usar <think>...</think> para planificar antes de escribir — ese bloque no se mostrará al usuario. "
+                "Sin encabezados."
             )
         else:
             prompt_sections.append(

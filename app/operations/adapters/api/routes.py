@@ -239,6 +239,19 @@ async def update_saga(
     )
 
 
+@router.delete("/sagas/{saga_id}/acts/{act_number}")
+async def delete_saga_act(request: Request, saga_id: str, act_number: int) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    from app.operations.events import OperationsSagaActDeleteRequest
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_ACT_DELETE
+
+    return context.event_bus.request(
+        REQUEST_OPERATIONS_SAGA_ACT_DELETE,
+        OperationsSagaActDeleteRequest(saga_id=saga_id, act_number=act_number),
+        source_module="operations.adapters.api.routes",
+    )
+
+
 @router.delete("/sagas/{saga_id}")
 async def delete_saga(request: Request, saga_id: str) -> dict[str, object]:
     context = get_app_context_from_request(request)

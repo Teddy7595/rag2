@@ -7,6 +7,7 @@ from app.core.events import EventChannel, EventEnvelope
 def register_operations_event_handlers(app: FastAPI) -> None:
     from app.operations.application.service import OperationsService
     from app.operations.events import REQUEST_OPERATIONS_AUDIT_LOG
+    from app.operations.events import REQUEST_OPERATIONS_SAGA_ACT_DELETE
     from app.operations.events import REQUEST_OPERATIONS_SAGA_COMMAND_APPEND
     from app.operations.events import REQUEST_OPERATIONS_SAGA_CONSISTENCY
     from app.operations.events import REQUEST_OPERATIONS_SAGA_DEBATE
@@ -48,6 +49,9 @@ def register_operations_event_handlers(app: FastAPI) -> None:
     def handle_saga_delete(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.delete_saga(envelope.payload)
 
+    def handle_saga_act_delete(envelope: EventEnvelope[object]) -> dict[str, object]:
+        return service.delete_act(envelope.payload)
+
     def handle_saga_debate(envelope: EventEnvelope[object]) -> dict[str, object]:
         return service.debate_saga(envelope.payload)
 
@@ -68,6 +72,7 @@ def register_operations_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_COMMAND_APPEND, handle_saga_command_append)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_UPDATE, handle_saga_update)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_DELETE, handle_saga_delete)
+    context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_ACT_DELETE, handle_saga_act_delete)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_DEBATE, handle_saga_debate)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_CONSISTENCY, handle_saga_consistency)
     context.event_bus.subscribe_request(REQUEST_OPERATIONS_SAGA_RETCON, handle_saga_retcon)

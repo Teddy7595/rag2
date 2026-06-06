@@ -171,6 +171,48 @@ class OperationsService:
             )
         return {"deleted": deleted, "saga_id": request.saga_id}
 
+    def delete_act(self, request: OperationsSagaActDeleteRequest) -> dict[str, object]:
+        saga_repository = self._require_saga_repository()
+        workflow = saga_repository.get_by_id(request.saga_id)
+        if not workflow:
+            return {"deleted": False, "saga_id": request.saga_id}
+
+        act_num = request.act_number
+        act_marker_re = re.compile(rf"\[ACT\s+{act_num}\s+(OPEN|CLOSE|SUMMARY)\]", re.IGNORECASE)
+        any_open_re = re.compile(r"\[ACT\s+\d+\s+OPEN\]", re.IGNORECASE)
+
+        commands = list(workflow.command_history)
+        indices_to_remove: set[int] = set()
+        in_target_act = False
+
+        for i, cmd in enumerate(commands):
+            if act_marker_re.search(cmd):
+                action_match = re.search(r"(OPEN|CLOSE|SUMMARY)", cmd, re.IGNORECASE)
+                action = action_match.group(1).upper() if action_match else ""
+                indices_to_remove.add(i)
+                if action == "OPEN":
+                    in_target_act = True
+                elif action in ("CLOSE", "SUMMARY"):
+                    in_target_act = False
+            elif in_target_act:
+                if any_open_re.search(cmd):
+                    in_target_act = False
+                else:
+                    indices_to_remove.add(i)
+
+        if not indices_to_remove:
+            return {"deleted": False, "saga_id": request.saga_id, "detail": "Act not found"}
+
+        workflow.command_history = [cmd for i, cmd in enumerate(commands) if i not in indices_to_remove]
+        act_id_str = f"act-{act_num}"
+        workflow.act_history = [
+            entry for entry in workflow.act_history
+            if str(entry.get("act_id") or "") != act_id_str
+        ]
+        workflow.touch()
+        saved = saga_repository.save(workflow)
+        return {"deleted": True, "saga_id": request.saga_id, "act_number": act_num, "saga": saved.as_dict()}
+
     def debate_saga(self, request: OperationsSagaDebateRequest) -> dict[str, object]:
         from app.knowledge.events import KnowledgeItemCreateRequest
         from app.knowledge.events import REQUEST_KNOWLEDGE_ITEM_CREATE

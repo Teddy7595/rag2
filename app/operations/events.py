@@ -111,6 +111,12 @@ class OperationsSagaNextContextRequest:
         self.recall_limit = recall_limit
 
 
+class OperationsSagaActDeleteRequest:
+    def __init__(self, saga_id: str, act_number: int) -> None:
+        self.saga_id = saga_id
+        self.act_number = act_number
+
+
 REQUEST_OPERATIONS_STATUS = EventSpec[OperationsStatusRequest, dict](
     name="operations.status.request",
     kind=EventKind.REQUEST,
@@ -207,6 +213,14 @@ REQUEST_OPERATIONS_SAGA_NEXT_CONTEXT = EventSpec[OperationsSagaNextContextReques
     output_type=dict,
 )
 
+REQUEST_OPERATIONS_SAGA_ACT_DELETE = EventSpec[OperationsSagaActDeleteRequest, dict](
+    name="operations.saga.act.delete.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=OperationsSagaActDeleteRequest,
+    output_type=dict,
+)
+
 PUBLISH_OPERATIONS_SAGA_STARTED = EventSpec[dict, dict](
     name="operations.saga.started",
     kind=EventKind.PUBLISH,
@@ -251,6 +265,7 @@ PUBLISH_OPERATIONS_SAGA_DEBATED = EventSpec[dict, dict](
 __all__ = [
     "OperationsAuditRequest",
     "OperationsStatusRequest",
+    "OperationsSagaActDeleteRequest",
     "OperationsSagaCommandAppendRequest",
     "OperationsSagaDeleteRequest",
     "OperationsSagaDebateRequest",
@@ -267,6 +282,7 @@ __all__ = [
     "PUBLISH_OPERATIONS_SAGA_STARTED",
     "PUBLISH_OPERATIONS_SAGA_UPDATED",
     "REQUEST_OPERATIONS_AUDIT_LOG",
+    "REQUEST_OPERATIONS_SAGA_ACT_DELETE",
     "REQUEST_OPERATIONS_SAGA_COMMAND_APPEND",
     "REQUEST_OPERATIONS_SAGA_CONSISTENCY",
     "REQUEST_OPERATIONS_SAGA_DEBATE",
