@@ -1328,54 +1328,64 @@
 
   // ── WebSocket ─────────────────────────────────────────────────────────
   function connectSocket(sagaId) {
-    if (socket) disconnectSocket();
+    disconnectSocket();
     const proto = window.location.protocol === 'https:' ? 'wss' : 'ws';
     const url   = `${proto}://${window.location.host}/ws/chat?session_id=${encodeURIComponent(sagaId)}&saga_id=${encodeURIComponent(sagaId)}`;
     setDot('connecting');
     setStatus('Conectando…');
-    socket = new WebSocket(url);
+    const ws = new WebSocket(url);
+    socket = ws;
 
-    socket.addEventListener('open', () => {
+    ws.onopen = () => {
+      if (socket !== ws) return;  // superseded — ignore
       wsSessionOpen = true;
       setDot('active');
-      sagaInput.disabled  = false;
+      sagaInput.disabled   = false;
       sagaSendBtn.disabled = false;
       setStatus(`${activeSaga?.title || ''} — conectado`);
-    });
+    };
 
-    socket.addEventListener('close', () => {
+    ws.onclose = () => {
+      if (socket !== ws) return;  // superseded — ignore
       wsSessionOpen = false;
-      sagaInput.disabled  = true;
+      sagaInput.disabled   = true;
       sagaSendBtn.disabled = true;
       setDot('');
       if (activeSagaId) {
         setStatus('Desconectado. Reconectando…');
         socketReconnectTimer = window.setTimeout(() => connectSocket(activeSagaId), 3000);
       }
-    });
+    };
 
-    socket.addEventListener('message', (event) => {
+    ws.onmessage = (event) => {
+      if (socket !== ws) return;  // superseded — ignore
       const packet = JSON.parse(event.data);
       handleWsPacket(packet);
-    });
+    };
   }
 
   function disconnectSocket() {
     if (socketReconnectTimer) { clearTimeout(socketReconnectTimer); socketReconnectTimer = null; }
     if (socket) {
-      socket.onclose = null;
+      // Null out handlers BEFORE closing so the onclose of the old socket
+      // never fires (we use property assignment, not addEventListener, for this reason).
+      socket.onopen    = null;
+      socket.onclose   = null;
+      socket.onmessage = null;
       socket.close();
       socket = null;
     }
     wsSessionOpen = false;
-    sagaInput.disabled  = true;
+    sagaInput.disabled   = true;
     sagaSendBtn.disabled = true;
   }
 
   function handleWsPacket(packet) {
     switch (packet.type) {
       case 'session_started':
-        // Bootstrap done — clear and prepare for history messages
+        // Server is about to replay history — clear narrative so we don't duplicate.
+        // Use a small delay so any in-flight streaming block is finalized first.
+        finalizeNarrativeStream();
         clearNarrative();
         break;
 
