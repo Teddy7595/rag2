@@ -317,7 +317,7 @@ def _dynamic_response_token_budget(
     elif deadline_ms < 5000:
         target = int(target * 0.9)
 
-    return max(128, min(2048, target))
+    return max(128, min(4096, target))
 
 
 def _extract_saga_id_hint(text: str) -> str:

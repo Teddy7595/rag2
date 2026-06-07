@@ -111,10 +111,10 @@ def build_turn_policy(
             deadline_ms=8000,
             prefer_short=True,
         )
-    # Default for all other intents — up to half an A4 page or full narrative.
+    # Default for all other intents — full narrative budget, no artificial cap.
     return ConversationTurnPolicy(
         intent=intent,
-        max_tokens=1536,
+        max_tokens=3072,
         temperature=0.75,
         top_p=0.95,
         deadline_ms=90000,
