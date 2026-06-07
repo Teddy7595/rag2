@@ -37,7 +37,7 @@ _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "vision_timeout_seconds": 120,
     "text_generation_temperature": 0.55,
     "text_generation_top_p": 0.97,
-    "text_generation_max_tokens": 1536,
+    "text_generation_max_tokens": 3072,
     "text_generation_min_p": 0.03,
     "text_generation_repeat_penalty": 1.08,
     "text_generation_presence_penalty": 0.0,
