@@ -93,6 +93,16 @@ class LocalInferenceService:
         config = cast(dict[str, Any], catalog.get("runtime_config") or {})
         return max(512, int(config.get("llama_cpp_n_ctx") or 32768))
 
+    def llama_cpp_n_gpu_layers(self) -> int:
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        config = cast(dict[str, Any], catalog.get("runtime_config") or {})
+        return int(config.get("llama_cpp_n_gpu_layers") or -1)
+
+    def rag_query_expansion_enabled(self) -> bool:
+        catalog = cast(dict[str, Any], self.catalog_service.catalog())
+        config = cast(dict[str, Any], catalog.get("runtime_config") or {})
+        return bool(int(config.get("rag_query_expansion_enabled") or 0))
+
     def restart_runtime(self, *, reason: str = "model_update") -> dict[str, object]:
         events: list[dict[str, object]] = []
 
@@ -502,6 +512,7 @@ class LocalInferenceService:
         model_path = str(self.catalog_service.models_dir / relative_model_path)
         attempts: list[str] = []
         requested_n_ctx = self.llama_cpp_context_size()
+        configured_gpu_layers = self.llama_cpp_n_gpu_layers()
 
         profiles: list[dict[str, object]]
         if cpu_only:
@@ -526,7 +537,7 @@ class LocalInferenceService:
                 {
                     "label": "gpu_auto",
                     "n_ctx": requested_n_ctx,
-                    "n_gpu_layers": -1,
+                    "n_gpu_layers": configured_gpu_layers,
                     "n_batch": n_batch,
                     "flash_attn": True,
                 },

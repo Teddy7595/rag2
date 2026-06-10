@@ -43,6 +43,8 @@ _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "text_generation_presence_penalty": 0.0,
     "text_generation_frequency_penalty": 0.0,
     "text_generation_seed": -1,
+    "llama_cpp_n_gpu_layers": -1,
+    "rag_query_expansion_enabled": 0,
 }
 
 

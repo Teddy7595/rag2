@@ -465,6 +465,11 @@ class RealtimeChatService:
             "raw_output_mode": bool(getattr(settings, "conversation_raw_output_mode", False)),
             # Configurable RAG match limit (knowledge fragments injected per turn).
             "rag_match_limit": max(1, min(80, int(getattr(settings, "conversation_rag_match_limit", 8) or 8))),
+            # Query expansion: first LLM pass generates search questions to enrich RAG retrieval.
+            # Controlled via model-runtime-config.json ("rag_query_expansion_enabled": 1).
+            "rag_query_expansion_enabled": bool(
+                self.model_runtime.rag_query_expansion_enabled() if self.model_runtime else False
+            ),
         }
 
     # --- Reply embedding cache (per-session, last 4 turns) ---
@@ -481,6 +486,51 @@ class RealtimeChatService:
 
     def _evict_reply_embeddings(self, session_id: str) -> None:
         self._reply_embeddings.pop(session_id, None)
+
+    def _expand_rag_query(
+        self,
+        base_query: str,
+        user_text: str,
+        history_messages: list[dict[str, object]],
+    ) -> str:
+        """First LLM pass: generate search questions to enrich RAG retrieval.
+        Prints generated questions to stdout for inspection.
+        Returns base_query unchanged on any failure."""
+        recent = _recent_assistant_replies(history_messages, limit=1)
+        context_hint = f"\nContexto reciente: {recent[0][-200:].strip()}" if recent else ""
+        expansion_prompt = (
+            "Genera 4 preguntas de búsqueda específicas y concisas para recuperar "
+            "fragmentos relevantes de una base de conocimiento. "
+            "Devuelve SOLO las preguntas, una por línea, sin numeración ni explicaciones.\n\n"
+            f"Mensaje del usuario: {user_text.strip()}"
+            f"{context_hint}\n\n"
+            "Preguntas de búsqueda:"
+        )
+        try:
+            result = self.event_bus.request(
+                REQUEST_MODEL_TEXT_GENERATION,
+                ModelTextGenerationRequest(
+                    prompt=expansion_prompt,
+                    temperature=0.7,
+                    top_p=0.95,
+                    max_tokens=150,
+                ),
+                source_module="interaction.application.realtime.query_expansion",
+            )
+            raw = str((result or {}).get("content") or "").strip() if isinstance(result, dict) else ""
+            if raw:
+                lines = [ln.strip("•-– ").strip() for ln in raw.splitlines() if ln.strip()]
+                questions = [ln for ln in lines if len(ln) > 8][:5]
+                if questions:
+                    print(
+                        f"\n[RAG EXPANSION] '{user_text[:60]}'\n"
+                        + "\n".join(f"  {i + 1}. {q}" for i, q in enumerate(questions)),
+                        flush=True,
+                    )
+                    return base_query + "\n" + " ".join(questions)
+        except Exception:
+            pass
+        return base_query
 
     def _debug_turn(self, enabled: bool, step: str, *, session_id: str, turn_id: str = "", payload: dict[str, object] | None = None) -> None:
         if not enabled:
@@ -738,6 +788,8 @@ class RealtimeChatService:
             if is_continuation
             else input_data.content
         )
+        if bool(rollout.get("rag_query_expansion_enabled")):
+            rag_query = self._expand_rag_query(rag_query, input_data.content, history_messages)
         trace_turn_start(
             turn_id=turn_id,
             session_id=session_id,
