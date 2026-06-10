@@ -54,6 +54,8 @@ def create_app() -> FastAPI:
     register_models_module(app)
     register_web_module(app)
     register_knowledge_module(app)
+    from app.workshop.workshop_module import register_workshop_module
+    register_workshop_module(app)
     register_interaction_module(app)
     register_operations_module(app)
 

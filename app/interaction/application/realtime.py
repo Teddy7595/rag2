@@ -420,12 +420,14 @@ class RealtimeChatService:
         settings: object | None = None,
         model_runtime: LocalInferenceService | None = None,
         embedding_runtime: SemanticEmbeddingRuntime | None = None,
+        workshop_repository: object | None = None,
     ) -> None:
         self.event_bus = event_bus
         self.interaction_service = interaction_service
         self.settings = settings
         self.model_runtime = model_runtime
         self.embedding_runtime = embedding_runtime
+        self.workshop_repository = workshop_repository
         # Per-session cache of the last N reply embeddings for semantic repetition detection.
         # Keyed by session_id; evicted on close_session.
         self._reply_embeddings: dict[str, list[list[float]]] = {}
@@ -790,6 +792,15 @@ class RealtimeChatService:
         )
         if bool(rollout.get("rag_query_expansion_enabled")):
             rag_query = self._expand_rag_query(rag_query, input_data.content, history_messages)
+
+        workshop_source_filter: tuple[str, ...] = ()
+        if self.workshop_repository:
+            try:
+                ws = self.workshop_repository.get_by_chat_session(session_id)
+                if ws and ws.status == "active":
+                    workshop_source_filter = tuple(ws.source_uris())
+            except Exception:
+                pass
         trace_turn_start(
             turn_id=turn_id,
             session_id=session_id,
@@ -804,6 +815,7 @@ class RealtimeChatService:
                 limit=input_data.context_limit,
                 identity_id=input_data.identity_id,
                 history=history_text,
+                source_filter=workshop_source_filter,
             ),
             source_module="interaction.application.realtime",
         )

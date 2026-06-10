@@ -97,6 +97,7 @@ class ContextBuildRequest:
     limit: int = 5
     identity_id: str | None = None
     history: str = ""
+    source_filter: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)

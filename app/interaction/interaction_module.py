@@ -21,12 +21,15 @@ def register_interaction_module(app: FastAPI) -> None:
     model_runtime = context.services.get("model_runtime")
     knowledge_service = context.services.get("knowledge")
     embedding_runtime = getattr(knowledge_service, "embedding_runtime", None)
+    workshop_service = context.services.get("workshop")
+    workshop_repository = getattr(workshop_service, "repository", None)
     realtime_service = RealtimeChatService(
         context.event_bus,
         service,
         settings=context.settings,
         model_runtime=model_runtime if isinstance(model_runtime, LocalInferenceService) else None,
         embedding_runtime=embedding_runtime if isinstance(embedding_runtime, SemanticEmbeddingRuntime) else None,
+        workshop_repository=workshop_repository,
     )
     register_service(app, "interaction", service)
     register_service(app, "interaction_realtime", realtime_service)

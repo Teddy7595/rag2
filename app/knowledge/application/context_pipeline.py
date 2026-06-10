@@ -320,7 +320,7 @@ class ContextRetrieverRuntime:
         self.engram_repository = engram_repository
         self.embedding_runtime = embedding_runtime or SemanticEmbeddingRuntime()
 
-    def retrieve(self, raw_text: str, route: QueryRoutingPlan) -> RetrievalOutcome:
+    def retrieve(self, raw_text: str, route: QueryRoutingPlan, *, source_filter: tuple[str, ...] = ()) -> RetrievalOutcome:
         query_tokens = _tokenize(raw_text)
         query_embedding = self.embedding_runtime.embed_text(raw_text)
         legacy_query_embedding = self.embedding_runtime.legacy_embed_text(raw_text)
@@ -330,7 +330,7 @@ class ContextRetrieverRuntime:
         engram_matches: tuple[ContextMatch, ...] = ()
 
         if "knowledge_entries" in source_types:
-            knowledge_matches = self._retrieve_knowledge(query_tokens, query_embedding, legacy_query_embedding, route)
+            knowledge_matches = self._retrieve_knowledge(query_tokens, query_embedding, legacy_query_embedding, route, source_filter=source_filter)
 
         if "engrams" in source_types and self.engram_repository:
             engram_matches = self._retrieve_engrams(query_tokens, route)
@@ -343,14 +343,19 @@ class ContextRetrieverRuntime:
         query_embedding: list[float],
         legacy_query_embedding: list[float],
         route: QueryRoutingPlan,
+        *,
+        source_filter: tuple[str, ...] = (),
     ) -> tuple[ContextMatch, ...]:
-        entries = self.knowledge_repository.list_all()
+        if source_filter:
+            entries = self.knowledge_repository.list_by_sources(list(source_filter))
+        else:
+            entries = self.knowledge_repository.list_all()
         matches = [self._score_knowledge_entry(entry, query_tokens, query_embedding, legacy_query_embedding) for entry in entries]
         ranked = sorted(matches, key=lambda match: (match.score, match.metadata.get("created_at", ""), match.label), reverse=True)
         ranked = list(self._rerank_knowledge_diversity(ranked, route.limit))
 
         if not any(match.score > 0 for match in ranked):
-            recent_entries = self.knowledge_repository.list_recent(route.limit)
+            recent_entries = self.knowledge_repository.list_recent(route.limit) if not source_filter else entries[:route.limit]
             return tuple(
                 ContextMatch(
                     source_type="knowledge_entries",
@@ -671,10 +676,11 @@ class KnowledgeContextPipeline:
         limit: int = 5,
         identity_id: str | None = None,
         history: str = "",
+        source_filter: tuple[str, ...] = (),
     ) -> ContextPreview:
         route = self.route_query(raw_text, limit=limit)
         identity, cleaned_text = self.directory.resolve(raw_text, identity_id)
-        retrieval = self.retriever.retrieve(cleaned_text, route)
+        retrieval = self.retriever.retrieve(cleaned_text, route, source_filter=source_filter)
         context_pack = self.assembler.assemble(retrieval, identity, cleaned_text, history=history)
         prompt = self.composer.build_prompt(
             identity=identity,

@@ -565,6 +565,7 @@ class KnowledgeService:
             limit=request.limit,
             identity_id=request.identity_id,
             history=request.history,
+            source_filter=request.source_filter,
         )
 
     def _ensure_engrams_loaded(self) -> None:

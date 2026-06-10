@@ -38,6 +38,18 @@ class SqlAlchemyKnowledgeRepository(KnowledgeRepositoryPort):
             records = session.scalars(statement).all()
             return [record.to_domain() for record in records]
 
+    def list_by_sources(self, source_uris: list[str]) -> list[KnowledgeEntry]:
+        if not source_uris:
+            return []
+        with self.database.session_factory() as session:
+            statement = (
+                select(KnowledgeEntryRecord)
+                .where(KnowledgeEntryRecord.source_uri.in_(source_uris))
+                .order_by(KnowledgeEntryRecord.created_at.asc(), KnowledgeEntryRecord.id.asc())
+            )
+            records = session.scalars(statement).all()
+            return [record.to_domain() for record in records]
+
     def count(self) -> int:
         with self.database.session_factory() as session:
             total = session.scalar(select(func.count()).select_from(KnowledgeEntryRecord))
