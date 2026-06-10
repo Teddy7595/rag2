@@ -50,12 +50,43 @@
     display: grid;
     grid-template-columns: 340px 1fr;
   }
+
+  /* ── MOBILE: full-screen master/detail navigation ── */
   @media (max-width: 700px) {
-    #ws-body { grid-template-columns: 1fr; }
-    #ws-detail { display: none; }
-    #ws-detail.visible { display: flex; }
-    #ws-list-panel { display: block; }
-    #ws-list-panel.hidden { display: none; }
+    #ws-body {
+      grid-template-columns: 1fr;
+      position: relative;
+    }
+    #ws-list-panel {
+      position: absolute; inset: 0;
+      transition: transform .22s ease;
+      z-index: 1;
+    }
+    #ws-list-panel.slide-out {
+      transform: translateX(-100%);
+      pointer-events: none;
+    }
+    #ws-detail {
+      position: absolute; inset: 0;
+      transform: translateX(100%);
+      transition: transform .22s ease;
+      z-index: 2;
+      border-left: none !important;
+    }
+    #ws-detail.slide-in {
+      transform: translateX(0);
+    }
+    #ws-back-btn { display: flex !important; }
+    .ws-card { padding: 14px; }
+    .ws-card-title { font-size: 0.92rem; }
+    .ws-btn, .ws-hbtn {
+      min-height: 44px;
+      padding: 10px 18px;
+    }
+    #ws-detail { padding: 14px; }
+    .ws-section-body { padding: 12px; }
+    #ws-header h1 { font-size: 0.88rem; }
+    #ws-header { padding: 8px 12px; }
   }
 
   /* ── LIST PANEL ── */
@@ -156,6 +187,17 @@
     color: var(--ws-warn); margin: 2px;
   }
 
+  #ws-back-btn {
+    display: none;
+    align-items: center; gap: 6px;
+    background: transparent; border: 1px solid var(--ws-border2);
+    border-radius: 7px; padding: 8px 14px;
+    color: var(--ws-muted); font-family: var(--ws-mono); font-size: 0.78rem;
+    cursor: pointer; flex-shrink: 0;
+    transition: border-color .15s, color .15s;
+  }
+  #ws-back-btn:hover { border-color: var(--ws-accent); color: var(--ws-accent); }
+
   .ws-actions { display: flex; flex-wrap: wrap; gap: 8px; }
   .ws-btn {
     padding: 7px 16px; border-radius: 8px; border: 1px solid var(--ws-border2);
@@ -249,6 +291,7 @@
 
   <!-- DETAIL -->
   <div id="ws-detail">
+    <button id="ws-back-btn" aria-label="Volver a la lista">← Lista</button>
     <div id="ws-detail-empty">Selecciona un taller para ver el detalle</div>
     <div id="ws-detail-content">
       <div style="display:flex;flex-direction:column;gap:6px;">
@@ -338,11 +381,32 @@
   let workshops = [];
   let selectedId = null;
 
-  const list       = document.getElementById('ws-list');
-  const empty      = document.getElementById('ws-empty');
-  const detail     = document.getElementById('ws-detail-content');
-  const detailEmpty= document.getElementById('ws-detail-empty');
-  const searchInput= document.getElementById('ws-search');
+  const list        = document.getElementById('ws-list');
+  const empty       = document.getElementById('ws-empty');
+  const detail      = document.getElementById('ws-detail-content');
+  const detailEmpty = document.getElementById('ws-detail-empty');
+  const detailPanel = document.getElementById('ws-detail');
+  const listPanel   = document.getElementById('ws-list-panel');
+  const backBtn     = document.getElementById('ws-back-btn');
+  const searchInput = document.getElementById('ws-search');
+
+  function isMobile() { return window.innerWidth <= 700; }
+
+  function showDetail() {
+    if (isMobile()) {
+      listPanel.classList.add('slide-out');
+      detailPanel.classList.add('slide-in');
+    }
+  }
+
+  function showList() {
+    if (isMobile()) {
+      listPanel.classList.remove('slide-out');
+      detailPanel.classList.remove('slide-in');
+    }
+  }
+
+  backBtn.addEventListener('click', showList);
 
   /* ── API ─────────────────────────────────────────────────────────────── */
   async function apiFetch(url, opts = {}) {
@@ -440,6 +504,7 @@
   function renderDetail(ws) {
     detailEmpty.style.display = 'none';
     detail.classList.add('visible');
+    showDetail();
 
     document.getElementById('ws-detail-title').textContent = ws.title;
 
@@ -527,6 +592,7 @@
       selectedId = null;
       detail.classList.remove('visible');
       detailEmpty.style.display = '';
+      showList();
       await loadWorkshops();
     } catch (e) { alert('Error eliminando taller: ' + e.message); }
   }
