@@ -398,6 +398,22 @@ async def models_admin_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/admin/workshop")
+async def workshop_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    return _render(
+        request,
+        "workshop.html",
+        title=f"{context.settings.app_name} | Talleres",
+        eyebrow="Workshop",
+        headline="Talleres de documentos",
+        description=(
+            "Debate y extrae ideas de documentos con un engrama. "
+            "El scope RAG se limita a los archivos del taller. Promueve insights al conocimiento general."
+        ),
+    )
+
+
 @router.get("/admin/engrams")
 async def engrams_admin_page(request: Request) -> HTMLResponse:
     context = get_app_context_from_request(request)

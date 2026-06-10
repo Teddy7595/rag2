@@ -1790,6 +1790,15 @@
   </div>
 </div>
 
+<!-- Workshop scope banner (hidden unless ?workshop_id= is present) -->
+<div id="workshop-banner" style="display:none;align-items:center;gap:8px;flex-wrap:wrap;padding:5px 14px;background:#0a0a0a;border-bottom:1px solid #1e1e1e;font-family:'Consolas','Courier New',monospace;font-size:0.73rem;">
+  <span style="color:#f59e0b;letter-spacing:.06em;text-transform:uppercase;font-weight:600;">⬡ Taller</span>
+  <span id="ws-banner-title" style="color:#d4d4d4"></span>
+  <span id="ws-banner-docs" style="display:flex;flex-wrap:wrap;gap:4px"></span>
+  <span id="ws-banner-status" style="padding:1px 6px;border-radius:4px;font-size:.65rem;font-weight:600;text-transform:uppercase"></span>
+  <a id="ws-banner-link" href="/admin/workshop" style="margin-left:auto;color:#555;font-size:.7rem;text-decoration:none;">Ver taller →</a>
+</div>
+
 <div id="suggestions"></div>
 
 <div id="chat-container" aria-live="polite">
@@ -4733,6 +4742,45 @@
   if (lobbyHistoryLimitInput) {
     lobbyHistoryLimitInput.value = String(historyLimit);
   }
+  // ── Workshop / URL session injection ──────────────────────────────────
+  (function () {
+    const urlP = new URLSearchParams(window.location.search);
+    const urlSession = urlP.get('session');
+    const urlWorkshopId = urlP.get('workshop_id');
+    if (urlSession) {
+      preferredSessionId = urlSession.trim();
+      persistSessionId(preferredSessionId);
+    }
+    if (urlWorkshopId) {
+      fetch(`/api/workshop/sessions/${encodeURIComponent(urlWorkshopId)}`)
+        .then(r => r.ok ? r.json() : null)
+        .then(ws => {
+          if (!ws || !ws.id) return;
+          const banner = document.getElementById('workshop-banner');
+          if (!banner) return;
+          banner.style.display = 'flex';
+          document.getElementById('ws-banner-title').textContent = ws.title || '';
+          const docsEl = document.getElementById('ws-banner-docs');
+          (ws.source_documents || []).forEach(d => {
+            const chip = document.createElement('span');
+            chip.style.cssText = 'background:#161616;border:1px solid #2a2a2a;border-radius:4px;padding:1px 7px;color:#aaa;';
+            chip.textContent = d.title || d.uri || '?';
+            docsEl.appendChild(chip);
+          });
+          const statusEl = document.getElementById('ws-banner-status');
+          statusEl.textContent = ws.status || '';
+          const sc = ws.status === 'active' ? { bg:'rgba(0,255,65,.12)', color:'#00ff41' }
+                   : ws.status === 'promoted' ? { bg:'rgba(245,158,11,.12)', color:'#f59e0b' }
+                   : { bg:'rgba(100,100,100,.12)', color:'#666' };
+          statusEl.style.background = sc.bg;
+          statusEl.style.color = sc.color;
+          const linkEl = document.getElementById('ws-banner-link');
+          if (linkEl) linkEl.href = `/admin/workshop`;
+        })
+        .catch(() => {});
+    }
+  })();
+
   const autoOpen = new URLSearchParams(window.location.search).get('autostart') === '1';
   if (autoOpen && preferredSessionId) {
     enterChatSession(preferredSessionId, { clearTimeline: false });

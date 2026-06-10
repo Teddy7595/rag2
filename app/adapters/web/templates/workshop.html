@@ -1,0 +1,633 @@
+{% extends "base.html" %}
+
+{% block head_extra %}
+<style>
+  :root {
+    --ws-bg:      #050505;
+    --ws-bg2:     #0a0a0a;
+    --ws-bg3:     #0f0f0f;
+    --ws-card:    #111;
+    --ws-border:  #1e1e1e;
+    --ws-border2: #2a2a2a;
+    --ws-accent:  #00ff41;
+    --ws-danger:  #ff0055;
+    --ws-warn:    #f59e0b;
+    --ws-muted:   #555;
+    --ws-text:    #d4d4d4;
+    --ws-mono:    'Consolas','Courier New',monospace;
+  }
+
+  body { background: var(--ws-bg); color: var(--ws-text); }
+
+  .shell { max-width: none; margin: 0; padding: 0; height: 100dvh; display: flex; flex-direction: column; }
+
+  /* ── HEADER ── */
+  #ws-header {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px;
+    border-bottom: 1px solid var(--ws-border);
+    background: var(--ws-bg2);
+    flex-shrink: 0;
+  }
+  #ws-header h1 {
+    flex: 1; margin: 0;
+    font-family: var(--ws-mono); font-size: 1rem;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--ws-accent);
+  }
+  .ws-hbtn {
+    padding: 6px 14px; border-radius: 7px; border: 1px solid var(--ws-border2);
+    background: transparent; color: var(--ws-text);
+    font-family: var(--ws-mono); font-size: 0.78rem; cursor: pointer;
+    transition: border-color .15s, color .15s;
+  }
+  .ws-hbtn:hover { border-color: var(--ws-accent); color: var(--ws-accent); }
+  .ws-hbtn.primary { border-color: var(--ws-accent); color: var(--ws-accent); }
+  .ws-hbtn.primary:hover { background: rgba(0,255,65,.08); }
+
+  /* ── LAYOUT ── */
+  #ws-body {
+    flex: 1; overflow: hidden;
+    display: grid;
+    grid-template-columns: 340px 1fr;
+  }
+  @media (max-width: 700px) {
+    #ws-body { grid-template-columns: 1fr; }
+    #ws-detail { display: none; }
+    #ws-detail.visible { display: flex; }
+    #ws-list-panel { display: block; }
+    #ws-list-panel.hidden { display: none; }
+  }
+
+  /* ── LIST PANEL ── */
+  #ws-list-panel {
+    border-right: 1px solid var(--ws-border);
+    overflow-y: auto;
+    display: flex; flex-direction: column;
+  }
+  #ws-list-toolbar {
+    padding: 10px 12px 6px;
+    border-bottom: 1px solid var(--ws-border);
+    background: var(--ws-bg2);
+    display: flex; gap: 6px;
+  }
+  #ws-search {
+    flex: 1; background: #0d0d0d; border: 1px solid var(--ws-border2);
+    border-radius: 6px; padding: 5px 10px;
+    color: var(--ws-text); font-family: var(--ws-mono); font-size: 0.8rem;
+  }
+  #ws-search:focus { outline: none; border-color: var(--ws-accent); }
+
+  #ws-list { flex: 1; overflow-y: auto; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+  #ws-empty {
+    padding: 40px 20px; text-align: center;
+    color: var(--ws-muted); font-size: 0.82rem; font-family: var(--ws-mono);
+  }
+
+  .ws-card {
+    border: 1px solid var(--ws-border);
+    border-radius: 10px; padding: 12px;
+    background: var(--ws-card); cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .ws-card:hover { border-color: var(--ws-border2); background: #161616; }
+  .ws-card.active-sel { border-color: var(--ws-accent); background: rgba(0,255,65,.04); }
+
+  .ws-card-title {
+    font-size: 0.88rem; font-weight: 600; margin: 0 0 4px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .ws-card-meta {
+    display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+  }
+  .ws-badge {
+    padding: 1px 7px; border-radius: 4px;
+    font-family: var(--ws-mono); font-size: 0.68rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.06em;
+  }
+  .ws-badge.active  { background: rgba(0,255,65,.12);  color: var(--ws-accent); }
+  .ws-badge.closed  { background: rgba(100,100,100,.15); color: #777; }
+  .ws-badge.promoted{ background: rgba(245,158,11,.12); color: var(--ws-warn); }
+  .ws-card-date { font-size: 0.7rem; color: var(--ws-muted); font-family: var(--ws-mono); }
+  .ws-card-docs { font-size: 0.72rem; color: var(--ws-muted); margin-top: 4px; }
+
+  /* ── DETAIL PANEL ── */
+  #ws-detail {
+    overflow-y: auto;
+    display: flex; flex-direction: column;
+    padding: 20px;
+    gap: 16px;
+  }
+  #ws-detail-empty {
+    flex: 1; display: flex; align-items: center; justify-content: center;
+    color: var(--ws-muted); font-family: var(--ws-mono); font-size: 0.82rem;
+  }
+  #ws-detail-content { display: none; flex-direction: column; gap: 16px; }
+  #ws-detail-content.visible { display: flex; }
+
+  .ws-section { border: 1px solid var(--ws-border); border-radius: 10px; overflow: hidden; }
+  .ws-section-head {
+    padding: 8px 14px; background: var(--ws-bg2);
+    font-family: var(--ws-mono); font-size: 0.72rem;
+    text-transform: uppercase; letter-spacing: 0.1em; color: var(--ws-muted);
+    border-bottom: 1px solid var(--ws-border);
+  }
+  .ws-section-body { padding: 12px 14px; }
+
+  #ws-detail-title {
+    margin: 0; font-family: var(--ws-mono); font-size: 1.1rem;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  #ws-detail-badges { display: flex; gap: 6px; align-items: center; }
+  #ws-detail-engram { font-size: 0.78rem; color: var(--ws-muted); }
+
+  .doc-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #161616; border: 1px solid var(--ws-border2);
+    border-radius: 5px; padding: 3px 9px;
+    font-family: var(--ws-mono); font-size: 0.72rem;
+    color: var(--ws-text); margin: 2px;
+  }
+
+  .promoted-chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: rgba(245,158,11,.08); border: 1px solid rgba(245,158,11,.2);
+    border-radius: 5px; padding: 3px 9px;
+    font-family: var(--ws-mono); font-size: 0.72rem;
+    color: var(--ws-warn); margin: 2px;
+  }
+
+  .ws-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .ws-btn {
+    padding: 7px 16px; border-radius: 8px; border: 1px solid var(--ws-border2);
+    background: transparent; color: var(--ws-text);
+    font-family: var(--ws-mono); font-size: 0.78rem; cursor: pointer;
+    transition: border-color .15s, color .15s;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 6px;
+  }
+  .ws-btn:hover { border-color: #444; }
+  .ws-btn.primary { border-color: var(--ws-accent); color: var(--ws-accent); }
+  .ws-btn.primary:hover { background: rgba(0,255,65,.08); }
+  .ws-btn.danger { border-color: var(--ws-danger); color: var(--ws-danger); }
+  .ws-btn.danger:hover { background: rgba(255,0,85,.08); }
+  .ws-btn.warn { border-color: var(--ws-warn); color: var(--ws-warn); }
+  .ws-btn.warn:hover { background: rgba(245,158,11,.08); }
+  .ws-btn:disabled { opacity: .35; pointer-events: none; }
+
+  /* ── MODAL OVERLAY ── */
+  #ws-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: none; align-items: center; justify-content: center;
+    z-index: 200;
+  }
+  #ws-overlay.open { display: flex; }
+  #ws-modal {
+    background: var(--ws-bg2); border: 1px solid var(--ws-border2);
+    border-radius: 14px; padding: 24px; width: min(520px, 94vw);
+    max-height: 88vh; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  .ws-modal-title {
+    margin: 0; font-family: var(--ws-mono); font-size: 0.9rem;
+    text-transform: uppercase; letter-spacing: 0.08em; color: var(--ws-accent);
+  }
+  .ws-field { display: flex; flex-direction: column; gap: 5px; }
+  .ws-label { font-family: var(--ws-mono); font-size: 0.72rem; color: var(--ws-muted); text-transform: uppercase; letter-spacing: 0.08em; }
+  .ws-input, .ws-select, .ws-textarea {
+    background: #0d0d0d; border: 1px solid var(--ws-border2);
+    border-radius: 7px; padding: 8px 10px;
+    color: var(--ws-text); font-family: var(--ws-mono); font-size: 0.82rem;
+    width: 100%; box-sizing: border-box;
+  }
+  .ws-input:focus, .ws-select:focus, .ws-textarea:focus { outline: none; border-color: var(--ws-accent); }
+  .ws-textarea { min-height: 90px; resize: vertical; }
+  .ws-select option { background: #111; }
+  .ws-doc-list { display: flex; flex-direction: column; gap: 4px; max-height: 180px; overflow-y: auto; }
+  .ws-doc-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 5px 8px; border-radius: 6px;
+    background: #0d0d0d; border: 1px solid var(--ws-border);
+    font-family: var(--ws-mono); font-size: 0.75rem;
+    cursor: pointer; transition: border-color .1s;
+  }
+  .ws-doc-item:hover { border-color: var(--ws-border2); }
+  .ws-doc-item.selected { border-color: var(--ws-accent); background: rgba(0,255,65,.04); }
+  .ws-doc-item input[type=checkbox] { accent-color: var(--ws-accent); }
+  .ws-modal-actions { display: flex; gap: 8px; justify-content: flex-end; }
+  #ws-create-status { font-family: var(--ws-mono); font-size: 0.75rem; color: var(--ws-muted); }
+
+  /* ── PROMOTE MODAL ── */
+  #ws-promote-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,.7);
+    display: none; align-items: center; justify-content: center; z-index: 201;
+  }
+  #ws-promote-overlay.open { display: flex; }
+  #ws-promote-modal {
+    background: var(--ws-bg2); border: 1px solid var(--ws-border2);
+    border-radius: 14px; padding: 24px; width: min(520px, 94vw);
+    display: flex; flex-direction: column; gap: 14px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="ws-header">
+  <h1>⬡ Talleres</h1>
+  <a class="ws-hbtn" href="/">← Inicio</a>
+  <button class="ws-hbtn primary" id="ws-new-btn">+ Nuevo Taller</button>
+</div>
+
+<div id="ws-body">
+  <!-- LIST -->
+  <div id="ws-list-panel">
+    <div id="ws-list-toolbar">
+      <input id="ws-search" type="search" placeholder="Buscar talleres..." autocomplete="off" />
+    </div>
+    <div id="ws-list">
+      <div id="ws-empty">Cargando talleres…</div>
+    </div>
+  </div>
+
+  <!-- DETAIL -->
+  <div id="ws-detail">
+    <div id="ws-detail-empty">Selecciona un taller para ver el detalle</div>
+    <div id="ws-detail-content">
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <h2 id="ws-detail-title"></h2>
+        <div id="ws-detail-badges"></div>
+        <div id="ws-detail-engram"></div>
+      </div>
+
+      <div class="ws-section">
+        <div class="ws-section-head">Documentos fuente</div>
+        <div class="ws-section-body" id="ws-detail-docs"></div>
+      </div>
+
+      <div class="ws-section" id="ws-promoted-section" style="display:none">
+        <div class="ws-section-head">Promovido al RAG</div>
+        <div class="ws-section-body" id="ws-detail-promoted"></div>
+      </div>
+
+      <div class="ws-section">
+        <div class="ws-section-head">Historial de conversación</div>
+        <div class="ws-section-body" id="ws-detail-session"></div>
+      </div>
+
+      <div class="ws-section">
+        <div class="ws-section-head">Creado</div>
+        <div class="ws-section-body" id="ws-detail-date" style="font-family:var(--ws-mono);font-size:0.8rem;color:var(--ws-muted)"></div>
+      </div>
+
+      <div class="ws-actions" id="ws-detail-actions"></div>
+    </div>
+  </div>
+</div>
+
+<!-- CREATE MODAL -->
+<div id="ws-overlay">
+  <div id="ws-modal">
+    <h3 class="ws-modal-title">Nuevo Taller</h3>
+    <div class="ws-field">
+      <span class="ws-label">Título</span>
+      <input class="ws-input" id="ws-new-title" type="text" placeholder="Análisis de…" />
+    </div>
+    <div class="ws-field">
+      <span class="ws-label">Engrama</span>
+      <select class="ws-select" id="ws-new-engram">
+        <option value="">— ninguno —</option>
+      </select>
+    </div>
+    <div class="ws-field">
+      <span class="ws-label">Documentos del scope (selecciona los que apliquen)</span>
+      <div class="ws-doc-list" id="ws-doc-list">
+        <div style="color:var(--ws-muted);font-size:0.75rem;font-family:var(--ws-mono)">Cargando documentos…</div>
+      </div>
+    </div>
+    <div id="ws-create-status"></div>
+    <div class="ws-modal-actions">
+      <button class="ws-btn" id="ws-cancel-create">Cancelar</button>
+      <button class="ws-btn primary" id="ws-confirm-create">Crear Taller</button>
+    </div>
+  </div>
+</div>
+
+<!-- PROMOTE MODAL -->
+<div id="ws-promote-overlay">
+  <div id="ws-promote-modal">
+    <h3 class="ws-modal-title">Promover al RAG</h3>
+    <p style="font-size:0.8rem;color:var(--ws-muted);margin:0">El texto destilado se añadirá al conocimiento general con referencia a este taller. El taller permanece accesible.</p>
+    <div class="ws-field">
+      <span class="ws-label">Título del resumen</span>
+      <input class="ws-input" id="ws-promote-title" type="text" placeholder="Insights sobre…" />
+    </div>
+    <div class="ws-field">
+      <span class="ws-label">Resumen / destilado</span>
+      <textarea class="ws-textarea" id="ws-promote-text" rows="6" placeholder="Escribe o pega aquí el resumen de lo analizado…"></textarea>
+    </div>
+    <div id="ws-promote-status" style="font-family:var(--ws-mono);font-size:0.75rem;color:var(--ws-muted)"></div>
+    <div class="ws-modal-actions">
+      <button class="ws-btn" id="ws-cancel-promote">Cancelar</button>
+      <button class="ws-btn warn" id="ws-confirm-promote">Promover</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  let workshops = [];
+  let selectedId = null;
+
+  const list       = document.getElementById('ws-list');
+  const empty      = document.getElementById('ws-empty');
+  const detail     = document.getElementById('ws-detail-content');
+  const detailEmpty= document.getElementById('ws-detail-empty');
+  const searchInput= document.getElementById('ws-search');
+
+  /* ── API ─────────────────────────────────────────────────────────────── */
+  async function apiFetch(url, opts = {}) {
+    const r = await fetch(url, { headers: { 'Content-Type': 'application/json' }, ...opts });
+    if (!r.ok) throw new Error(await r.text());
+    return r.json();
+  }
+
+  /* ── LOAD ─────────────────────────────────────────────────────────────── */
+  async function loadWorkshops() {
+    try {
+      workshops = await apiFetch('/api/workshop/sessions');
+      renderList();
+    } catch (e) {
+      empty.textContent = 'Error cargando talleres.';
+    }
+  }
+
+  async function loadEngrams() {
+    try {
+      const data = await apiFetch('/api/knowledge/engrams');
+      const sel = document.getElementById('ws-new-engram');
+      sel.innerHTML = '<option value="">— ninguno —</option>';
+      (data || []).forEach(e => {
+        const o = document.createElement('option');
+        o.value = e.id; o.textContent = e.name;
+        sel.appendChild(o);
+      });
+    } catch (_) {}
+  }
+
+  async function loadDocuments() {
+    try {
+      const data = await apiFetch('/api/knowledge/documents?limit=100');
+      const container = document.getElementById('ws-doc-list');
+      if (!data || !data.length) {
+        container.innerHTML = '<div style="color:var(--ws-muted);font-size:0.75rem;font-family:var(--ws-mono)">Sin documentos ingestados.</div>';
+        return;
+      }
+      container.innerHTML = '';
+      data.forEach(doc => {
+        const uri = doc.source_uri || '';
+        const title = doc.title || uri || doc.id || '?';
+        const item = document.createElement('label');
+        item.className = 'ws-doc-item';
+        item.innerHTML = `<input type="checkbox" value="${escHtml(uri)}" data-title="${escHtml(title)}" /> ${escHtml(title)}`;
+        item.querySelector('input').addEventListener('change', () => {
+          item.classList.toggle('selected', item.querySelector('input').checked);
+        });
+        container.appendChild(item);
+      });
+    } catch (_) {
+      document.getElementById('ws-doc-list').innerHTML = '<div style="color:var(--ws-muted);font-size:0.75rem">Error cargando documentos.</div>';
+    }
+  }
+
+  /* ── RENDER LIST ──────────────────────────────────────────────────────── */
+  function renderList() {
+    const q = searchInput.value.trim().toLowerCase();
+    const filtered = workshops.filter(w => !q || w.title.toLowerCase().includes(q));
+    list.innerHTML = '';
+    if (!filtered.length) {
+      empty.style.display = 'block';
+      empty.textContent = workshops.length ? 'Sin resultados.' : 'Aún no hay talleres. Crea el primero.';
+      return;
+    }
+    empty.style.display = 'none';
+    filtered.slice().reverse().forEach(w => {
+      const card = document.createElement('div');
+      card.className = 'ws-card' + (w.id === selectedId ? ' active-sel' : '');
+      card.dataset.id = w.id;
+      const docNames = (w.source_documents || []).map(d => d.title || d.uri || '?');
+      card.innerHTML = `
+        <div class="ws-card-title">${escHtml(w.title)}</div>
+        <div class="ws-card-meta">
+          <span class="ws-badge ${w.status}">${w.status}</span>
+          <span class="ws-card-date">${fmtDate(w.created_at)}</span>
+        </div>
+        ${docNames.length ? `<div class="ws-card-docs">${docNames.map(n => escHtml(n)).join(' · ')}</div>` : ''}
+      `;
+      card.addEventListener('click', () => selectWorkshop(w.id));
+      list.appendChild(card);
+    });
+  }
+
+  /* ── DETAIL ───────────────────────────────────────────────────────────── */
+  function selectWorkshop(id) {
+    selectedId = id;
+    document.querySelectorAll('.ws-card').forEach(c => c.classList.toggle('active-sel', c.dataset.id === id));
+    const ws = workshops.find(w => w.id === id);
+    if (!ws) return;
+    renderDetail(ws);
+  }
+
+  function renderDetail(ws) {
+    detailEmpty.style.display = 'none';
+    detail.classList.add('visible');
+
+    document.getElementById('ws-detail-title').textContent = ws.title;
+
+    // Badges
+    const badges = document.getElementById('ws-detail-badges');
+    badges.innerHTML = `<span class="ws-badge ${ws.status}">${ws.status}</span>`;
+
+    // Engram
+    document.getElementById('ws-detail-engram').textContent = ws.engram_id
+      ? `Engrama: ${ws.engram_id.slice(0, 8)}…`
+      : 'Sin engrama asignado';
+
+    // Source documents
+    const docsEl = document.getElementById('ws-detail-docs');
+    const docs = ws.source_documents || [];
+    if (docs.length) {
+      docsEl.innerHTML = docs.map(d => `<span class="doc-chip">📄 ${escHtml(d.title || d.uri || '?')}</span>`).join('');
+    } else {
+      docsEl.innerHTML = '<span style="color:var(--ws-muted);font-size:0.8rem">Sin documentos configurados.</span>';
+    }
+
+    // Promoted entries
+    const promotedSection = document.getElementById('ws-promoted-section');
+    const promotedEl = document.getElementById('ws-detail-promoted');
+    const promoted = ws.promoted_entry_ids || [];
+    if (promoted.length) {
+      promotedSection.style.display = '';
+      promotedEl.innerHTML = promoted.map(id => `<span class="promoted-chip">⭐ ${escHtml(id.slice(0, 12))}…</span>`).join('');
+    } else {
+      promotedSection.style.display = 'none';
+    }
+
+    // Session link
+    const sessionEl = document.getElementById('ws-detail-session');
+    const chatUrl = `/chat?session=${encodeURIComponent(ws.chat_session_id)}&workshop_id=${encodeURIComponent(ws.id)}&autostart=1`;
+    sessionEl.innerHTML = `
+      <div style="font-family:var(--ws-mono);font-size:0.78rem;color:var(--ws-muted);margin-bottom:8px">
+        ID: <code style="color:var(--ws-text)">${escHtml(ws.chat_session_id)}</code>
+      </div>
+      <a href="${chatUrl}" class="ws-btn primary">💬 ${ws.status === 'active' ? 'Continuar en Chat' : 'Ver historial en Chat'}</a>
+    `;
+
+    // Date
+    document.getElementById('ws-detail-date').textContent = fmtDateFull(ws.created_at);
+
+    // Actions
+    const actionsEl = document.getElementById('ws-detail-actions');
+    actionsEl.innerHTML = '';
+
+    const promoteBtn = document.createElement('button');
+    promoteBtn.className = 'ws-btn warn';
+    promoteBtn.textContent = '⭐ Promover al RAG';
+    promoteBtn.addEventListener('click', () => openPromoteModal(ws.id));
+    actionsEl.appendChild(promoteBtn);
+
+    if (ws.status === 'active') {
+      const closeBtn = document.createElement('button');
+      closeBtn.className = 'ws-btn';
+      closeBtn.textContent = 'Cerrar taller';
+      closeBtn.addEventListener('click', () => closeWorkshop(ws.id));
+      actionsEl.appendChild(closeBtn);
+    }
+
+    const delBtn = document.createElement('button');
+    delBtn.className = 'ws-btn danger';
+    delBtn.textContent = 'Eliminar registro';
+    delBtn.addEventListener('click', () => deleteWorkshop(ws.id));
+    actionsEl.appendChild(delBtn);
+  }
+
+  /* ── ACTIONS ──────────────────────────────────────────────────────────── */
+  async function closeWorkshop(id) {
+    if (!confirm('¿Cerrar el taller? Podrás seguir leyendo el historial y promover contenido.')) return;
+    try {
+      await apiFetch(`/api/workshop/sessions/${id}/close`, { method: 'POST', body: '{}' });
+      await loadWorkshops();
+      selectWorkshop(id);
+    } catch (e) { alert('Error cerrando taller: ' + e.message); }
+  }
+
+  async function deleteWorkshop(id) {
+    if (!confirm('¿Eliminar este taller permanentemente? Se perderá la referencia a los documentos y el historial de promociones.')) return;
+    try {
+      await apiFetch(`/api/workshop/sessions/${id}`, { method: 'DELETE' });
+      selectedId = null;
+      detail.classList.remove('visible');
+      detailEmpty.style.display = '';
+      await loadWorkshops();
+    } catch (e) { alert('Error eliminando taller: ' + e.message); }
+  }
+
+  /* ── CREATE MODAL ─────────────────────────────────────────────────────── */
+  document.getElementById('ws-new-btn').addEventListener('click', () => {
+    document.getElementById('ws-new-title').value = '';
+    document.getElementById('ws-create-status').textContent = '';
+    document.getElementById('ws-doc-list').querySelectorAll('.ws-doc-item').forEach(i => {
+      i.classList.remove('selected');
+      i.querySelector('input').checked = false;
+    });
+    document.getElementById('ws-overlay').classList.add('open');
+  });
+
+  document.getElementById('ws-cancel-create').addEventListener('click', () => {
+    document.getElementById('ws-overlay').classList.remove('open');
+  });
+
+  document.getElementById('ws-confirm-create').addEventListener('click', async () => {
+    const title = document.getElementById('ws-new-title').value.trim();
+    const engramId = document.getElementById('ws-new-engram').value;
+    const status = document.getElementById('ws-create-status');
+
+    if (!title) { status.textContent = 'El título es obligatorio.'; return; }
+
+    const checked = document.querySelectorAll('#ws-doc-list input:checked');
+    const sourceDocs = Array.from(checked).map(cb => ({
+      uri: cb.value,
+      title: cb.dataset.title || cb.value,
+    }));
+
+    status.textContent = 'Creando…';
+    try {
+      const ws = await apiFetch('/api/workshop/sessions', {
+        method: 'POST',
+        body: JSON.stringify({ title, engram_id: engramId, source_documents: sourceDocs }),
+      });
+      document.getElementById('ws-overlay').classList.remove('open');
+      await loadWorkshops();
+      selectWorkshop(ws.id);
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+    }
+  });
+
+  /* ── PROMOTE MODAL ────────────────────────────────────────────────────── */
+  let promotingId = null;
+
+  function openPromoteModal(id) {
+    promotingId = id;
+    const ws = workshops.find(w => w.id === id);
+    document.getElementById('ws-promote-title').value = ws ? `Insights — ${ws.title}` : '';
+    document.getElementById('ws-promote-text').value = '';
+    document.getElementById('ws-promote-status').textContent = '';
+    document.getElementById('ws-promote-overlay').classList.add('open');
+  }
+
+  document.getElementById('ws-cancel-promote').addEventListener('click', () => {
+    document.getElementById('ws-promote-overlay').classList.remove('open');
+  });
+
+  document.getElementById('ws-confirm-promote').addEventListener('click', async () => {
+    const title = document.getElementById('ws-promote-title').value.trim();
+    const text  = document.getElementById('ws-promote-text').value.trim();
+    const status= document.getElementById('ws-promote-status');
+    if (!text) { status.textContent = 'El resumen no puede estar vacío.'; return; }
+    status.textContent = 'Promoviendo…';
+    try {
+      await apiFetch(`/api/workshop/sessions/${promotingId}/promote`, {
+        method: 'POST',
+        body: JSON.stringify({ title, summary: text }),
+      });
+      document.getElementById('ws-promote-overlay').classList.remove('open');
+      await loadWorkshops();
+      selectWorkshop(promotingId);
+    } catch (e) {
+      status.textContent = 'Error: ' + e.message;
+    }
+  });
+
+  /* ── SEARCH ───────────────────────────────────────────────────────────── */
+  searchInput.addEventListener('input', renderList);
+
+  /* ── UTILS ────────────────────────────────────────────────────────────── */
+  function escHtml(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+  function fmtDate(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleDateString(); } catch(_) { return iso; }
+  }
+  function fmtDateFull(iso) {
+    if (!iso) return '';
+    try { return new Date(iso).toLocaleString(); } catch(_) { return iso; }
+  }
+
+  /* ── INIT ─────────────────────────────────────────────────────────────── */
+  loadWorkshops();
+  loadEngrams();
+  loadDocuments();
+})();
+</script>
+{% endblock %}
