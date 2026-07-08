@@ -56,6 +56,9 @@ class FakeIntentRuntime:
         self.calls.append({"prompt": prompt, "bundle_id": bundle_id, "max_tokens": max_tokens})
         return {"ok": True, "label": self.label, "content": self.label}
 
+    def rag_query_expansion_enabled(self) -> bool:
+        return False
+
 
 class FakeSemanticEmbeddingRuntime:
     def __init__(self, label: str) -> None:
@@ -147,7 +150,7 @@ def test_compose_reply_conversational_bypasses_rag_heavy_prompt() -> None:
     assert "smoke-doc" not in event_bus.last_prompt
 
 
-def test_compose_reply_dynamic_budget_caps_short_conversational_turns() -> None:
+def test_compose_reply_caps_greeting_but_not_conversational_turns() -> None:
     event_bus = FakeEventBus(
         {"ok": True, "content": "Respuesta conversacional"},
         generation_defaults={"max_tokens": 4096, "temperature": 0.7, "top_p": 1.0},
@@ -158,14 +161,21 @@ def test_compose_reply_dynamic_budget_caps_short_conversational_turns() -> None:
         settings=FakeSettings(),
     )
 
-    _, quality = service._compose_reply(
+    _, greeting_quality = service._compose_reply(
+        InteractionRealtimeInput(content="Hola"),
+        _base_context_preview(),
+        session_id="session-dynamic-budget-greeting",
+    )
+    assert greeting_quality["fallback_used"] is False
+    assert event_bus.last_max_tokens <= 320
+
+    _, conversational_quality = service._compose_reply(
         InteractionRealtimeInput(content="Como estas?"),
         _base_context_preview(),
         session_id="session-dynamic-budget-conv",
     )
-
-    assert quality["fallback_used"] is False
-    assert event_bus.last_max_tokens <= 320
+    assert conversational_quality["fallback_used"] is False
+    assert event_bus.last_max_tokens == 4096
 
 
 def test_compose_reply_dynamic_budget_expands_on_detailed_technical_prompt() -> None:
@@ -189,7 +199,7 @@ def test_compose_reply_dynamic_budget_expands_on_detailed_technical_prompt() -> 
     assert event_bus.last_max_tokens >= 640
 
 
-def test_compose_reply_dynamic_budget_in_three_turn_conversational_chain() -> None:
+def test_compose_reply_maintains_full_budget_across_conversational_chain() -> None:
     event_bus = FakeEventBus(
         [
             {"ok": True, "content": "Han pasado semanas desde la ultima conversacion. Como sigues?"},
@@ -242,13 +252,13 @@ def test_compose_reply_dynamic_budget_in_three_turn_conversational_chain() -> No
     assert quality_1["fallback_used"] is False
     assert quality_2["fallback_used"] is False
     assert quality_3["fallback_used"] is False
-    assert event_bus.max_tokens_history[0] <= 320
-    assert event_bus.max_tokens_history[1] <= event_bus.max_tokens_history[0]
-    assert event_bus.max_tokens_history[2] <= event_bus.max_tokens_history[1]
+    assert event_bus.max_tokens_history[0] == 4096
+    assert event_bus.max_tokens_history[1] == 4096
+    assert event_bus.max_tokens_history[2] == 4096
     assert "no uses etiquetas" not in reply_2.lower()
-    assert "sonrio con calma" in reply_2.lower()
+    assert "estoy bien, gracias por preguntar" in reply_2.lower()
     assert "solo habla de forma natural" not in reply_3.lower()
-    assert "cruzo los brazos" in reply_3.lower()
+    assert "he estado ocupada" in reply_3.lower()
 
 
 def test_compose_reply_uses_model_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
@@ -272,7 +282,7 @@ def test_compose_reply_uses_model_intent_hint_for_ambiguous_turn(monkeypatch) ->
 
     assert intent_runtime.calls
     assert quality["fallback_used"] is False
-    assert "Responde en espanol natural, cercano y humano." in event_bus.last_prompt
+    assert "en tu propia voz" in event_bus.last_prompt
 
 
 def test_compose_reply_uses_embedding_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
@@ -296,7 +306,7 @@ def test_compose_reply_uses_embedding_intent_hint_for_ambiguous_turn(monkeypatch
 
     assert embedding_runtime.calls
     assert quality["fallback_used"] is False
-    assert "Responde en espanol natural, cercano y humano." in event_bus.last_prompt
+    assert "en tu propia voz" in event_bus.last_prompt
 
 
 def test_compose_reply_chatty_query_with_empty_model_output_returns_operational_fallback(monkeypatch) -> None:
@@ -413,7 +423,7 @@ def test_custom_engram_greeting_uses_model_generation_not_default_guard() -> Non
     assert reply == "Buenas, soy Mistress Keynes. Estoy lista."
     assert quality["fallback_used"] is False
     assert quality["guard_path"] == ""
-    assert "Instruccion de comportamiento del engrama" in event_bus.last_prompt
+    assert "Modo de conducta" in event_bus.last_prompt
 
 
 def test_compose_reply_sets_instruction_echo_flag_when_prefix_is_stripped() -> None:
@@ -465,13 +475,17 @@ def test_compose_reply_conversational_english_output_prefers_model_reply() -> No
 
 
 def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch) -> None:
+    # Greeting/identity keep a short base deadline (8000ms); everything else now
+    # defaults to a 90000ms budget, which always wins/clamps the adaptive p75
+    # calculation below. Use a greeting turn with big-but-not-ceiling samples so
+    # the p75-derived value is the one that actually surfaces.
     event_bus = FakeEventBus({"ok": True, "content": "ok"})
     repository = FakeRepository(
         metrics=[
-            {"quality_flags": {"elapsed_ms": 1000}},
-            {"quality_flags": {"elapsed_ms": 2000}},
-            {"quality_flags": {"elapsed_ms": 4000}},
-            {"quality_flags": {"elapsed_ms": 8000}},
+            {"quality_flags": {"elapsed_ms": 5000}},
+            {"quality_flags": {"elapsed_ms": 10000}},
+            {"quality_flags": {"elapsed_ms": 20000}},
+            {"quality_flags": {"elapsed_ms": 30000}},
         ]
     )
     service = RealtimeChatService(
@@ -484,13 +498,13 @@ def test_compose_reply_adaptive_deadline_uses_recent_elapsed_samples(monkeypatch
     monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
 
     _, quality = service._compose_reply(
-        InteractionRealtimeInput(content="Necesito ayuda con un endpoint"),
+        InteractionRealtimeInput(content="Hola"),
         _base_context_preview(),
         session_id="session-adaptive",
     )
 
     assert quality["timeout_hit"] is False
-    assert quality["deadline_ms"] == 5400
+    assert quality["deadline_ms"] == 27000
 
 
 def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypatch) -> None:
@@ -510,7 +524,10 @@ def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypat
         {"author": "Asistente Base", "channel": "assistant", "content": repeated_fallback},
     ]
 
-    ticks = iter([20.0, 21.0])
+    # base deadline is now 90000ms (non-greeting/identity), scaled to 9000ms at
+    # 10%; the diverse-fallback path additionally requires elapsed > 2.5x that
+    # (22500ms), so the mocked elapsed needs to clear both thresholds.
+    ticks = iter([20.0, 45.0])
     monkeypatch.setattr("app.interaction.application.realtime.time.perf_counter", lambda: next(ticks))
 
     reply, quality = service._compose_reply(
@@ -527,7 +544,7 @@ def test_compose_reply_timeout_repetition_switches_to_diverse_fallback(monkeypat
     assert "contexto" not in reply.lower()
 
 
-def test_compose_reply_immersive_mode_does_not_retry_and_uses_operational_fallback() -> None:
+def test_compose_reply_immersive_mode_retries_on_leaked_scaffolding_and_uses_clean_reply() -> None:
     event_bus = FakeEventBus(
         [
             {
@@ -557,7 +574,8 @@ def test_compose_reply_immersive_mode_does_not_retry_and_uses_operational_fallba
         session_id="session-immersive-retry",
     )
 
-    assert quality["immersive_triggered"] is False
-    assert quality["immersive_retry_count"] == 0
+    assert quality["immersive_triggered"] is True
+    assert quality["immersive_retry_count"] == 1
     assert quality["fallback_used"] is False
-    assert "reserve el uso de etiquetas internas" in reply.lower()
+    assert "reserve el uso de etiquetas internas" not in reply.lower()
+    assert "una ciudad sin luna" in reply.lower()

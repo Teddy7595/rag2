@@ -17,13 +17,13 @@ def test_build_turn_policy_prefers_short_for_greeting_and_identity() -> None:
 
     assert greeting_policy.intent == "greeting"
     assert greeting_policy.prefer_short is True
-    assert greeting_policy.max_tokens <= 180
-    assert greeting_policy.deadline_ms <= 2200
+    assert greeting_policy.max_tokens <= 220
+    assert greeting_policy.deadline_ms <= 8000
 
     assert identity_policy.intent == "identity"
     assert identity_policy.prefer_short is True
-    assert identity_policy.max_tokens <= 280
-    assert identity_policy.deadline_ms <= 2600
+    assert identity_policy.max_tokens <= 220
+    assert identity_policy.deadline_ms <= 8000
 
 
 def test_build_turn_policy_allocates_more_budget_for_technical_queries() -> None:
@@ -127,8 +127,8 @@ def test_dedupe_rule_lines_removes_repeated_lines() -> None:
     assert lines == ["Regla A", "Regla B"]
 
 
-def test_classify_intent_defaults_to_mixed_for_non_technical_content() -> None:
-    assert classify_intent("Me gustan los domingos por la tarde") == "mixed"
+def test_classify_intent_defaults_to_conversational_for_non_technical_content() -> None:
+    assert classify_intent("Me gustan los domingos por la tarde") == "conversational"
 
 
 def test_classify_intent_detects_conversational_queries() -> None:
@@ -142,15 +142,15 @@ def test_classify_intent_detects_affective_state_questions() -> None:
 def test_build_turn_policy_for_conversational_queries() -> None:
     policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
     assert policy.intent == "conversational"
-    assert policy.max_tokens <= 360
+    assert policy.max_tokens >= 700
     assert policy.deadline_ms >= 3000
-    assert policy.prefer_short is True
+    assert policy.prefer_short is False
 
 
 def test_build_turn_policy_for_affective_state_question() -> None:
     policy = build_turn_policy("Estas agitada?", has_custom_engram=True)
     assert policy.intent == "conversational"
-    assert policy.prefer_short is True
+    assert policy.prefer_short is False
 
 
 def test_evaluate_immersive_response_rejects_internal_meta_markers() -> None:
