@@ -335,13 +335,16 @@ class LocalInferenceService:
             response_payload = cast(dict[str, Any], response) if isinstance(response, dict) else {}
             choices = cast(list[dict[str, Any]], response_payload.get("choices", []))
             text = ""
+            finish_reason = None
             if choices:
                 text = str(choices[0].get("text") or "").strip()
+                finish_reason = choices[0].get("finish_reason")
             return {
                 "ok": bool(text),
                 "provider": "local",
                 "reason": None if text else "empty_response",
                 "content": text,
+                "finish_reason": finish_reason,
                 "model_path": model_path,
             }
         except Exception as exc:

@@ -8,6 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+.build-tmp
 
 # Local runtime files
 .env

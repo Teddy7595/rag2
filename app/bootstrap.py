@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -22,7 +23,10 @@ from app.core.module_registry import dump_registered_routes
 
 
 def create_app() -> FastAPI:
-    project_root = Path(__file__).resolve().parents[1]
+    # RAG2_PROJECT_ROOT lets tests redirect settings resolution (models dir
+    # fallback scan, etc.) to an isolated tmp_path instead of the real repo,
+    # which otherwise stays hardcoded to this file's on-disk location.
+    project_root = Path(os.getenv("RAG2_PROJECT_ROOT") or Path(__file__).resolve().parents[1])
     load_dotenv(project_root / ".env")
 
     settings = load_settings(project_root)

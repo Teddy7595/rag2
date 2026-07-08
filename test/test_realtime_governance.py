@@ -245,8 +245,10 @@ def test_compose_reply_dynamic_budget_in_three_turn_conversational_chain() -> No
     assert event_bus.max_tokens_history[0] <= 320
     assert event_bus.max_tokens_history[1] <= event_bus.max_tokens_history[0]
     assert event_bus.max_tokens_history[2] <= event_bus.max_tokens_history[1]
-    assert "no uses etiquetas" in reply_2.lower()
-    assert "solo habla de forma natural" in reply_3.lower()
+    assert "no uses etiquetas" not in reply_2.lower()
+    assert "sonrio con calma" in reply_2.lower()
+    assert "solo habla de forma natural" not in reply_3.lower()
+    assert "cruzo los brazos" in reply_3.lower()
 
 
 def test_compose_reply_uses_model_intent_hint_for_ambiguous_turn(monkeypatch) -> None:
@@ -433,8 +435,9 @@ def test_compose_reply_sets_instruction_echo_flag_when_prefix_is_stripped() -> N
         session_id="session-instruction-echo",
     )
 
-    assert quality["instruction_echo_stripped"] is False
-    assert "solo enfoca la respuesta" in reply.lower()
+    assert quality["instruction_echo_stripped"] is True
+    assert "solo enfoca la respuesta" not in reply.lower()
+    assert "si, es cierto y te respondo directo" in reply.lower()
 
 
 def test_compose_reply_conversational_english_output_prefers_model_reply() -> None:

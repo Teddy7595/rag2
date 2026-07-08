@@ -4296,6 +4296,57 @@
       cancelEdit();
     }
 
+    if (attachedFile) {
+      const isImage = String(attachedFile.type || '').toLowerCase().startsWith('image/');
+      if (isImage) {
+        setActionStatus('Las imagenes aun no se digieren al enviar. Usa /vision o quita el adjunto ("limpiar").', 'amber');
+        return;
+      }
+
+      const engramId = await resolveActiveEngramId();
+      if (!engramId) {
+        setActionStatus('No hay engrama activo. Selecciona uno para adjuntar contenido.', 'amber');
+        return;
+      }
+
+      const fileToSend = attachedFile;
+      startProcessingFeedback('feeding de libro: subiendo adjunto', 'blue');
+      try {
+        const formData = new FormData();
+        formData.append('file', fileToSend);
+        const uploadResponse = await fetch(`/api/storage/engrams/${encodeURIComponent(engramId)}/content`, {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadPayload = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          setActionStatus(`Fallo upload del adjunto: ${JSON.stringify(uploadPayload)}`, 'danger');
+          return;
+        }
+
+        const relativePath = String(uploadPayload.relative_path || '');
+        updateProcessingStage('feeding de libro: digiriendo adjunto', 'blue');
+        const query = new URLSearchParams({ relative_path: relativePath, engram_id: engramId });
+        const digestResponse = await fetch(`/api/storage/vault/ingest?${query.toString()}`, { method: 'POST' });
+        const digestPayload = await digestResponse.json();
+        if (!digestResponse.ok) {
+          setActionStatus(`Fallo digest del adjunto: ${JSON.stringify(digestPayload)}`, 'danger');
+          return;
+        }
+
+        const ingested = digestPayload.ingested || {};
+        setActionStatus(`Adjunto digerido: ${relativePath} - chunks=${ingested.chunk_count || 0}`, 'green');
+        attachedFile = null;
+        fileUpload.value = '';
+        renderAttachedFile();
+      } catch (error) {
+        setActionStatus(`Fallo al procesar el adjunto: ${String(error)}`, 'danger');
+        return;
+      } finally {
+        stopProcessingFeedback();
+      }
+    }
+
     appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat');
     inputField.value = '';
     adjustHeight(inputField);

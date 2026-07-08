@@ -43,6 +43,10 @@ def build_test_app(tmp_path: Path, monkeypatch, extra_env: dict[str, str] | None
     ai_model_dir = tmp_path / "ai_models"
     database_path = tmp_path / "rag2.sqlite3"
 
+    real_project_root = Path(__file__).resolve().parents[1]
+
+    monkeypatch.setenv("RAG2_PROJECT_ROOT", str(tmp_path))
+    monkeypatch.setenv("WEB_FRONTEND_DIR", str(real_project_root / "frontend" / "dist"))
     monkeypatch.setenv("VAULT_DIR", str(vault_dir))
     monkeypatch.setenv("AI_MODEL_DIR", str(ai_model_dir))
     monkeypatch.setenv("AI_MODELS_DIR", str(ai_model_dir))
