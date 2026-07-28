@@ -191,6 +191,7 @@
       <p>Ventana contexto LlamaCPP local: <strong>{{ catalog.runtime_config.llama_cpp_n_ctx }}</strong></p>
       <p>Ventana contexto LM Studio remoto: <strong>{{ catalog.providers.text.lmstudio_n_ctx }}</strong></p>
       <p>LM Studio texto: <code>{{ catalog.providers.text.lmstudio_base_url }}</code></p>
+      <p>Ollama texto: <code>{{ catalog.providers.text.ollama_base_url }}</code></p>
       <p>Ollama visión: <code>{{ catalog.providers.vision.ollama_base_url }}</code></p>
       <p>LM Studio visión: <code>{{ catalog.providers.vision.lmstudio_base_url }}</code></p>
     </div>
@@ -208,6 +209,7 @@
               <select id="text-provider" class="control-select">
                 <option value="local" {% if catalog.selection.text_provider == 'local' %}selected{% endif %}>local</option>
                 <option value="lmstudio" {% if catalog.selection.text_provider == 'lmstudio' %}selected{% endif %}>lmstudio</option>
+                <option value="ollama" {% if catalog.selection.text_provider == 'ollama' %}selected{% endif %}>ollama</option>
               </select>
             </div>
             <div class="control-row">
@@ -220,8 +222,8 @@
               </select>
             </div>
             <div class="control-row">
-              <label class="control-label" for="text-model-name">Modelo LM Studio</label>
-              <input id="text-model-name" class="control-input" type="text" value="{{ catalog.selection.text_model_name or '' }}" placeholder="Modelo expuesto por LM Studio">
+              <label class="control-label" for="text-model-name">Modelo LM Studio / Ollama</label>
+              <input id="text-model-name" class="control-input" type="text" value="{{ catalog.selection.text_model_name or '' }}" placeholder="Modelo expuesto por LM Studio u Ollama">
             </div>
             <div class="control-row">
               <label class="control-label" for="text-bundle-profile">Perfil asignado</label>

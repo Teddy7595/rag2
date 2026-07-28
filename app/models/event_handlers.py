@@ -9,7 +9,9 @@ from app.models.events import (
     REQUEST_MODEL_TEXT_GENERATION,
     REQUEST_MODEL_VISION_ANALYSIS,
 )
+from app.models.ollama_service import OllamaInferenceService
 from app.models.runtime_service import LocalInferenceService
+from app.models.service import ModelCatalogService
 
 
 def register_model_event_handlers(app: FastAPI) -> None:
@@ -17,8 +19,17 @@ def register_model_event_handlers(app: FastAPI) -> None:
     service = context.services.get("model_runtime")
     if not isinstance(service, LocalInferenceService):
         raise RuntimeError("Local inference service not registered")
+    ollama_service = context.services.get("model_runtime_ollama")
+    if not isinstance(ollama_service, OllamaInferenceService):
+        raise RuntimeError("Ollama inference service not registered")
+    catalog_service = context.services.get("models")
+    if not isinstance(catalog_service, ModelCatalogService):
+        raise RuntimeError("Model catalog service not registered")
 
     def handle_text_generation(envelope: EventEnvelope[object]) -> dict[str, object]:
+        selection = catalog_service.current_selection()
+        if selection.get("text_provider") == "ollama":
+            return ollama_service.generate_text(envelope.payload)
         return service.generate_text(envelope.payload)
 
     def handle_vision_analysis(envelope: EventEnvelope[object]) -> dict[str, object]:

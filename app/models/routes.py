@@ -36,6 +36,9 @@ class ModelRuntimeConfigUpdate(BaseModel):
     lmstudio_base_url: str | None = None
     lmstudio_model: str | None = None
     lmstudio_n_ctx: int | None = None
+    ollama_base_url: str | None = None
+    ollama_model: str | None = None
+    ollama_timeout_seconds: int | None = None
     vision_provider: str | None = None
     vision_model_path: str | None = None
     vision_mm_projector_path: str | None = None
