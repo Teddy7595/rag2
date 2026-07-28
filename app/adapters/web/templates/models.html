@@ -223,6 +223,15 @@
               <label class="control-label" for="text-model-name">Modelo LM Studio</label>
               <input id="text-model-name" class="control-input" type="text" value="{{ catalog.selection.text_model_name or '' }}" placeholder="Modelo expuesto por LM Studio">
             </div>
+            <div class="control-row">
+              <label class="control-label" for="text-bundle-profile">Perfil asignado</label>
+              <select id="text-bundle-profile" class="control-select">
+                <option value="">Sin perfil</option>
+                {% for profile in catalog.profiles.profiles if profile.kind == 'text' %}
+                <option value="{{ profile.id }}" {% if catalog.selection.text_bundle_id in profile.assigned_bundle_ids %}selected{% endif %}>{{ profile.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <p class="secondary-note">Selección actual: {{ catalog.selection.text_provider }} · {{ catalog.selection.text_bundle_id or catalog.selection.text_model_name or 'sin selección' }}</p>
           </section>
 
@@ -249,6 +258,15 @@
               <label class="control-label" for="vision-model-name">Modelo remoto</label>
               <input id="vision-model-name" class="control-input" type="text" value="{{ catalog.selection.vision_model_name or '' }}" placeholder="Modelo de Ollama o LM Studio">
             </div>
+            <div class="control-row">
+              <label class="control-label" for="vision-bundle-profile">Perfil asignado</label>
+              <select id="vision-bundle-profile" class="control-select">
+                <option value="">Sin perfil</option>
+                {% for profile in catalog.profiles.profiles if profile.kind == 'vision' %}
+                <option value="{{ profile.id }}" {% if catalog.selection.vision_bundle_id in profile.assigned_bundle_ids %}selected{% endif %}>{{ profile.name }}</option>
+                {% endfor %}
+              </select>
+            </div>
             <p class="secondary-note">Selección actual: {{ catalog.selection.vision_provider }} · {{ catalog.selection.vision_bundle_id or catalog.selection.vision_model_name or 'sin selección' }}</p>
           </section>
         </div>
@@ -273,6 +291,112 @@
       <pre id="restart-events" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Sin reinicios recientes.</pre>
     </div>
   </article>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Perfiles de generación</h2>
+  <div class="panel-body">
+    <p class="secondary-note">
+      Guarda configuraciones con nombre y asigná cada una a un bundle de modelo concreto (arriba, en "Perfil asignado") —
+      al activar ese bundle, su perfil se aplica solo. Los perfiles de visión hoy solo controlan <code>vision_timeout_seconds</code>;
+      el resto de la carga de LLaVA (n_ctx, n_gpu_layers) está fija en el código.
+    </p>
+
+    <div id="profile-list" style="margin-top: 12px; display: grid; gap: 10px;">
+      {% for profile in catalog.profiles.profiles %}
+      <div class="control-card" data-profile-id="{{ profile.id }}">
+        <div class="bundle-title-row" style="display: flex; justify-content: space-between; align-items: center;">
+          <strong>{{ profile.name }}</strong>
+          <span class="secondary-note">{{ profile.kind }}</span>
+        </div>
+        {% if profile.kind == 'text' %}
+        <p class="secondary-note">
+          temp={{ profile.params.text_generation_temperature }} · top_p={{ profile.params.text_generation_top_p }} ·
+          max_tokens={{ profile.params.text_generation_max_tokens }} · ctx={{ profile.params.llama_cpp_n_ctx }} ·
+          gpu_layers={{ profile.params.llama_cpp_n_gpu_layers }}
+        </p>
+        {% else %}
+        <p class="secondary-note">vision_timeout_seconds={{ profile.params.vision_timeout_seconds }}</p>
+        {% endif %}
+        <p class="secondary-note">Bundles asignados: {{ profile.assigned_bundle_ids | join(', ') or 'ninguno' }}</p>
+        <div class="card-actions" style="margin-top: 8px; display: flex; gap: 8px;">
+          <button type="button" class="link-button" data-edit-profile="{{ profile.id }}">Editar</button>
+          <button type="button" class="link-button" data-delete-profile="{{ profile.id }}">Eliminar</button>
+        </div>
+      </div>
+      {% else %}
+      <p class="secondary-note">Todavía no hay perfiles guardados.</p>
+      {% endfor %}
+    </div>
+
+    <form id="profile-form" style="margin-top: 16px;">
+      <input type="hidden" id="profile-edit-id" value="">
+      <div class="control-grid">
+        <div class="control-row">
+          <label class="control-label" for="profile-name">Nombre</label>
+          <input id="profile-name" class="control-input" type="text" placeholder="ej. Creative-8k" required>
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-kind">Tipo</label>
+          <select id="profile-kind" class="control-select">
+            <option value="text">texto</option>
+            <option value="vision">visión</option>
+          </select>
+        </div>
+      </div>
+      <div id="profile-text-fields" class="control-grid">
+        <div class="control-row">
+          <label class="control-label" for="profile-temperature">Temperatura</label>
+          <input id="profile-temperature" class="control-input" type="number" step="0.01" value="0.55">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-top-p">Top P</label>
+          <input id="profile-top-p" class="control-input" type="number" step="0.01" value="0.97">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-max-tokens">Max tokens</label>
+          <input id="profile-max-tokens" class="control-input" type="number" step="1" value="3072">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-min-p">Min P</label>
+          <input id="profile-min-p" class="control-input" type="number" step="0.01" value="0.03">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-repeat-penalty">Repeat penalty</label>
+          <input id="profile-repeat-penalty" class="control-input" type="number" step="0.01" value="1.08">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-presence-penalty">Presence penalty</label>
+          <input id="profile-presence-penalty" class="control-input" type="number" step="0.01" value="0.0">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-frequency-penalty">Frequency penalty</label>
+          <input id="profile-frequency-penalty" class="control-input" type="number" step="0.01" value="0.0">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-seed">Seed</label>
+          <input id="profile-seed" class="control-input" type="number" step="1" value="-1">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-n-ctx">Contexto (n_ctx)</label>
+          <input id="profile-n-ctx" class="control-input" type="number" step="1" value="32768">
+        </div>
+        <div class="control-row">
+          <label class="control-label" for="profile-n-gpu-layers">Capas GPU</label>
+          <input id="profile-n-gpu-layers" class="control-input" type="number" step="1" value="-1">
+        </div>
+      </div>
+      <div id="profile-vision-fields" class="control-grid" style="display: none;">
+        <div class="control-row">
+          <label class="control-label" for="profile-vision-timeout">Timeout visión (s)</label>
+          <input id="profile-vision-timeout" class="control-input" type="number" step="1" value="120">
+        </div>
+      </div>
+      <button type="submit" class="save-button">Guardar perfil</button>
+      <button type="button" id="profile-cancel-edit" class="link-button" style="display: none;">Cancelar edición</button>
+    </form>
+    <pre id="profile-status" class="panel" style="margin-top: 14px; white-space: pre-wrap; overflow-wrap: anywhere;">Listo.</pre>
+  </div>
 </section>
 
 <section class="panel-grid" style="margin-top: 18px;">
@@ -474,46 +598,25 @@
     }
   };
 
-  form.addEventListener('submit', async (event) => {
-    event.preventDefault();
-    applyStatus.textContent = 'Guardando selección...';
-    const response = await fetch('/api/models/selection', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(buildSelectionPayload()),
-    });
-    if (!response.ok) {
-      const text = await response.text();
-      applyStatus.textContent = `No se pudo guardar la selección: ${text}`;
-      return;
+  const runApplyRestart = async (requestBody, { triggerButton = null } = {}) => {
+    if (triggerButton) {
+      triggerButton.disabled = true;
     }
-    applyStatus.textContent = 'Selección guardada. Pulsa "Aplicar cambios y reiniciar runtime" para reinicio en vivo.';
-  });
-
-  applyRestartButton.addEventListener('click', async () => {
-    let runtimeConfig = {};
-    try {
-      runtimeConfig = parseRuntimeConfig();
-    } catch (error) {
-      applyStatus.textContent = String(error);
-      return;
-    }
-
-    applyRestartButton.disabled = true;
-    applyStatus.textContent = 'Aplicando cambios y reiniciando runtime...';
     restartEvents.textContent = '';
 
     const response = await fetch('/api/models/apply-restart-stream', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ selection: buildSelectionPayload(), runtime_config: runtimeConfig, reason: 'admin_models_apply' }),
+      body: JSON.stringify(requestBody),
     });
 
     if (!response.ok || !response.body) {
       const text = await response.text();
       applyStatus.textContent = `No se pudo iniciar apply+restart: ${text}`;
-      applyRestartButton.disabled = false;
-      return;
+      if (triggerButton) {
+        triggerButton.disabled = false;
+      }
+      return false;
     }
 
     const reader = response.body.getReader();
@@ -554,14 +657,16 @@
 
     if (failed || !doneEvent) {
       applyStatus.textContent = 'Apply+restart finalizó con error. Revisa la bitácora de eventos.';
-      applyRestartButton.disabled = false;
-      return;
+      if (triggerButton) {
+        triggerButton.disabled = false;
+      }
+      return false;
     }
 
     try {
       window.localStorage.setItem(MODEL_RESTART_SIGNAL_KEY, JSON.stringify({
         at: Date.now(),
-        reason: 'admin_models_apply',
+        reason: requestBody.reason || 'admin_models_apply',
         text: document.getElementById('text-bundle-id').value || document.getElementById('text-model-name').value.trim() || 'auto',
         vision: document.getElementById('vision-bundle-id').value || document.getElementById('vision-model-name').value.trim() || 'auto',
       }));
@@ -569,8 +674,31 @@
       // no-op: signal is best-effort for chat UX
     }
 
-    applyStatus.textContent = 'Apply+restart completado. Refrescando vista...';
+    applyStatus.textContent = 'Cambios aplicados y runtime listo. Refrescando vista...';
     window.location.reload();
+    return true;
+  };
+
+  form.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    applyStatus.textContent = 'Guardando selección y reiniciando runtime...';
+    await runApplyRestart({ selection: buildSelectionPayload(), reason: 'model_selection_saved' });
+  });
+
+  applyRestartButton.addEventListener('click', async () => {
+    let runtimeConfig = {};
+    try {
+      runtimeConfig = parseRuntimeConfig();
+    } catch (error) {
+      applyStatus.textContent = String(error);
+      return;
+    }
+
+    applyStatus.textContent = 'Aplicando cambios y reiniciando runtime...';
+    await runApplyRestart(
+      { selection: buildSelectionPayload(), runtime_config: runtimeConfig, reason: 'admin_models_apply' },
+      { triggerButton: applyRestartButton },
+    );
   });
 
   textForm.addEventListener('submit', async (event) => {
@@ -608,6 +736,160 @@
   });
 
   refreshValidation();
+})();
+</script>
+<script>
+(() => {
+  const profileForm = document.getElementById('profile-form');
+  if (!profileForm) {
+    return;
+  }
+  const editIdField = document.getElementById('profile-edit-id');
+  const nameField = document.getElementById('profile-name');
+  const kindField = document.getElementById('profile-kind');
+  const textFields = document.getElementById('profile-text-fields');
+  const visionFields = document.getElementById('profile-vision-fields');
+  const cancelEditButton = document.getElementById('profile-cancel-edit');
+  const statusBox = document.getElementById('profile-status');
+
+  const FIELD_IDS = {
+    text_generation_temperature: 'profile-temperature',
+    text_generation_top_p: 'profile-top-p',
+    text_generation_max_tokens: 'profile-max-tokens',
+    text_generation_min_p: 'profile-min-p',
+    text_generation_repeat_penalty: 'profile-repeat-penalty',
+    text_generation_presence_penalty: 'profile-presence-penalty',
+    text_generation_frequency_penalty: 'profile-frequency-penalty',
+    text_generation_seed: 'profile-seed',
+    llama_cpp_n_ctx: 'profile-n-ctx',
+    llama_cpp_n_gpu_layers: 'profile-n-gpu-layers',
+    vision_timeout_seconds: 'profile-vision-timeout',
+  };
+
+  const toggleKindFields = () => {
+    const isVision = kindField.value === 'vision';
+    textFields.style.display = isVision ? 'none' : 'grid';
+    visionFields.style.display = isVision ? 'grid' : 'none';
+  };
+  kindField.addEventListener('change', toggleKindFields);
+  toggleKindFields();
+
+  const resetForm = () => {
+    editIdField.value = '';
+    nameField.value = '';
+    kindField.value = 'text';
+    toggleKindFields();
+    cancelEditButton.style.display = 'none';
+    statusBox.textContent = 'Listo.';
+  };
+
+  const collectParams = () => {
+    const kind = kindField.value;
+    const keys = kind === 'vision' ? ['vision_timeout_seconds'] : [
+      'text_generation_temperature', 'text_generation_top_p', 'text_generation_max_tokens',
+      'text_generation_min_p', 'text_generation_repeat_penalty', 'text_generation_presence_penalty',
+      'text_generation_frequency_penalty', 'text_generation_seed', 'llama_cpp_n_ctx', 'llama_cpp_n_gpu_layers',
+    ];
+    const params = {};
+    keys.forEach((key) => {
+      const field = document.getElementById(FIELD_IDS[key]);
+      if (field && field.value !== '') {
+        params[key] = Number(field.value);
+      }
+    });
+    return params;
+  };
+
+  document.querySelectorAll('[data-edit-profile]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      const response = await fetch('/api/models/profiles');
+      const payload = await response.json();
+      const profile = (payload.profiles || []).find((item) => item.id === button.dataset.editProfile);
+      if (!profile) {
+        return;
+      }
+      editIdField.value = profile.id;
+      nameField.value = profile.name;
+      kindField.value = profile.kind;
+      toggleKindFields();
+      Object.entries(profile.params || {}).forEach(([key, value]) => {
+        const field = document.getElementById(FIELD_IDS[key]);
+        if (field) {
+          field.value = value;
+        }
+      });
+      cancelEditButton.style.display = 'inline-block';
+      statusBox.textContent = `Editando perfil "${profile.name}".`;
+      profileForm.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+
+  document.querySelectorAll('[data-delete-profile]').forEach((button) => {
+    button.addEventListener('click', async () => {
+      if (!window.confirm('¿Eliminar este perfil?')) {
+        return;
+      }
+      await fetch(`/api/models/profiles/${button.dataset.deleteProfile}`, { method: 'DELETE' });
+      window.location.reload();
+    });
+  });
+
+  cancelEditButton.addEventListener('click', resetForm);
+
+  profileForm.addEventListener('submit', async (event) => {
+    event.preventDefault();
+    const editId = editIdField.value;
+    const payload = {
+      name: nameField.value.trim(),
+      kind: kindField.value,
+      params: collectParams(),
+    };
+    try {
+      const response = editId
+        ? await fetch(`/api/models/profiles/${editId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: payload.name, params: payload.params }),
+          })
+        : await fetch('/api/models/profiles', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+          });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      window.location.reload();
+    } catch (error) {
+      statusBox.textContent = `Error guardando el perfil: ${String(error)}`;
+    }
+  });
+
+  const assignProfile = async (kind, bundleFieldId, profileFieldId) => {
+    const bundleField = document.getElementById(bundleFieldId);
+    const profileField = document.getElementById(profileFieldId);
+    if (!bundleField || !profileField) {
+      return;
+    }
+    profileField.addEventListener('change', async () => {
+      const bundleId = bundleField.value;
+      if (!bundleId) {
+        statusBox.textContent = 'Elegí primero un bundle local antes de asignarle un perfil.';
+        return;
+      }
+      const response = await fetch('/api/models/profiles/assign', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ kind, bundle_id: bundleId, profile_id: profileField.value || null }),
+      });
+      const result = await response.json().catch(() => ({}));
+      statusBox.textContent = result.restarted
+        ? 'Perfil asignado y runtime reiniciado — ya está listo para el chat.'
+        : 'Perfil asignado (no es el bundle activo, no hizo falta reiniciar).';
+    });
+  };
+  assignProfile('text', 'text-bundle-id', 'text-bundle-profile');
+  assignProfile('vision', 'vision-bundle-id', 'vision-bundle-profile');
 })();
 </script>
 {% endblock %}

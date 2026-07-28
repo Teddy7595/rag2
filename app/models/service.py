@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import os
+import uuid
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -13,6 +14,7 @@ from app.core.settings import AppSettings
 _PROVIDER_ALIASES = {
     "llama_cpp": "local",
     "llama-cpp": "local",
+    "ollama": "ollama",
     "lm_studio": "lmstudio",
     "lm-studio": "lmstudio",
 }
@@ -45,6 +47,22 @@ _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "text_generation_seed": -1,
     "llama_cpp_n_gpu_layers": -1,
     "rag_query_expansion_enabled": 0,
+}
+
+_PROFILE_PARAM_KEYS_BY_KIND: dict[str, tuple[str, ...]] = {
+    "text": (
+        "text_generation_temperature",
+        "text_generation_top_p",
+        "text_generation_max_tokens",
+        "text_generation_min_p",
+        "text_generation_repeat_penalty",
+        "text_generation_presence_penalty",
+        "text_generation_frequency_penalty",
+        "text_generation_seed",
+        "llama_cpp_n_ctx",
+        "llama_cpp_n_gpu_layers",
+    ),
+    "vision": ("vision_timeout_seconds",),
 }
 
 
@@ -170,6 +188,7 @@ class ModelCatalogService:
         self.models_dir = settings.ai_model_dir
         self.selection_path = settings.vault_dir / "model-selection.json"
         self.runtime_config_path = settings.vault_dir / "model-runtime-config.json"
+        self.profiles_path = settings.vault_dir / "model-profiles.json"
         self.models_dir.mkdir(parents=True, exist_ok=True)
 
     def catalog(self) -> dict[str, object]:
@@ -185,6 +204,7 @@ class ModelCatalogService:
             "providers": self._build_provider_overview(runtime_config),
             "runtime_config": runtime_config,
             "selection": selection,
+            "profiles": self.load_profiles(),
             "resolved": resolved,
             "runtime": self._build_runtime_status(selection, resolved, bundles),
             "validation": validation,
@@ -298,6 +318,8 @@ class ModelCatalogService:
     def update_selection(self, patch: dict[str, object]) -> dict[str, object]:
         bundles = self.discover_bundles()
         selection = self.load_selection(bundles)
+        previous_text_bundle_id = selection.get("text_bundle_id")
+        previous_vision_bundle_id = selection.get("vision_bundle_id")
         for key, value in patch.items():
             if value is None:
                 continue
@@ -306,7 +328,33 @@ class ModelCatalogService:
         selection["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
         normalized = self._normalize_selection(selection, bundles)
         self._write_selection(normalized)
+        self._apply_bundle_profile_if_changed("text", previous_text_bundle_id, normalized)
+        self._apply_bundle_profile_if_changed("vision", previous_vision_bundle_id, normalized)
         return self.catalog()
+
+    def is_bundle_active(self, kind: str, bundle_id: str) -> bool:
+        bundles = self.discover_bundles()
+        selection = self.load_selection(bundles)
+        return selection.get(f"{kind}_provider") == "local" and selection.get(f"{kind}_bundle_id") == bundle_id
+
+    def _apply_profile_to_runtime_config(self, kind: str, bundle_id: str) -> bool:
+        profile = self.resolve_profile_for_bundle(kind, bundle_id)
+        if profile is None:
+            return False
+        self.update_runtime_config(cast(dict[str, object], profile["params"]))
+        return True
+
+    def _apply_bundle_profile_if_changed(
+        self,
+        kind: str,
+        previous_bundle_id: object,
+        normalized_selection: dict[str, object],
+    ) -> None:
+        provider = normalized_selection.get(f"{kind}_provider")
+        new_bundle_id = normalized_selection.get(f"{kind}_bundle_id")
+        if provider != "local" or not new_bundle_id or new_bundle_id == previous_bundle_id:
+            return
+        self._apply_profile_to_runtime_config(kind, str(new_bundle_id))
 
     def discover_bundles(self) -> tuple[ModelBundle, ...]:
         if not self.models_dir.exists():
@@ -572,6 +620,145 @@ class ModelCatalogService:
         self.selection_path.parent.mkdir(parents=True, exist_ok=True)
         self.selection_path.write_text(json.dumps(selection, indent=2, sort_keys=True), encoding="utf-8")
 
+    def load_profiles(self) -> dict[str, object]:
+        payload = self._load_profiles_file() or {"profiles": []}
+        raw_profiles = payload.get("profiles")
+        records = raw_profiles if isinstance(raw_profiles, list) else []
+        return {"profiles": [self._normalize_profile(cast(dict[str, object], record)) for record in records if isinstance(record, dict)]}
+
+    def create_profile(self, payload: dict[str, object]) -> dict[str, object]:
+        now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        record = dict(payload)
+        record["id"] = str(uuid.uuid4())
+        record["created_at"] = now
+        record["updated_at"] = now
+        normalized = self._normalize_profile(record)
+        profiles = self.load_profiles()
+        profiles["profiles"].append(normalized)
+        self._write_profiles_file(profiles)
+        return normalized
+
+    def update_profile(self, profile_id: str, patch: dict[str, object]) -> dict[str, object] | None:
+        profiles = self.load_profiles()
+        records = cast(list[dict[str, object]], profiles["profiles"])
+        existing = next((record for record in records if record.get("id") == profile_id), None)
+        if existing is None:
+            return None
+        if "name" in patch and patch["name"] is not None:
+            existing["name"] = patch["name"]
+        patch_params = patch.get("params")
+        if isinstance(patch_params, dict):
+            merged_params = dict(cast(dict[str, object], existing.get("params") or {}))
+            for key, value in patch_params.items():
+                if value is not None:
+                    merged_params[key] = value
+            existing["params"] = merged_params
+        existing["updated_at"] = datetime.now(timezone.utc).isoformat(timespec="seconds")
+        normalized = self._normalize_profile(existing)
+        records[records.index(existing)] = normalized
+        self._write_profiles_file({"profiles": records})
+        for assigned_bundle_id in cast(list[str], normalized.get("assigned_bundle_ids") or []):
+            if self.is_bundle_active(str(normalized["kind"]), assigned_bundle_id):
+                self._apply_profile_to_runtime_config(str(normalized["kind"]), assigned_bundle_id)
+        return normalized
+
+    def delete_profile(self, profile_id: str) -> bool:
+        profiles = self.load_profiles()
+        records = cast(list[dict[str, object]], profiles["profiles"])
+        remaining = [record for record in records if record.get("id") != profile_id]
+        if len(remaining) == len(records):
+            return False
+        self._write_profiles_file({"profiles": remaining})
+        return True
+
+    def set_bundle_profile(self, kind: str, bundle_id: str, profile_id: str | None) -> dict[str, object]:
+        kind = kind if kind in _PROFILE_PARAM_KEYS_BY_KIND else "text"
+        profiles = self.load_profiles()
+        records = cast(list[dict[str, object]], profiles["profiles"])
+        target: dict[str, object] | None = None
+        for record in records:
+            if record.get("kind") != kind:
+                continue
+            assigned = cast(list[str], record.get("assigned_bundle_ids") or [])
+            if bundle_id in assigned:
+                record["assigned_bundle_ids"] = [b for b in assigned if b != bundle_id]
+            if profile_id is not None and record.get("id") == profile_id:
+                target = record
+        if profile_id is not None:
+            if target is None:
+                raise ValueError(f"Profile '{profile_id}' of kind '{kind}' not found")
+            assigned = cast(list[str], target.get("assigned_bundle_ids") or [])
+            if bundle_id not in assigned:
+                target["assigned_bundle_ids"] = [*assigned, bundle_id]
+        self._write_profiles_file({"profiles": records})
+        if profile_id is not None and self.is_bundle_active(kind, bundle_id):
+            self._apply_profile_to_runtime_config(kind, bundle_id)
+        return self.load_profiles()
+
+    def resolve_profile_for_bundle(self, kind: str, bundle_id: str) -> dict[str, object] | None:
+        profiles = self.load_profiles()
+        for record in cast(list[dict[str, object]], profiles["profiles"]):
+            if record.get("kind") == kind and bundle_id in cast(list[str], record.get("assigned_bundle_ids") or []):
+                return record
+        return None
+
+    def _load_profiles_file(self) -> dict[str, object] | None:
+        if not self.profiles_path.exists():
+            return None
+        try:
+            loaded = json.loads(self.profiles_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        if not isinstance(loaded, dict):
+            return None
+        return cast(dict[str, object], loaded)
+
+    def _write_profiles_file(self, profiles: dict[str, object]) -> None:
+        self.profiles_path.parent.mkdir(parents=True, exist_ok=True)
+        self.profiles_path.write_text(json.dumps(profiles, indent=2, sort_keys=True), encoding="utf-8")
+
+    def _normalize_profile(self, record: dict[str, object]) -> dict[str, object]:
+        kind = _coerce_text(record.get("kind")) or "text"
+        if kind not in _PROFILE_PARAM_KEYS_BY_KIND:
+            kind = "text"
+        allowed_keys = _PROFILE_PARAM_KEYS_BY_KIND[kind]
+        raw_params = record.get("params")
+        raw_params = raw_params if isinstance(raw_params, dict) else {}
+        params = {key: raw_params[key] for key in allowed_keys if key in raw_params}
+        normalized_params = self._normalize_profile_params(kind, params)
+        assigned_raw = record.get("assigned_bundle_ids")
+        assigned_bundle_ids = []
+        if isinstance(assigned_raw, list):
+            for item in assigned_raw:
+                text = _coerce_text(item)
+                if text and text not in assigned_bundle_ids:
+                    assigned_bundle_ids.append(text)
+        return {
+            "id": _coerce_text(record.get("id")) or str(uuid.uuid4()),
+            "name": _coerce_text(record.get("name")) or "Sin nombre",
+            "kind": kind,
+            "params": normalized_params,
+            "assigned_bundle_ids": assigned_bundle_ids,
+            "created_at": _coerce_text(record.get("created_at")),
+            "updated_at": _coerce_text(record.get("updated_at")),
+        }
+
+    def _normalize_profile_params(self, kind: str, params: dict[str, object]) -> dict[str, object]:
+        if kind == "vision":
+            return {"vision_timeout_seconds": _coerce_runtime_int(params.get("vision_timeout_seconds"), 120, minimum=5)}
+        return {
+            "text_generation_temperature": _coerce_runtime_float(params.get("text_generation_temperature"), 0.55, minimum=0.0, maximum=2.0),
+            "text_generation_top_p": _coerce_runtime_float(params.get("text_generation_top_p"), 0.97, minimum=0.0, maximum=1.0),
+            "text_generation_max_tokens": _coerce_runtime_int(params.get("text_generation_max_tokens"), 3072, minimum=64, maximum=4096),
+            "text_generation_min_p": _coerce_runtime_float(params.get("text_generation_min_p"), 0.03, minimum=0.0, maximum=1.0),
+            "text_generation_repeat_penalty": _coerce_runtime_float(params.get("text_generation_repeat_penalty"), 1.08, minimum=1.0, maximum=2.0),
+            "text_generation_presence_penalty": _coerce_runtime_float(params.get("text_generation_presence_penalty"), 0.0, minimum=-2.0, maximum=2.0),
+            "text_generation_frequency_penalty": _coerce_runtime_float(params.get("text_generation_frequency_penalty"), 0.0, minimum=-2.0, maximum=2.0),
+            "text_generation_seed": _coerce_runtime_int(params.get("text_generation_seed"), -1),
+            "llama_cpp_n_ctx": _coerce_runtime_int(params.get("llama_cpp_n_ctx"), 32768, minimum=512),
+            "llama_cpp_n_gpu_layers": _coerce_runtime_int(params.get("llama_cpp_n_gpu_layers"), -1),
+        }
+
     def _load_runtime_config_file(self) -> dict[str, object] | None:
         if not self.runtime_config_path.exists():
             return None
@@ -609,7 +796,7 @@ class ModelCatalogService:
         normalized["vision_mm_projector_path"] = _coerce_text(normalized.get("vision_mm_projector_path")) or ""
         normalized["text_generation_temperature"] = _coerce_runtime_float(normalized.get("text_generation_temperature"), 0.55, minimum=0.0, maximum=2.0)
         normalized["text_generation_top_p"] = _coerce_runtime_float(normalized.get("text_generation_top_p"), 0.97, minimum=0.0, maximum=1.0)
-        normalized["text_generation_max_tokens"] = _coerce_runtime_int(normalized.get("text_generation_max_tokens"), 1536, minimum=64, maximum=4096)
+        normalized["text_generation_max_tokens"] = _coerce_runtime_int(normalized.get("text_generation_max_tokens"), 3072, minimum=64, maximum=4096)
         normalized["text_generation_min_p"] = _coerce_runtime_float(normalized.get("text_generation_min_p"), 0.03, minimum=0.0, maximum=1.0)
         normalized["text_generation_repeat_penalty"] = _coerce_runtime_float(normalized.get("text_generation_repeat_penalty"), 1.08, minimum=1.0, maximum=2.0)
         normalized["text_generation_presence_penalty"] = _coerce_runtime_float(normalized.get("text_generation_presence_penalty"), 0.0, minimum=-2.0, maximum=2.0)

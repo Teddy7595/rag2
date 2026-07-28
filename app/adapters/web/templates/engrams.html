@@ -639,6 +639,13 @@
       </div>
 
       <div class="form-group">
+        <label for="inp-raw-mode">
+          <input type="checkbox" id="inp-raw-mode" style="width:auto;display:inline-block;margin-right:6px;">
+          Modo directo (sin RAG) — para engramas técnicos de ajuste de prompts
+        </label>
+      </div>
+
+      <div class="form-group">
         <label for="inp-dialogue">Ejemplos de diálogo (uno por línea)</label>
         <textarea id="inp-dialogue" rows="4" placeholder="Hola Atlas\nAnalizando contexto...\nSiguiente paso..."></textarea>
       </div>
@@ -685,6 +692,7 @@
   const META_RULE_LIST = document.getElementById('meta-rule-list');
   const ADD_META_RULE_BTN = document.getElementById('add-meta-rule-btn');
   const INP_BACKSTORY = document.getElementById('inp-backstory');
+  const INP_RAW_MODE = document.getElementById('inp-raw-mode');
   const INP_DIALOGUE = document.getElementById('inp-dialogue');
 
   let currentEngrams = [];
@@ -736,6 +744,7 @@
       behavior_prompt: String(raw.behavior_prompt || ''),
       meta_rule: String(raw.meta_rule || ''),
       backstory: String(raw.backstory || ''),
+      raw_mode: Boolean(raw.raw_mode),
       dialogue_examples: Array.isArray(raw.dialogue_examples) ? raw.dialogue_examples : [],
     };
   }
@@ -891,8 +900,7 @@
     INP_META_RULE.value = '';
     setMetaRulesFromText(DEFAULT_META_RULE);
     INP_BACKSTORY.value = '';
-    INP_THRESHOLD.value = '0';
-    INP_MODE.value = 'Directo';
+    INP_RAW_MODE.checked = false;
     INP_DIALOGUE.value = '';
     setEditorFeedback('Completa los campos y guarda los cambios.');
   }
@@ -915,6 +923,7 @@
       INP_META_RULE.value = '';
       setMetaRulesFromText(engram.meta_rule || DEFAULT_META_RULE);
       INP_BACKSTORY.value = engram.backstory || '';
+      INP_RAW_MODE.checked = Boolean(engram.raw_mode);
       INP_DIALOGUE.value = (engram.dialogue_examples || []).join('\n');
       setEditorFeedback('Editando engrama existente.');
     } else {
@@ -960,6 +969,7 @@
       meta_rule: serializeMetaRules(metaRules),
       dialogue_examples: INP_DIALOGUE.value.split('\n').map((line) => line.trim()).filter(Boolean),
       backstory: INP_BACKSTORY.value.trim(),
+      raw_mode: INP_RAW_MODE.checked,
     };
   }
 

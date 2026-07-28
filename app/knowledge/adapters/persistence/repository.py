@@ -1,11 +1,11 @@
 from __future__ import annotations
 
-from sqlalchemy import func, select
+from sqlalchemy import delete, func, select
 
 from app.core.database import DatabaseManager
-from app.knowledge.adapters.persistence.models import IdentityRecord, KnowledgeEntryRecord
-from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
-from app.knowledge.domain import Identity, KnowledgeEntry
+from app.knowledge.adapters.persistence.models import AffectiveStateRecord, IdentityRecord, KnowledgeEntryRecord, utcnow
+from app.knowledge.application.ports import AffectiveStateRepositoryPort, EngramRepositoryPort, KnowledgeRepositoryPort
+from app.knowledge.domain import AffectiveState, Identity, KnowledgeEntry
 
 
 class SqlAlchemyKnowledgeRepository(KnowledgeRepositoryPort):
@@ -49,6 +49,27 @@ class SqlAlchemyKnowledgeRepository(KnowledgeRepositoryPort):
             )
             records = session.scalars(statement).all()
             return [record.to_domain() for record in records]
+
+    def list_by_document_id(self, document_id: str) -> list[KnowledgeEntry]:
+        if not document_id:
+            return []
+        with self.database.session_factory() as session:
+            statement = (
+                select(KnowledgeEntryRecord)
+                .where(KnowledgeEntryRecord.document_id == document_id)
+                .order_by(KnowledgeEntryRecord.page_number.asc().nulls_first(), KnowledgeEntryRecord.chunk_index.asc().nulls_first())
+            )
+            records = session.scalars(statement).all()
+            return [record.to_domain() for record in records]
+
+    def delete_by_document_id(self, document_id: str) -> int:
+        if not document_id:
+            return 0
+        with self.database.session_scope() as session:
+            result = session.execute(
+                delete(KnowledgeEntryRecord).where(KnowledgeEntryRecord.document_id == document_id)
+            )
+            return int(result.rowcount or 0)
 
     def count(self) -> int:
         with self.database.session_factory() as session:
@@ -104,3 +125,40 @@ class SqlAlchemyEngramRepository(EngramRepositoryPort):
         with self.database.session_factory() as session:
             total = session.scalar(select(func.count()).select_from(IdentityRecord))
             return int(total or 0)
+
+
+class SqlAlchemyAffectiveStateRepository(AffectiveStateRepositoryPort):
+    def __init__(self, database: DatabaseManager) -> None:
+        self.database = database
+
+    def get(self, engram_id: str) -> AffectiveState | None:
+        with self.database.session_factory() as session:
+            record = session.get(AffectiveStateRecord, engram_id)
+            if not record:
+                return None
+            return AffectiveState(
+                engram_id=record.engram_id,
+                pleasure=record.pleasure,
+                arousal=record.arousal,
+                dominance=record.dominance,
+                updated_at=record.updated_at,
+            )
+
+    def upsert(self, state: AffectiveState) -> AffectiveState:
+        record = AffectiveStateRecord(
+            engram_id=state.engram_id,
+            pleasure=state.pleasure,
+            arousal=state.arousal,
+            dominance=state.dominance,
+            updated_at=state.updated_at or utcnow(),
+        )
+        with self.database.session_scope() as session:
+            persisted = session.merge(record)
+            session.flush()
+            return AffectiveState(
+                engram_id=persisted.engram_id,
+                pleasure=persisted.pleasure,
+                arousal=persisted.arousal,
+                dominance=persisted.dominance,
+                updated_at=persisted.updated_at,
+            )

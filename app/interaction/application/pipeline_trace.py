@@ -106,11 +106,9 @@ def trace_turn_start(
 def trace_context(
     *,
     identity_name: str,
-    intent: str,
     max_tokens: int,
     temperature: float,
     deadline_ms: int,
-    narrative_mode: bool,
     knowledge_matches: list[dict[str, Any]],
     history_loaded: int,
     history_injected: int,
@@ -118,12 +116,9 @@ def trace_context(
     if not _enabled():
         return
 
-    intent_color = _GREEN if intent == "narrative" else _YELLOW if intent == "mixed" else _CYAN
     _w(_box("CONTEXT", _CYAN))
     _w(_row(f"identity      = {_B}{identity_name}{_R}"))
-    _w(_row(f"intent        = {intent_color}{_B}{intent}{_R}"))
     _w(_row(f"policy        = tokens={max_tokens}  temp={temperature:.2f}  deadline={deadline_ms // 1000}s"))
-    _w(_row(f"mode          = {'NARRATIVA' if narrative_mode else 'normal'}"))
 
     match_count = len(knowledge_matches)
     _w(_row(f"rag_matches   = {match_count}"))

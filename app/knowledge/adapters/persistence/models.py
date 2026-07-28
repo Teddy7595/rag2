@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from sqlalchemy import DateTime, Integer, JSON, String, Text
+from sqlalchemy import Boolean, DateTime, Float, Integer, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.core.database import DatabaseBase
@@ -84,6 +84,7 @@ class IdentityRecord(DatabaseBase):
     meta_rule: Mapped[str] = mapped_column(Text, nullable=False, default="Stay consistent with the selected identity.")
     dialogue_examples: Mapped[list[str]] = mapped_column(JSON, nullable=False, default=list)
     backstory: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    raw_mode: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -99,6 +100,7 @@ class IdentityRecord(DatabaseBase):
             meta_rule=identity.meta_rule,
             dialogue_examples=list(identity.dialogue_examples),
             backstory=identity.backstory,
+            raw_mode=identity.raw_mode,
             created_at=identity.created_at,
             updated_at=identity.updated_at,
         )
@@ -114,6 +116,25 @@ class IdentityRecord(DatabaseBase):
             meta_rule=self.meta_rule,
             dialogue_examples=list(self.dialogue_examples or []),
             backstory=self.backstory,
+            raw_mode=bool(self.raw_mode),
             created_at=self.created_at,
             updated_at=self.updated_at,
         )
+
+
+class AffectiveStateRecord(DatabaseBase):
+    """Estado de animo PAD (Pleasure-Arousal-Dominance) por engrama.
+
+    Tabla separada de IdentityRecord a proposito: la persona (estatica) y el
+    estado actual (dinamico, se actualiza cada turno) tienen ciclos de vida
+    distintos. Ver _ENGRAM_DEAD_COLUMNS en app/core/database/manager.py para
+    el precedente de por que no se agregan columnas de estado directo ahi.
+    """
+
+    __tablename__ = "engram_affective_state"
+
+    engram_id: Mapped[str] = mapped_column(String(36), primary_key=True)
+    pleasure: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    arousal: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    dominance: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)

@@ -60,6 +60,37 @@ class ModelApplyAndRestartRequest(BaseModel):
     reason: str | None = "admin_apply"
 
 
+class ModelProfileParams(BaseModel):
+    text_generation_temperature: float | None = None
+    text_generation_top_p: float | None = None
+    text_generation_max_tokens: int | None = None
+    text_generation_min_p: float | None = None
+    text_generation_repeat_penalty: float | None = None
+    text_generation_presence_penalty: float | None = None
+    text_generation_frequency_penalty: float | None = None
+    text_generation_seed: int | None = None
+    llama_cpp_n_ctx: int | None = None
+    llama_cpp_n_gpu_layers: int | None = None
+    vision_timeout_seconds: int | None = None
+
+
+class ModelProfileCreate(BaseModel):
+    name: str
+    kind: str
+    params: ModelProfileParams = ModelProfileParams()
+
+
+class ModelProfileUpdate(BaseModel):
+    name: str | None = None
+    params: ModelProfileParams | None = None
+
+
+class ModelProfileAssignRequest(BaseModel):
+    kind: str
+    bundle_id: str
+    profile_id: str | None = None
+
+
 def _get_model_service(request: Request) -> ModelCatalogService:
     context = get_app_context_from_request(request)
     service = context.services.get("models")
@@ -175,6 +206,51 @@ async def models_runtime_config(request: Request) -> dict[str, object]:
 @router.patch("/api/models/runtime-config")
 async def update_models_runtime_config(request: Request, payload: ModelRuntimeConfigUpdate) -> dict[str, object]:
     return _get_model_service(request).update_runtime_config(payload.model_dump(exclude_none=True))
+
+
+@router.get("/api/models/profiles")
+async def models_profiles(request: Request) -> dict[str, object]:
+    return _get_model_service(request).load_profiles()
+
+
+@router.post("/api/models/profiles")
+async def create_models_profile(request: Request, payload: ModelProfileCreate) -> dict[str, object]:
+    return _get_model_service(request).create_profile(payload.model_dump(exclude_none=True))
+
+
+@router.patch("/api/models/profiles/{profile_id}")
+async def update_models_profile(request: Request, profile_id: str, payload: ModelProfileUpdate) -> dict[str, object]:
+    model_service = _get_model_service(request)
+    result = model_service.update_profile(profile_id, payload.model_dump(exclude_none=True))
+    if result is None:
+        raise HTTPException(status_code=404, detail="Profile not found")
+    kind = str(result.get("kind") or "text")
+    assigned_bundle_ids = result.get("assigned_bundle_ids") or []
+    restarted = False
+    if any(model_service.is_bundle_active(kind, bundle_id) for bundle_id in assigned_bundle_ids):
+        _get_runtime_service(request).restart_runtime(reason="profile_updated")
+        restarted = True
+    return {**result, "restarted": restarted}
+
+
+@router.delete("/api/models/profiles/{profile_id}")
+async def delete_models_profile(request: Request, profile_id: str) -> dict[str, object]:
+    deleted = _get_model_service(request).delete_profile(profile_id)
+    return {"deleted": deleted, "profile_id": profile_id}
+
+
+@router.post("/api/models/profiles/assign")
+async def assign_models_profile(request: Request, payload: ModelProfileAssignRequest) -> dict[str, object]:
+    model_service = _get_model_service(request)
+    try:
+        result = model_service.set_bundle_profile(payload.kind, payload.bundle_id, payload.profile_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    restarted = False
+    if payload.profile_id is not None and model_service.is_bundle_active(payload.kind, payload.bundle_id):
+        _get_runtime_service(request).restart_runtime(reason="profile_assigned")
+        restarted = True
+    return {**result, "restarted": restarted}
 
 
 @router.post("/api/models/apply-restart-stream")

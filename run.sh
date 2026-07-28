@@ -116,7 +116,7 @@ sync_firewall_port() {
         return 0
     fi
 
-    local zone="${FIREWALL_ZONE:-home}"
+    local zone="${FIREWALL_ZONE:-public}"
     local state_dir="${HOME}/.config/rag2"
     local state_file="${state_dir}/last-port"
     mkdir -p "$state_dir"

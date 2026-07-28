@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  vector_db:
+    build: .
+    container_name: db_vectorial_taspl
+    restart: always
+    environment:
+      POSTGRES_USER: TASPL
+      POSTGRES_PASSWORD: Th3_V3ct0r_D3m0n_7595_#_St4y_4l1v3_TASPL
+      POSTGRES_DB: taspl_vectors
+    ports:
+      # Solo localhost, puerto no estandar para no chocar con otros postgres
+      # (ej. tesis-db-1) ni quedar expuesto a la red.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # Formato -> [Ruta en tu PC] : [Ruta interna del contenedor]
+      # Volumen vivo en HOME (btrfs, NOCOW via `chattr +C`, sin snapshots de
+      # Snapper). El path del Vault original queda como backup pre-migracion.
+      # Ownership del host ya mapeada a UID 999 (postgres) via
+      # `podman unshare chown -R 999:999` para rootless podman.
+      # :Z reetiqueta el bind mount para SELinux (enforcing en este host).
+      - /home/taspl/db/vector_db:/var/lib/postgresql/data:Z
