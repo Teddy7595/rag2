@@ -4,13 +4,17 @@ from app.core.app_context import get_app_context_from_app
 from app.core.events import EventEnvelope
 from app.knowledge.application import KnowledgeService
 from app.knowledge.events import (
+    AffectiveStateGetRequest,
+    AffectiveStateUpdateRequest,
     ContextBuildRequest,
     ContextGraphRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
+    DocumentDeleteRequest,
     DocumentIngestRequest,
     DocumentListRequest,
     DocumentOverviewRequest,
+    DocumentTagsUpdateRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
     EngramImportCsvRequest,
@@ -27,8 +31,10 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_CONTEXT_GRAPH,
     REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
     REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
+    REQUEST_KNOWLEDGE_DOCUMENT_DELETE,
     REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
     REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW,
+    REQUEST_KNOWLEDGE_DOCUMENT_TAGS_UPDATE,
     REQUEST_KNOWLEDGE_DOCUMENTS,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
@@ -41,6 +47,8 @@ from app.knowledge.events import (
     REQUEST_KNOWLEDGE_ITEM_CREATE,
     REQUEST_KNOWLEDGE_ITEMS,
     REQUEST_KNOWLEDGE_OVERVIEW,
+    PUBLISH_KNOWLEDGE_AFFECTIVE_STATE_UPDATE,
+    REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET,
 )
 
 
@@ -107,6 +115,18 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     def handle_document_overview(envelope: EventEnvelope[DocumentOverviewRequest]) -> dict[str, object]:
         return service.document_overview(envelope.payload)
 
+    def handle_document_delete(envelope: EventEnvelope[DocumentDeleteRequest]) -> dict[str, object]:
+        return service.delete_document(envelope.payload)
+
+    def handle_document_tags_update(envelope: EventEnvelope[DocumentTagsUpdateRequest]) -> dict[str, object]:
+        return service.update_document_tags(envelope.payload)
+
+    def handle_affective_state_get(envelope: EventEnvelope[AffectiveStateGetRequest]) -> dict[str, object]:
+        return service.get_affective_state(envelope.payload)
+
+    def handle_affective_state_update(envelope: EventEnvelope[AffectiveStateUpdateRequest]) -> None:
+        service.update_affective_state(envelope.payload)
+
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_OVERVIEW, handle_overview)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ITEMS, handle_items)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_ITEM_CREATE, handle_create)
@@ -126,3 +146,7 @@ def register_knowledge_event_handlers(app: FastAPI) -> None:
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_INGEST, handle_document_ingest)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENTS, handle_document_list)
     context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW, handle_document_overview)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_DELETE, handle_document_delete)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_DOCUMENT_TAGS_UPDATE, handle_document_tags_update)
+    context.event_bus.subscribe_request(REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET, handle_affective_state_get)
+    context.event_bus.subscribe_publish(PUBLISH_KNOWLEDGE_AFFECTIVE_STATE_UPDATE, handle_affective_state_update)

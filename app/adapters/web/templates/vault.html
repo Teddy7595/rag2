@@ -1,0 +1,76 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Archivos en el vault</h2>
+  <div class="panel-body">
+    <input id="vault-filter" class="control-input" type="text" placeholder="Filtrar por nombre o ruta..." style="width: 100%; margin-bottom: 12px;">
+    <p id="vault-count" class="secondary-note"></p>
+    <div id="vault-list" style="margin-top: 10px; display: grid; gap: 6px;">
+      <p class="secondary-note">Cargando archivos...</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const listEl = document.getElementById('vault-list');
+  const countEl = document.getElementById('vault-count');
+  const filterInput = document.getElementById('vault-filter');
+  let allFiles = [];
+
+  const humanSize = (bytes) => {
+    if (bytes < 1024) return `${bytes} B`;
+    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+    if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+    return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+  };
+
+  const render = (files) => {
+    if (files.length === 0) {
+      listEl.innerHTML = '<p class="secondary-note">Sin archivos que coincidan.</p>';
+      return;
+    }
+    listEl.innerHTML = files.map((file) => `
+      <div class="control-card" style="display:flex; justify-content:space-between; align-items:center; padding: 8px 12px;">
+        <div style="overflow-wrap:anywhere;">
+          <div>${file.name}</div>
+          <div class="secondary-note">${file.relative_path}</div>
+        </div>
+        <span class="secondary-note" style="white-space:nowrap; margin-left: 12px;">${humanSize(file.size_bytes)}</span>
+      </div>
+    `).join('');
+  };
+
+  async function load() {
+    try {
+      const resp = await fetch('/api/storage/vault/files?limit=2000');
+      allFiles = await resp.json();
+      countEl.textContent = `${allFiles.length} archivo(s)`;
+      render(allFiles);
+    } catch (error) {
+      listEl.innerHTML = `<p class="secondary-note">Error cargando el vault: ${String(error)}</p>`;
+    }
+  }
+
+  filterInput.addEventListener('input', () => {
+    const query = filterInput.value.trim().toLowerCase();
+    const filtered = query
+      ? allFiles.filter((file) => file.name.toLowerCase().includes(query) || file.relative_path.toLowerCase().includes(query))
+      : allFiles;
+    countEl.textContent = `${filtered.length} archivo(s)`;
+    render(filtered);
+  });
+
+  load();
+})();
+</script>
+{% endblock %}

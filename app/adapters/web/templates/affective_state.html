@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{% block content %}
+<section class="hero">
+  <p class="eyebrow">{{ eyebrow }}</p>
+  <h1 class="headline">{{ headline }}</h1>
+  <p class="description">{{ description }}</p>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
+  <h2 class="panel-title">Estado afectivo por engrama</h2>
+  <div class="panel-body">
+    <p class="secondary-note">
+      Pleasure/Arousal/Dominance (PAD) — decae hacia (0, 0, 0) en ausencia de señales fuertes en la conversación.
+      Solo engramas personalizados (no "Asistente Base") acumulan estado; el resto siempre muestra neutro.
+    </p>
+    <div id="affective-list" style="margin-top: 14px; display: grid; gap: 10px;">
+      <p class="secondary-note">Cargando engramas...</p>
+    </div>
+  </div>
+</section>
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const listEl = document.getElementById('affective-list');
+
+  const paletteFor = (value) => {
+    if (value > 0.15) return '#4ade80';
+    if (value < -0.15) return '#f87171';
+    return '#888';
+  };
+
+  const bar = (label, value) => `
+    <div style="display:flex; align-items:center; gap:8px; font-family: var(--chat-font-mono, monospace); font-size: 0.78rem;">
+      <span style="width:90px; color:#888;">${label}</span>
+      <div style="flex:1; height:8px; border-radius:4px; background:#1a1a1a; position:relative; overflow:hidden;">
+        <div style="position:absolute; top:0; bottom:0; left:50%; width:${Math.abs(value) * 50}%; ${value >= 0 ? 'left:50%;' : `left:${50 - Math.abs(value) * 50}%;`} background:${paletteFor(value)};"></div>
+        <div style="position:absolute; left:50%; top:0; bottom:0; width:1px; background:#444;"></div>
+      </div>
+      <span style="width:48px; text-align:right; color:${paletteFor(value)};">${value.toFixed(2)}</span>
+    </div>
+  `;
+
+  async function load() {
+    try {
+      const engramsResp = await fetch('/api/knowledge/engrams');
+      const engrams = await engramsResp.json();
+      if (!Array.isArray(engrams) || engrams.length === 0) {
+        listEl.innerHTML = '<p class="secondary-note">No hay engramas creados todavía.</p>';
+        return;
+      }
+
+      const cards = await Promise.all(engrams.map(async (engram) => {
+        let state = { pleasure: 0, arousal: 0, dominance: 0, updated_at: null };
+        try {
+          const stateResp = await fetch(`/api/knowledge/engrams/${encodeURIComponent(engram.id)}/affective-state`);
+          if (stateResp.ok) {
+            state = await stateResp.json();
+          }
+        } catch (_) {
+          // deja el estado neutro por defecto si falla la consulta puntual
+        }
+        const updated = state.updated_at ? new Date(state.updated_at).toLocaleString() : 'sin actividad todavía';
+        return `
+          <div class="control-card">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+              <strong>${engram.name}</strong>
+              <span class="secondary-note">${updated}</span>
+            </div>
+            ${bar('Pleasure', Number(state.pleasure) || 0)}
+            ${bar('Arousal', Number(state.arousal) || 0)}
+            ${bar('Dominance', Number(state.dominance) || 0)}
+          </div>
+        `;
+      }));
+
+      listEl.innerHTML = cards.join('');
+    } catch (error) {
+      listEl.innerHTML = `<p class="secondary-note">Error cargando estado afectivo: ${String(error)}</p>`;
+    }
+  }
+
+  load();
+})();
+</script>
+{% endblock %}

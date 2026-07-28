@@ -11,6 +11,7 @@ class ModelTextGenerationRequest:
     temperature: float = 0.35
     top_p: float = 1.0
     max_tokens: int = 768
+    identity_name: str = "assistant"
 
 
 @dataclass(frozen=True)

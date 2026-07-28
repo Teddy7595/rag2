@@ -26,24 +26,72 @@ def _clean_ingested_text(raw_text: str) -> str:
     return text.strip()
 
 
-def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
-    words = text.split()
-    if not words:
-        return []
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[.!?])\s+(?=[A-ZÁÉÍÓÚÑ0-9¿¡\"'])|\n{2,}")
 
+
+def _split_sentences(text: str) -> list[str]:
+    stripped = text.strip()
+    if not stripped:
+        return []
+    return [sentence.strip() for sentence in _SENTENCE_SPLIT_RE.split(stripped) if sentence.strip()]
+
+
+def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
+    """Pack whole sentences into chunks up to `chunk_size` words, never splitting mid-sentence.
+
+    Falls back to a hard word-window split only for a single sentence that alone
+    exceeds `chunk_size` (rare, but avoids an unbounded chunk for run-on text).
+    """
     safe_chunk_size = max(1, chunk_size)
     safe_overlap = max(0, min(overlap, safe_chunk_size - 1))
+
+    sentences = _split_sentences(text)
+    if not sentences:
+        return []
+
     chunks: list[str] = []
-    start = 0
-    while start < len(words):
-        end = min(len(words), start + safe_chunk_size)
-        chunk = " ".join(words[start:end]).strip()
-        if chunk:
-            chunks.append(chunk)
-        if end >= len(words):
-            break
-        start = end - safe_overlap
-    return chunks
+    current_sentences: list[str] = []
+    current_word_count = 0
+
+    def flush() -> None:
+        if current_sentences:
+            chunks.append(" ".join(current_sentences).strip())
+
+    for sentence in sentences:
+        sentence_words = sentence.split()
+        if not sentence_words:
+            continue
+
+        if len(sentence_words) > safe_chunk_size:
+            flush()
+            current_sentences = []
+            current_word_count = 0
+            start = 0
+            while start < len(sentence_words):
+                end = min(len(sentence_words), start + safe_chunk_size)
+                piece = " ".join(sentence_words[start:end]).strip()
+                if piece:
+                    chunks.append(piece)
+                if end >= len(sentence_words):
+                    break
+                start = end - safe_overlap
+            continue
+
+        if current_word_count + len(sentence_words) > safe_chunk_size and current_sentences:
+            flush()
+            if safe_overlap > 0:
+                overlap_words = " ".join(current_sentences).split()[-safe_overlap:]
+                current_sentences = [" ".join(overlap_words)] if overlap_words else []
+                current_word_count = len(overlap_words)
+            else:
+                current_sentences = []
+                current_word_count = 0
+
+        current_sentences.append(sentence)
+        current_word_count += len(sentence_words)
+
+    flush()
+    return [chunk for chunk in chunks if chunk]
 
 
 def _read_pdf_pages(pdf_path: str) -> list[str]:

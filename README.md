@@ -33,26 +33,46 @@ The app also runs with:
 python main.py
 ```
 
-## AMD ROCm Setup (Arch)
+## AMD GPU: use ./run.sh instead of `uv sync` / `uv run`
 
-For an AMD-only machine, use the project installer:
+If you set up the local AMD GPU runtime (below), **do not run `uv sync` or `uv run` directly** once the initial install is done. `llama-cpp-python` is a plain dependency in `pyproject.toml` with no build flags, so any `uv sync` (including the implicit one `uv run` does by default) silently reinstalls a CPU-only build and discards the GPU backend (Vulkan on openSUSE, HIP on Arch) compiled by the installer — with no error.
+
+Instead, start the app with:
 
 ```bash
-./installer.sh
+./run.sh
 ```
 
-What it does:
+It launches `main.py` directly through the venv's own Python (never through `uv run`), and if it detects the GPU backend `.so` is missing (e.g. because something ran `uv sync` since the last start), it recompiles `llama-cpp-python` with the right flags for your distro before booting.
 
-- Installs ROCm and build toolchain packages via `pacman`.
-- Detects `AMD_GPU_TARGET` using `rocminfo` (or respects your exported value).
-- Persists ROCm environment variables for `bash` and `fish`.
-- Rebuilds `llama-cpp-python` with HIP flags (`-DGGML_HIP=ON -DGPU_TARGETS=...`).
-- Verifies whether the resulting binding supports GPU offload.
+## AMD ROCm Setup
 
-If you need to override defaults:
+For an AMD-only machine, use the installer matching your distro:
 
 ```bash
-AMD_GPU_TARGET=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 ./installer.sh
+./installer-arch.sh       # Arch Linux and derivatives (pacman)
+./installer-opensuse.sh   # openSUSE Tumbleweed (zypper)
+```
+
+Both scripts:
+
+- Install the build toolchain, ROCm runtime, and `uv`.
+- Detect `AMD_GPU_TARGET` using `rocminfo` (or respect your exported value).
+- Persist ROCm environment variables (`ROCM_PATH`, `HIP_PATH`, `HSA_OVERRIDE_GFX_VERSION`, `LD_LIBRARY_PATH`) for `bash` and `fish`.
+- Install `torch`/`torchvision`/`sentence-transformers` from the prebuilt ROCm wheel index, scoped to the project's `.venv` (nothing is installed into the system Python).
+- Compile `llama-cpp-python` from source, scoped to the same `.venv`, and verify it reports GPU offload support before finishing.
+
+They differ only in the `llama-cpp-python` GPU backend, because of how each distro packages ROCm:
+
+- **Arch** (`installer-arch.sh`): compiles with the native HIP backend (`-DGGML_HIP=ON`), since `rocm-hip-sdk` bundles hipBLAS/rocBLAS.
+- **openSUSE** (`installer-opensuse.sh`): compiles with the Vulkan backend (`-DGGML_VULKAN=ON`), since Tumbleweed does not package hipBLAS/rocBLAS. Vulkan performs comparably on RDNA3 and needs no ROCm math libraries — `vulkan-devel` and `shaderc` (for `glslc`) are enough.
+
+Only the `llama-cpp-python` build differs; `torch`/`sentence-transformers` still run on ROCm on both distros, since PyPI ships self-contained ROCm wheels that don't depend on system hipBLAS.
+
+If you need to override defaults on either script:
+
+```bash
+AMD_GPU_TARGET=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 ./installer-opensuse.sh
 ```
 
 ## First Endpoint

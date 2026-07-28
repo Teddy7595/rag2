@@ -6,6 +6,7 @@ import importlib.util
 from pathlib import Path
 from typing import Any, cast
 
+from app.models.chat_template import render_chat_prompt
 from app.models.events import ModelTextGenerationRequest, ModelVisionAnalysisRequest
 from app.models.service import ModelCatalogService
 
@@ -80,7 +81,7 @@ class LocalInferenceService:
         return {
             "temperature": max(0.0, min(2.0, float(config.get("text_generation_temperature") or 0.35))),
             "top_p": max(0.0, min(1.0, float(config.get("text_generation_top_p") or 1.0))),
-            "max_tokens": max(64, min(4096, int(config.get("text_generation_max_tokens") or 768))),
+            "max_tokens": max(64, min(4096, int(config.get("text_generation_max_tokens") or 3072))),
             "min_p": max(0.0, min(1.0, float(config.get("text_generation_min_p") or 0.05))),
             "repeat_penalty": max(1.0, min(2.0, float(config.get("text_generation_repeat_penalty") or 1.15))),
             "presence_penalty": max(-2.0, min(2.0, float(config.get("text_generation_presence_penalty") or 0.0))),
@@ -319,8 +320,10 @@ class LocalInferenceService:
             frequency_penalty = max(-2.0, min(2.0, float(runtime_config.get("text_generation_frequency_penalty") or 0.10)))
             seed = int(runtime_config.get("text_generation_seed") or -1)
 
+            rendered = render_chat_prompt(llm, request.prompt, identity_name=request.identity_name)
+
             response = cast(Any, llm).create_completion(
-                prompt=request.prompt,
+                prompt=rendered.prompt,
                 max_tokens=request.max_tokens,
                 temperature=request.temperature,
                 top_p=request.top_p,
@@ -328,21 +331,26 @@ class LocalInferenceService:
                 repeat_penalty=repeat_penalty,
                 presence_penalty=presence_penalty,
                 frequency_penalty=frequency_penalty,
-                stop=["<end_of_turn>", "<|eot_id|>", "</assistant_response>", "<|im_end|>", "</s>", "Human:", "User:"],
+                stop=rendered.stop,
                 seed=seed if seed >= 0 else None,
                 stream=False,
             )
             response_payload = cast(dict[str, Any], response) if isinstance(response, dict) else {}
             choices = cast(list[dict[str, Any]], response_payload.get("choices", []))
             text = ""
+            finish_reason = None
             if choices:
                 text = str(choices[0].get("text") or "").strip()
+                finish_reason = choices[0].get("finish_reason")
             return {
                 "ok": bool(text),
                 "provider": "local",
                 "reason": None if text else "empty_response",
                 "content": text,
+                "finish_reason": finish_reason,
                 "model_path": model_path,
+                "chat_template_used": rendered.rendered,
+                "chat_template_format": rendered.format_label,
             }
         except Exception as exc:
             return {
@@ -599,11 +607,11 @@ class LocalInferenceService:
                 model_path=str(self.catalog_service.models_dir / relative_model_path),
                 chat_handler=chat_handler,
                 n_ctx=4096,
-                n_gpu_layers=0,
-                n_batch=256,
-                flash_attn=False,
+                n_gpu_layers=-1,
+                n_batch=512,
+                flash_attn=True,
                 use_mmap=True,
-                verbose=False,
+                verbose=False
             )
         except Exception as exc:
             self._last_vision_load_error = str(exc)

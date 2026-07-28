@@ -262,6 +262,11 @@
     border-bottom-right-radius: 6px;
   }
 
+  .message-row.message-hidden .bubble {
+    opacity: 0.55;
+    font-style: italic;
+  }
+
   .message-row.ai .bubble,
   .message-row.system .bubble {
     background-color: var(--chat-msg-bg-ai);
@@ -954,6 +959,102 @@
   }
   #ideas-toggle:hover { border-color: var(--chat-accent-color); color: var(--chat-accent-color); }
 
+  #docs-toggle {
+    position: fixed;
+    left: 108px;
+    bottom: calc(94px + var(--chat-input-safe-bottom));
+    width: 38px;
+    height: 38px;
+    border-radius: 999px;
+    border: 1px solid var(--chat-line-hard);
+    background: rgba(14, 14, 14, 0.95);
+    color: #e5e7eb;
+    z-index: 120;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #docs-toggle:hover { border-color: var(--chat-accent-color); color: var(--chat-accent-color); }
+
+  #docs-panel {
+    position: fixed;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 340px;
+    background: var(--chat-surface-1, #111);
+    border-right: 1px solid var(--chat-line-hard);
+    z-index: 200;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(-100%);
+    transition: transform 0.22s ease;
+  }
+  #docs-panel.open { transform: translateX(0); }
+  #docs-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--chat-line-hard);
+    font-family: var(--chat-font-mono);
+    font-size: 0.85rem;
+    color: var(--chat-accent-color);
+    flex-shrink: 0;
+  }
+  #docs-panel-close {
+    background: none; border: none; cursor: pointer;
+    color: #888; font-size: 1.2rem; line-height: 1;
+  }
+  #docs-panel-close:hover { color: var(--chat-text-main); }
+  #docs-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .doc-item {
+    background: var(--chat-msg-bg-ai, #0f0f0f);
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 8px;
+    padding: 10px 12px;
+  }
+  .doc-item-title {
+    font-size: 0.82rem;
+    color: #ddd;
+    word-break: break-word;
+  }
+  .doc-item-meta {
+    font-size: 0.68rem;
+    color: #555;
+    margin-top: 4px;
+    font-family: var(--chat-font-mono);
+  }
+  .doc-item-tags {
+    font-size: 0.68rem;
+    color: var(--chat-accent-color);
+    margin-top: 4px;
+    font-family: var(--chat-font-mono);
+  }
+  .doc-item-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 8px;
+  }
+  .doc-item-action {
+    font-size: 0.72rem;
+    color: #888;
+    cursor: pointer;
+    text-decoration: underline;
+    background: none; border: none; padding: 0;
+    font-family: var(--chat-font-mono);
+  }
+  .doc-item-action:hover { color: var(--chat-text-main); }
+  .doc-item-action.danger:hover { color: #f87171; }
+
   #ideas-panel {
     position: fixed;
     left: 0;
@@ -985,6 +1086,27 @@
     color: #888; font-size: 1.2rem; line-height: 1;
   }
   #ideas-panel-close:hover { color: var(--chat-text-main); }
+  #ideas-panel-scope {
+    display: flex;
+    gap: 6px;
+    padding: 10px 12px 0;
+    flex-shrink: 0;
+  }
+  .ideas-scope-btn {
+    flex: 1;
+    background: none;
+    border: 1px solid var(--chat-line-soft);
+    border-radius: 8px;
+    color: #888;
+    font-family: var(--chat-font-mono);
+    font-size: 0.7rem;
+    padding: 6px 8px;
+    cursor: pointer;
+  }
+  .ideas-scope-btn.active {
+    border-color: var(--chat-accent-color);
+    color: var(--chat-accent-color);
+  }
   #ideas-list {
     flex: 1;
     overflow-y: auto;
@@ -1783,6 +1905,7 @@
     </span>
     <span class="session-chip" id="chat-limits-chip" style="display:none">ctx=5 · hist=20</span>
     <span class="session-chip" id="chat-model-chip" style="display:none">txt=pendiente · vis=off</span>
+    <span class="session-chip" id="chat-raw-mode-chip" style="display:none">modo directo · sin RAG</span>
     <a href="/admin/session-intel" id="chat-session-intel-link" class="header-btn">Session Intel</a>
     <a href="/admin/context-traces" class="header-btn">Context Traces</a>
     <a href="/admin/engrams" class="header-btn">Engramas</a>
@@ -1822,8 +1945,26 @@
     <span>Librito de ideas</span>
     <button id="ideas-panel-close" type="button" aria-label="Cerrar">×</button>
   </div>
+  <div id="ideas-panel-scope">
+    <button id="ideas-scope-session" type="button" class="ideas-scope-btn active">Esta conversación</button>
+    <button id="ideas-scope-all" type="button" class="ideas-scope-btn">Todas</button>
+  </div>
   <div id="ideas-list">
     <p id="ideas-panel-empty">Sin ideas guardadas.</p>
+  </div>
+</div>
+
+<button id="docs-toggle" type="button" aria-label="Documentos digeridos">
+  <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+</button>
+
+<div id="docs-panel" aria-label="Documentos digeridos">
+  <div id="docs-panel-header">
+    <span>Documentos digeridos</span>
+    <button id="docs-panel-close" type="button" aria-label="Cerrar">×</button>
+  </div>
+  <div id="docs-list">
+    <p id="docs-panel-empty">Cargando...</p>
   </div>
 </div>
 
@@ -2048,6 +2189,7 @@
   let currentEngramColor = '#00ff41';
   let currentEngramAvatar = 'https://ui-avatars.com/api/?name=AI&background=333&color=fff';
   let currentAiBubble = null;
+  let currentUserBubble = null;
   let isProcessing = false;
   let availableHints = [];
   let knownEngrams = [];
@@ -2197,6 +2339,10 @@
           updateSendButtonState();
           return;
         case 'turn_progress': {
+          if (packet.stage === 'user_message_recorded' && packet.user_message && packet.user_message.id) {
+            patchMessageWithId(currentUserBubble, packet.user_message.id, true);
+            currentUserBubble = null;
+          }
           const label = String(packet.label || packet.stage || 'procesando');
           const detail = String(packet.detail || '').trim();
           const tone = String(packet.tone || 'sky');
@@ -2882,6 +3028,36 @@
     return bubble;
   }
 
+  // Parcha una burbuja pintada de forma optimista (sin id todavía, ej. el
+  // mensaje del usuario recién enviado) una vez que el backend confirma el
+  // guardado y llega el id real — sin esto, esa fila se queda sin controles
+  // de editar/borrar hasta recargar la página.
+  function patchMessageWithId(bubble, msgId, isUser) {
+    if (!bubble || !msgId) {
+      return;
+    }
+    const row = bubble.closest('.message-row');
+    if (!row || row.dataset.id) {
+      return;
+    }
+    row.dataset.id = msgId;
+    lastMessageId = msgId;
+    const avatarCol = row.querySelector('.avatar-col');
+    if (avatarCol && !avatarCol.querySelector('.avatar-action-btn')) {
+      const actionBtn = document.createElement('button');
+      actionBtn.className = 'avatar-action-btn';
+      actionBtn.type = 'button';
+      actionBtn.setAttribute('aria-label', 'Opciones del mensaje');
+      actionBtn.innerHTML = '<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="3" cy="8" r="1"/><circle cx="8" cy="8" r="1"/><circle cx="13" cy="8" r="1"/></svg>';
+      avatarCol.appendChild(actionBtn);
+    }
+    const meta = row.querySelector('.meta');
+    if (meta && !meta.textContent.includes(String(msgId).slice(0, 8))) {
+      meta.textContent = `${meta.textContent} · ${String(msgId).slice(0, 8)}`;
+    }
+    injectControls(row, msgId, isUser);
+  }
+
   function setupMessageInteractions(row) {
     row.addEventListener('touchstart', () => {
       const controls = row.querySelector('.msg-controls');
@@ -2993,7 +3169,21 @@
     deleteButton.addEventListener('click', async () => {
       const response = await fetch(`/api/interaction/messages/${encodeURIComponent(messageId)}`, { method: 'DELETE' });
       const payload = await response.json();
-      setActionStatus(response.ok && payload.ok ? `Oculto: ${messageId}` : `No se pudo ocultar ${messageId}`, response.ok && payload.ok ? 'green' : 'danger');
+      const ok = response.ok && payload.ok;
+      setActionStatus(ok ? `Oculto: ${messageId}` : `No se pudo ocultar ${messageId}`, ok ? 'green' : 'danger');
+      if (ok) {
+        const bubble = row.querySelector('.bubble');
+        if (bubble) {
+          bubble.textContent = (payload.message && payload.message.content) || '[mensaje oculto por operador]';
+        }
+        row.classList.add('message-hidden');
+        controls.querySelectorAll('.ctrl-btn').forEach((btn) => {
+          if (btn !== deleteButton) {
+            btn.disabled = true;
+          }
+        });
+        deleteButton.disabled = true;
+      }
     });
     controls.appendChild(deleteButton);
 
@@ -3086,6 +3276,12 @@
     if (resolvedAvatar) {
       currentEngramAvatar = resolvedAvatar;
     }
+
+    const rawMode = Boolean(payload.raw_mode || nested.raw_mode);
+    const rawModeChip = document.getElementById('chat-raw-mode-chip');
+    if (rawModeChip) {
+      rawModeChip.style.display = rawMode ? 'inline-flex' : 'none';
+    }
   }
 
   function persistSessionId(sessionId) {
@@ -3100,7 +3296,10 @@
     if (sessionIntelLink) {
       sessionIntelLink.href = `/admin/session-intel?session_id=${encodeURIComponent(sessionId)}`;
     }
-    activeIdentityId = loadSessionEngram(sessionId) || pendingLobbyEngramId || activeIdentityId;
+    // No caer al activeIdentityId de la sesión anterior — una sesión sin
+    // engrama guardado explícitamente debe arrancar en el default (''), no
+    // heredar el engrama con el que se venía hablando en el chat previo.
+    activeIdentityId = loadSessionEngram(sessionId) || pendingLobbyEngramId || '';
     applySessionConfigToLobby(sessionId);
     loadLimitsForSession(sessionId);
     persistLimits(sessionId);
@@ -4296,7 +4495,58 @@
       cancelEdit();
     }
 
-    appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat');
+    if (attachedFile) {
+      const isImage = String(attachedFile.type || '').toLowerCase().startsWith('image/');
+      if (isImage) {
+        setActionStatus('Las imagenes aun no se digieren al enviar. Usa /vision o quita el adjunto ("limpiar").', 'amber');
+        return;
+      }
+
+      const engramId = await resolveActiveEngramId();
+      if (!engramId) {
+        setActionStatus('No hay engrama activo. Selecciona uno para adjuntar contenido.', 'amber');
+        return;
+      }
+
+      const fileToSend = attachedFile;
+      startProcessingFeedback('feeding de libro: subiendo adjunto', 'blue');
+      try {
+        const formData = new FormData();
+        formData.append('file', fileToSend);
+        const uploadResponse = await fetch(`/api/storage/engrams/${encodeURIComponent(engramId)}/content`, {
+          method: 'POST',
+          body: formData,
+        });
+        const uploadPayload = await uploadResponse.json();
+        if (!uploadResponse.ok) {
+          setActionStatus(`Fallo upload del adjunto: ${JSON.stringify(uploadPayload)}`, 'danger');
+          return;
+        }
+
+        const relativePath = String(uploadPayload.relative_path || '');
+        updateProcessingStage('feeding de libro: digiriendo adjunto', 'blue');
+        const query = new URLSearchParams({ relative_path: relativePath, engram_id: engramId });
+        const digestResponse = await fetch(`/api/storage/vault/ingest?${query.toString()}`, { method: 'POST' });
+        const digestPayload = await digestResponse.json();
+        if (!digestResponse.ok) {
+          setActionStatus(`Fallo digest del adjunto: ${JSON.stringify(digestPayload)}`, 'danger');
+          return;
+        }
+
+        const ingested = digestPayload.ingested || {};
+        setActionStatus(`Adjunto digerido: ${relativePath} - chunks=${ingested.chunk_count || 0}`, 'green');
+        attachedFile = null;
+        fileUpload.value = '';
+        renderAttachedFile();
+      } catch (error) {
+        setActionStatus(`Fallo al procesar el adjunto: ${String(error)}`, 'danger');
+        return;
+      } finally {
+        stopProcessingFeedback();
+      }
+    }
+
+    currentUserBubble = appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat');
     inputField.value = '';
     adjustHeight(inputField);
     updateSendButtonState();
@@ -4799,10 +5049,14 @@
   const ideasToggle = document.getElementById('ideas-toggle');
   const ideasPanelClose = document.getElementById('ideas-panel-close');
   const ideasList = document.getElementById('ideas-list');
+  const ideasScopeSession = document.getElementById('ideas-scope-session');
+  const ideasScopeAll = document.getElementById('ideas-scope-all');
+  let ideasScope = 'session';
 
   async function loadIdeas() {
     try {
-      const url = activeSessionId ? `/api/ideas?limit=50&session_id=${encodeURIComponent(activeSessionId)}` : '/api/ideas?limit=50';
+      const useSessionScope = ideasScope === 'session' && activeSessionId;
+      const url = useSessionScope ? `/api/ideas?limit=50&session_id=${encodeURIComponent(activeSessionId)}` : '/api/ideas?limit=50';
       const resp = await fetch(url);
       const clips = await resp.json();
       ideasList.innerHTML = '';
@@ -4874,6 +5128,121 @@
     if (isOpen) loadIdeas();
   });
   ideasPanelClose.addEventListener('click', () => ideasPanel.classList.remove('open'));
+  ideasScopeSession.addEventListener('click', () => {
+    if (ideasScope === 'session') return;
+    ideasScope = 'session';
+    ideasScopeSession.classList.add('active');
+    ideasScopeAll.classList.remove('active');
+    loadIdeas();
+  });
+  ideasScopeAll.addEventListener('click', () => {
+    if (ideasScope === 'all') return;
+    ideasScope = 'all';
+    ideasScopeAll.classList.add('active');
+    ideasScopeSession.classList.remove('active');
+    loadIdeas();
+  });
+
+  // ── Documentos digeridos ───────────────────────────────────────────────
+  const docsPanel = document.getElementById('docs-panel');
+  const docsToggle = document.getElementById('docs-toggle');
+  const docsPanelClose = document.getElementById('docs-panel-close');
+  const docsList = document.getElementById('docs-list');
+
+  async function loadDocs() {
+    try {
+      const resp = await fetch('/api/knowledge/documents?limit=100');
+      const documents = await resp.json();
+      docsList.innerHTML = '';
+      if (!Array.isArray(documents) || documents.length === 0) {
+        docsList.innerHTML = '<p id="docs-panel-empty">Sin documentos digeridos.</p>';
+        return;
+      }
+      documents.forEach((doc) => {
+        const item = document.createElement('div');
+        item.className = 'doc-item';
+
+        const titleEl = document.createElement('div');
+        titleEl.className = 'doc-item-title';
+        titleEl.textContent = doc.title || doc.document_title || 'sin título';
+
+        const metaEl = document.createElement('div');
+        metaEl.className = 'doc-item-meta';
+        const chunkCount = doc.chunk_count != null ? doc.chunk_count : '?';
+        metaEl.textContent = `${chunkCount} fragmento(s) · ${doc.source_type || 'document'}`;
+
+        const tagsEl = document.createElement('div');
+        tagsEl.className = 'doc-item-tags';
+        const tags = Array.isArray(doc.tags) ? doc.tags : [];
+        tagsEl.textContent = tags.length ? tags.join(', ') : 'sin etiquetas';
+
+        const actions = document.createElement('div');
+        actions.className = 'doc-item-actions';
+
+        const tagBtn = document.createElement('button');
+        tagBtn.className = 'doc-item-action';
+        tagBtn.type = 'button';
+        tagBtn.textContent = 'editar etiquetas';
+        tagBtn.addEventListener('click', async () => {
+          const current = tags.join(', ');
+          const input = window.prompt('Etiquetas separadas por coma:', current);
+          if (input === null) {
+            return;
+          }
+          const newTags = input.split(',').map((tag) => tag.trim()).filter(Boolean);
+          const resp2 = await fetch(`/api/knowledge/documents/${encodeURIComponent(doc.document_id)}/tags`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ tags: newTags }),
+          });
+          if (resp2.ok) {
+            tagsEl.textContent = newTags.length ? newTags.join(', ') : 'sin etiquetas';
+            setActionStatus('Etiquetas actualizadas', 'green');
+          } else {
+            setActionStatus('No se pudieron actualizar las etiquetas', 'danger');
+          }
+        });
+
+        const delBtn = document.createElement('button');
+        delBtn.className = 'doc-item-action danger';
+        delBtn.type = 'button';
+        delBtn.textContent = 'eliminar';
+        delBtn.addEventListener('click', async () => {
+          const confirmed = window.confirm(`¿Eliminar "${titleEl.textContent}" y todos sus fragmentos de la base de conocimiento? Esta acción no se puede deshacer.`);
+          if (!confirmed) {
+            return;
+          }
+          const resp2 = await fetch(`/api/knowledge/documents/${encodeURIComponent(doc.document_id)}`, { method: 'DELETE' });
+          if (resp2.ok) {
+            item.remove();
+            setActionStatus('Documento eliminado', 'green');
+            if (!docsList.querySelector('.doc-item')) {
+              docsList.innerHTML = '<p id="docs-panel-empty">Sin documentos digeridos.</p>';
+            }
+          } else {
+            setActionStatus('No se pudo eliminar el documento', 'danger');
+          }
+        });
+
+        actions.appendChild(tagBtn);
+        actions.appendChild(delBtn);
+
+        item.appendChild(titleEl);
+        item.appendChild(metaEl);
+        item.appendChild(tagsEl);
+        item.appendChild(actions);
+        docsList.appendChild(item);
+      });
+    } catch (e) {
+      docsList.innerHTML = '<p id="docs-panel-empty">Error al cargar documentos.</p>';
+    }
+  }
+
+  docsToggle.addEventListener('click', () => {
+    const isOpen = docsPanel.classList.toggle('open');
+    if (isOpen) loadDocs();
+  });
+  docsPanelClose.addEventListener('click', () => docsPanel.classList.remove('open'));
 })();
 </script>
 {% endblock %}

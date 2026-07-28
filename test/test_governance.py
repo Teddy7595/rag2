@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from app.interaction.application.governance import (
     build_turn_policy,
-    classify_intent,
     dedupe_rule_lines,
     evaluate_immersive_response,
     instruction_echo_prefix_detected,
@@ -11,28 +10,16 @@ from app.interaction.application.governance import (
 )
 
 
-def test_build_turn_policy_prefers_short_for_greeting_and_identity() -> None:
+def test_build_turn_policy_is_identical_regardless_of_input_text() -> None:
+    """No intent classification, no style/length routing — the engram's own
+    behavior_prompt decides register and length, not a text heuristic."""
     greeting_policy = build_turn_policy("hola", has_custom_engram=False)
-    identity_policy = build_turn_policy("Sabes quien eres?", has_custom_engram=False)
+    technical_policy = build_turn_policy("Tengo un error websocket 404 en /ws/chat", has_custom_engram=True)
+    long_request_policy = build_turn_policy("Cuentame una historia larga con muchos detalles", has_custom_engram=False)
 
-    assert greeting_policy.intent == "greeting"
-    assert greeting_policy.prefer_short is True
-    assert greeting_policy.max_tokens <= 180
-    assert greeting_policy.deadline_ms <= 2200
-
-    assert identity_policy.intent == "identity"
-    assert identity_policy.prefer_short is True
-    assert identity_policy.max_tokens <= 280
-    assert identity_policy.deadline_ms <= 2600
-
-
-def test_build_turn_policy_allocates_more_budget_for_technical_queries() -> None:
-    policy = build_turn_policy("Tengo un error websocket 404 en /ws/chat", has_custom_engram=True)
-
-    assert policy.intent == "technical"
-    assert policy.prefer_short is False
-    assert policy.max_tokens >= 700
-    assert policy.deadline_ms >= 3000
+    assert greeting_policy == technical_policy == long_request_policy
+    assert greeting_policy.max_tokens == 3072
+    assert greeting_policy.deadline_ms == 90000
 
 
 def test_sanitize_generated_reply_removes_internal_scaffolding() -> None:
@@ -114,6 +101,40 @@ def test_sanitize_generated_reply_normalizes_trailing_ellipsis() -> None:
     assert cleaned == "Te explico esto ahora."
 
 
+def test_sanitize_generated_reply_drops_dangling_asterisk_when_cut_mid_action_in_sentence_path() -> None:
+    prefix = "Hola, que bueno verte de nuevo por aqui otra vez despues de tanto tiempo. "
+    action_open = "*Ella sonrie con calma mientras se acerca despacio hacia la puerta."
+    suffix = " Se detiene por completo y espera en silencio durante largo rato antes de continuar hablando con mas calma todavia."
+    text = prefix + action_open + suffix
+    cut_index = len(prefix) + len(action_open)
+
+    cleaned = sanitize_generated_reply(text, max_chars=cut_index)
+
+    assert cleaned.count("*") % 2 == 0
+    assert "Hola, que bueno verte" in cleaned
+
+
+def test_sanitize_generated_reply_drops_dangling_asterisk_in_fallback_path() -> None:
+    text = (
+        "Hola amigo *camina despacio por el pasillo mientras piensa en muchas cosas "
+        "distintas sin parar nunca de moverse de un lado a otro constantemente todo "
+        "el tiempo sin descanso alguno y sigue asi por mucho mas tiempo todavia"
+    )
+    cleaned = sanitize_generated_reply(text, max_chars=60)
+
+    assert cleaned.count("*") % 2 == 0
+
+
+def test_sanitize_generated_reply_preserves_paired_asterisk_well_before_cut_point() -> None:
+    prefix = "Hola, *sonrie* que bueno verte de nuevo por aqui. "
+    padding = "Sigo hablando de otras cosas sin relacion durante un buen rato mas para rellenar el texto."
+    text = prefix + padding
+
+    cleaned = sanitize_generated_reply(text, max_chars=len(prefix) + 10)
+
+    assert "*sonrie*" in cleaned
+
+
 def test_sanitize_history_content_masks_internal_reasoning() -> None:
     masked = sanitize_history_content("1. **Analyze the Request:** user input")
     assert "omitida por seguridad" in masked
@@ -125,32 +146,6 @@ def test_dedupe_rule_lines_removes_repeated_lines() -> None:
 
     lines = deduped.splitlines()
     assert lines == ["Regla A", "Regla B"]
-
-
-def test_classify_intent_defaults_to_mixed_for_non_technical_content() -> None:
-    assert classify_intent("Me gustan los domingos por la tarde") == "mixed"
-
-
-def test_classify_intent_detects_conversational_queries() -> None:
-    assert classify_intent("Que opinas del contenido para adultos?") == "conversational"
-
-
-def test_classify_intent_detects_affective_state_questions() -> None:
-    assert classify_intent("¿Estas agitada?") == "conversational"
-
-
-def test_build_turn_policy_for_conversational_queries() -> None:
-    policy = build_turn_policy("Que piensas sobre relaciones y limites?", has_custom_engram=False)
-    assert policy.intent == "conversational"
-    assert policy.max_tokens <= 360
-    assert policy.deadline_ms >= 3000
-    assert policy.prefer_short is True
-
-
-def test_build_turn_policy_for_affective_state_question() -> None:
-    policy = build_turn_policy("Estas agitada?", has_custom_engram=True)
-    assert policy.intent == "conversational"
-    assert policy.prefer_short is True
 
 
 def test_evaluate_immersive_response_rejects_internal_meta_markers() -> None:

@@ -16,16 +16,20 @@ from app.knowledge.application.document_ingestion import (
     _read_pdf_image_metadata,
 )
 from app.knowledge.application.engram_directory import EngramDirectory
-from app.knowledge.application.ports import EngramRepositoryPort, KnowledgeRepositoryPort
-from app.knowledge.domain import Identity, KnowledgeEntry
+from app.knowledge.application.ports import AffectiveStateRepositoryPort, EngramRepositoryPort, KnowledgeRepositoryPort
+from app.knowledge.domain import AffectiveState, Identity, KnowledgeEntry
 from app.knowledge.events import (
+    AffectiveStateGetRequest,
+    AffectiveStateUpdateRequest,
     ContextBuildRequest,
     ContextGraphRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
+    DocumentDeleteRequest,
     DocumentIngestRequest,
     DocumentListRequest,
     DocumentOverviewRequest,
+    DocumentTagsUpdateRequest,
     EngramCreateRequest,
     EngramDeleteRequest,
     EngramImportCsvRequest,
@@ -47,6 +51,47 @@ from app.knowledge.events import (
     PUBLISH_KNOWLEDGE_ITEM_CREATED,
 )
 from app.models.events import ModelVisionAnalysisRequest, REQUEST_MODEL_VISION_ANALYSIS
+
+
+# --- PAD affective state: deterministic, lexicon-based update rule ---------
+# No extra LLM call per turn (hardware constraint) — reuses only what's
+# already available at turn-completion time. See docs/engramas_tecnicas_humanidad.md
+# section 1.3; formula constants are a first cut, tune via manual smoke testing.
+_AFFECTIVE_RETENTION = 0.9
+_AFFECTIVE_DELTA_BOUND = 0.15
+
+_POSITIVE_WORDS = (
+    "genial", "excelente", "increible", "encanta", "feliz", "gracias",
+    "perfecto", "bien", "gusta", "adoro", "hermoso", "divertido",
+)
+_NEGATIVE_WORDS = (
+    "mal", "odio", "terrible", "horrible", "molesto", "triste",
+    "enojado", "furioso", "asco", "pesimo", "aburrido", "frustrante",
+)
+_DOMINANT_MARKERS = ("hazlo", "dame", "quiero que", "necesito que", "exijo", "ahora mismo")
+_SUBMISSIVE_MARKERS = ("no se", "no sé", "tal vez", "disculpa", "perdon", "perdón", "quizas", "quizás", "no estoy seguro")
+
+
+def _compute_affective_delta(user_text: str, reply_text: str, max_tokens: int) -> tuple[float, float, float]:
+    lowered_user = user_text.lower()
+
+    delta_p = sum(0.05 for word in _POSITIVE_WORDS if word in lowered_user)
+    delta_p -= sum(0.05 for word in _NEGATIVE_WORDS if word in lowered_user)
+    delta_p = max(-_AFFECTIVE_DELTA_BOUND, min(_AFFECTIVE_DELTA_BOUND, delta_p))
+
+    exclaim_count = user_text.count("!") + user_text.count("¡")
+    question_count = user_text.count("?") + user_text.count("¿")
+    delta_a = 0.04 * exclaim_count + 0.02 * question_count
+    if max_tokens > 0 and reply_text.strip():
+        reply_ratio = len(reply_text.split()) / max_tokens
+        delta_a += min(0.05, reply_ratio * 0.1)
+    delta_a = max(-_AFFECTIVE_DELTA_BOUND, min(_AFFECTIVE_DELTA_BOUND, delta_a))
+
+    delta_d = sum(0.05 for marker in _DOMINANT_MARKERS if marker in lowered_user)
+    delta_d -= sum(0.05 for marker in _SUBMISSIVE_MARKERS if marker in lowered_user)
+    delta_d = max(-_AFFECTIVE_DELTA_BOUND, min(_AFFECTIVE_DELTA_BOUND, delta_d))
+
+    return delta_p, delta_a, delta_d
 
 
 class KnowledgeService:
@@ -95,10 +140,12 @@ class KnowledgeService:
         engram_repository: EngramRepositoryPort | None = None,
         directory: EngramDirectory | None = None,
         embedding_model_dir: Path | None = None,
+        affective_state_repository: AffectiveStateRepositoryPort | None = None,
     ) -> None:
         self.repository = repository
         self.event_bus = event_bus
         self.engram_repository = engram_repository
+        self.affective_state_repository = affective_state_repository
         self.directory = directory or EngramDirectory()
         self.embedding_runtime = SemanticEmbeddingRuntime(embedding_model_dir)
         self.document_ingestion = DocumentIngestionService(repository=self.repository, embedding_runtime=self.embedding_runtime)
@@ -160,6 +207,47 @@ class KnowledgeService:
 
     def document_overview(self, request: DocumentOverviewRequest) -> dict[str, object]:
         return self.document_ingestion.overview(request)
+
+    def delete_document(self, request: DocumentDeleteRequest) -> dict[str, object]:
+        if not request.document_id:
+            return {"ok": False, "reason": "missing_document_id", "deleted_entries": 0}
+        deleted = self.repository.delete_by_document_id(request.document_id)
+        return {"ok": deleted > 0, "document_id": request.document_id, "deleted_entries": deleted}
+
+    def update_document_tags(self, request: DocumentTagsUpdateRequest) -> dict[str, object]:
+        if not request.document_id:
+            return {"ok": False, "reason": "missing_document_id", "updated_entries": 0}
+        entries = self.repository.list_by_document_id(request.document_id)
+        new_tags = [tag.strip() for tag in request.tags if tag.strip()]
+        for entry in entries:
+            entry.tags = list(new_tags)
+            self.repository.save(entry)
+        return {"ok": len(entries) > 0, "document_id": request.document_id, "tags": new_tags, "updated_entries": len(entries)}
+
+    def get_affective_state(self, request: AffectiveStateGetRequest) -> dict[str, object]:
+        default = AffectiveState(engram_id=request.engram_id).as_dict()
+        if not self.affective_state_repository or not request.engram_id:
+            return default
+        state = self.affective_state_repository.get(request.engram_id)
+        return state.as_dict() if state else default
+
+    def update_affective_state(self, request: AffectiveStateUpdateRequest) -> dict[str, object]:
+        """Fire-and-forget mood update — must never raise into the caller."""
+        if not self.affective_state_repository or not request.engram_id:
+            return {"ok": False, "reason": "no_repository_or_engram"}
+        try:
+            current = self.affective_state_repository.get(request.engram_id) or AffectiveState(engram_id=request.engram_id)
+            delta_p, delta_a, delta_d = _compute_affective_delta(request.user_text, request.reply_text, request.max_tokens)
+            updated = AffectiveState(
+                engram_id=request.engram_id,
+                pleasure=current.pleasure * _AFFECTIVE_RETENTION + delta_p,
+                arousal=current.arousal * _AFFECTIVE_RETENTION + delta_a,
+                dominance=current.dominance * _AFFECTIVE_RETENTION + delta_d,
+            ).clamped()
+            saved = self.affective_state_repository.upsert(updated)
+            return {"ok": True, "state": saved.as_dict()}
+        except Exception as exc:
+            return {"ok": False, "reason": "update_failed", "detail": str(exc)}
 
     def load_engrams(self) -> None:
         self.directory.reset()
@@ -256,6 +344,7 @@ class KnowledgeService:
             meta_rule=request.meta_rule,
             dialogue_examples=list(request.dialogue_examples),
             backstory=request.backstory,
+            raw_mode=request.raw_mode,
         )
         saved_identity = engram_repository.save(identity)
         self.directory.cache(saved_identity)
@@ -616,6 +705,8 @@ class KnowledgeService:
             identity.dialogue_examples = list(request.dialogue_examples)
         if request.backstory is not None:
             identity.backstory = request.backstory
+        if request.raw_mode is not None:
+            identity.raw_mode = request.raw_mode
 
     def _resolve_import_column_map(self, fieldnames: list[str]) -> dict[str, str]:
         normalized_headers = {self._normalize_import_column(name): name for name in fieldnames}
