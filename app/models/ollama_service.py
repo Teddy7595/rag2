@@ -8,11 +8,9 @@ import httpx
 from app.models.events import ModelTextGenerationRequest
 from app.models.service import ModelCatalogService
 
-# Modelos "thinking" (ej. lfm2.5-thinking, GLM con razonamiento) devuelven su
-# cadena de pensamiento dentro del propio `message.content`, envuelta en estas
-# etiquetas, incluso con `think: false` en la petición. Se descarta ese bloque
-# porque el pipeline de chat espera una respuesta directa en personaje, no el
-# razonamiento crudo del modelo.
+# Con think:true, Ollama separa el razonamiento en message.thinking y deja
+# message.content limpio -- este regex es una red de seguridad por si algun
+# modelo/backend igual filtra el bloque de pensamiento dentro de content.
 _THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
@@ -92,7 +90,7 @@ class OllamaInferenceService:
                 {"role": "user", "content": request.prompt},
             ],
             "stream": False,
-            "think": False,
+            "think": True,
             "options": options,
         }
 
