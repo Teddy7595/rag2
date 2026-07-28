@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  vector_db:
+    build: .
+    container_name: rag2_vector_db
+    restart: always
+    environment:
+      POSTGRES_USER: rag2
+      POSTGRES_PASSWORD: changeme_local_dev_only
+      POSTGRES_DB: rag2_vectors
+    ports:
+      # Localhost only, non-standard port to avoid colliding with another
+      # local Postgres instance or being exposed to the network.
+      - "127.0.0.1:5433:5432"
+    volumes:
+      # Format -> [host path] : [container path]
+      # Relative path so this works out of the box on any machine. On
+      # rootless Podman with SELinux enforcing, remap host ownership to
+      # UID 999 (postgres) with `podman unshare chown -R 999:999 ./data/vector_db`
+      # before starting — the trailing :Z relabels the bind mount for SELinux.
+      - ./data/vector_db:/var/lib/postgresql/data:Z

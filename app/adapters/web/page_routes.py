@@ -414,6 +414,35 @@ async def workshop_page(request: Request) -> HTMLResponse:
     )
 
 
+@router.get("/admin/vault")
+async def vault_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    return _render(
+        request,
+        "vault.html",
+        title=f"{context.settings.app_name} | Vault",
+        eyebrow="Storage",
+        headline="Archivos del vault",
+        description="Explora los archivos almacenados en el vault de la aplicación (subidas de chat, engramas y documentos ingeridos).",
+    )
+
+
+@router.get("/admin/affective-state")
+async def affective_state_page(request: Request) -> HTMLResponse:
+    context = get_app_context_from_request(request)
+    return _render(
+        request,
+        "affective_state.html",
+        title=f"{context.settings.app_name} | Estado afectivo",
+        eyebrow="Humanidad · Fase 1",
+        headline="Estado afectivo (PAD) por engrama",
+        description=(
+            "Pleasure/Arousal/Dominance de cada engrama personalizado, actualizado automáticamente "
+            "después de cada turno de conversación."
+        ),
+    )
+
+
 @router.get("/admin/engrams")
 async def engrams_admin_page(request: Request) -> HTMLResponse:
     context = get_app_context_from_request(request)

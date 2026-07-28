@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 
 from app.bootstrap import create_app
 from app.core.settings import load_settings
+from app.knowledge.events import AffectiveStateGetRequest
 
 
 def build_simple_pdf_bytes(text: str) -> bytes:
@@ -232,6 +233,14 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         engrams_admin_response = client.get("/admin/engrams")
         assert engrams_admin_response.status_code == 200
         assert "Gestor de engramas" in engrams_admin_response.text
+
+        vault_admin_response = client.get("/admin/vault")
+        assert vault_admin_response.status_code == 200
+        assert "Archivos del vault" in vault_admin_response.text
+
+        affective_state_admin_response = client.get("/admin/affective-state")
+        assert affective_state_admin_response.status_code == 200
+        assert "Estado afectivo" in affective_state_admin_response.text
 
         base_hints_response = client.get("/api/knowledge/identity/hints")
         assert base_hints_response.status_code == 200
@@ -511,8 +520,13 @@ def test_modules_work_through_event_bus_and_persist(tmp_path: Path, monkeypatch)
         )
         assert route_response.status_code == 200
         route_payload = route_response.json()
-        assert route_payload["intent"] == "mixed"
-        assert route_payload["include_source_types"] is None
+        # "@" ya no cuenta como señal de intención "identity" (solo resuelve a
+        # qué engrama dirigirse, vía identity_mentions) — este mensaje tiene
+        # contenido de conocimiento real ("conocimiento base"), así que ahora
+        # clasifica directo como "knowledge" en vez de "mixed" por la sola
+        # presencia de la @mención.
+        assert route_payload["intent"] == "knowledge"
+        assert route_payload["include_source_types"] == ["knowledge_entries"]
         assert "Atlas" in route_payload["identity_mentions"]
 
         pack_response = client.post(
@@ -1335,6 +1349,29 @@ def test_realtime_gateway_streams_turns_and_persists(tmp_path: Path, monkeypatch
         assert len(metrics_again.json()) >= 1
 
 
+def test_realtime_gateway_turn_progress_carries_real_user_message_id(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        with client.websocket_connect("/ws/chat") as websocket:
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "welcome":
+                    break
+
+            websocket.send_json({"content": "Hola, como estas?", "context_limit": 5, "history_limit": 5})
+
+            user_message_id = ""
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "turn_progress" and packet.get("stage") == "user_message_recorded":
+                    user_message_id = str((packet.get("user_message") or {}).get("id") or "")
+                if packet["type"] == "turn_complete":
+                    break
+
+            assert user_message_id, "turn_progress con stage=user_message_recorded debe traer user_message.id"
+
+
 def test_delete_session_purges_related_interaction_data(tmp_path: Path, monkeypatch) -> None:
     app = build_test_app(tmp_path, monkeypatch)
     session_id = "delete-room"
@@ -1492,3 +1529,64 @@ def test_realtime_identity_question_avoids_scaffolding(tmp_path: Path, monkeypat
             assert "[relevant engrams]" not in lowered
             assert "soy" in lowered
             assert "asistente" in lowered
+
+
+def test_realtime_turn_updates_affective_state_for_custom_engram(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        engram_response = client.post(
+            "/api/knowledge/engrams",
+            json={
+                "name": "Atlas",
+                "behavior_prompt": "Responde con claridad y foco.",
+                "dialogue_examples": ["Hola Atlas"],
+            },
+        )
+        assert engram_response.status_code == 200
+        engram_id = engram_response.json()["id"]
+
+        knowledge_service = app.state.context.services["knowledge"]
+        baseline = knowledge_service.get_affective_state(AffectiveStateGetRequest(engram_id=engram_id))
+        assert baseline == {"engram_id": engram_id, "pleasure": 0.0, "arousal": 0.0, "dominance": 0.0, "updated_at": None}
+
+        with client.websocket_connect("/ws/chat") as websocket:
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "welcome":
+                    break
+
+            websocket.send_json(
+                {
+                    "content": "Que genial, me encanta esto, gracias!!!",
+                    "context_limit": 5,
+                    "history_limit": 5,
+                    "identity_id": engram_id,
+                }
+            )
+
+            while True:
+                packet = websocket.receive_json()
+                if packet["type"] == "turn_complete":
+                    break
+
+        updated = knowledge_service.get_affective_state(AffectiveStateGetRequest(engram_id=engram_id))
+        assert updated["pleasure"] > 0.0
+        assert updated["updated_at"] is not None
+
+
+def test_affective_state_http_endpoint_returns_pad_state(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+
+    with TestClient(app) as client:
+        engram_response = client.post(
+            "/api/knowledge/engrams",
+            json={"name": "Atlas", "behavior_prompt": "Responde con claridad y foco."},
+        )
+        assert engram_response.status_code == 200
+        engram_id = engram_response.json()["id"]
+
+        state_response = client.get(f"/api/knowledge/engrams/{engram_id}/affective-state")
+        assert state_response.status_code == 200
+        payload = state_response.json()
+        assert payload == {"engram_id": engram_id, "pleasure": 0.0, "arousal": 0.0, "dominance": 0.0, "updated_at": None}

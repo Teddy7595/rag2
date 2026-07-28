@@ -3,8 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass
 import re
 
-from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
-
 
 # ---------------------------------------------------------------------------
 # Raw / legacy output stripping
@@ -47,172 +45,29 @@ def strip_model_artifacts(text: str) -> str:
     # Collapse runs of blank lines left by removed blocks.
     cleaned = re.sub(r"\n{3,}", "\n\n", cleaned)
     return cleaned.strip()
-_INTENT_PROTOTYPES: dict[str, tuple[str, ...]] = {
-    "greeting": (
-        "hola",
-        "buenas",
-        "saludo breve",
-        "solo quería saludar",
-    ),
-    "identity": (
-        "quien eres",
-        "como te llamas",
-        "cual es tu nombre",
-        "habla de tu identidad",
-    ),
-    "conversational": (
-        "como sigues",
-        "que opinas",
-        "hablemos",
-        "charlar contigo",
-    ),
-    "technical": (
-        "tengo un error en la api",
-        "hay un bug en el websocket",
-        "necesito ayuda tecnica",
-        "diagnostica el fallo",
-    ),
-    "mixed": (
-        "quiero contexto y opinion",
-        "mezcla de charla y soporte tecnico",
-        "consulta general con contexto",
-    ),
-}
 
 
 @dataclass(frozen=True)
 class ConversationTurnPolicy:
-    intent: str
     max_tokens: int
     temperature: float
     top_p: float
     deadline_ms: int
-    prefer_short: bool = False
 
 
-def build_turn_policy(
-    user_text: str,
-    *,
-    has_custom_engram: bool,
-    intent_hint: str | None = None,
-    embedding_runtime: SemanticEmbeddingRuntime | None = None,
-) -> ConversationTurnPolicy:
-    intent = (intent_hint or classify_intent(user_text, embedding_runtime=embedding_runtime)).strip().lower()
-    if intent not in {"greeting", "identity", "conversational", "technical", "mixed"}:
-        intent = classify_intent(user_text, embedding_runtime=embedding_runtime)
+def build_turn_policy(user_text: str, *, has_custom_engram: bool) -> ConversationTurnPolicy:
+    """Single, unrouted policy — no intent classification, no style/length branching.
 
-    # Greeting/identity stay short — everything else gets a full budget.
-    if intent in {"greeting", "identity"}:
-        return ConversationTurnPolicy(
-            intent=intent,
-            max_tokens=220,
-            temperature=0.55,
-            top_p=0.95,
-            deadline_ms=8000,
-            prefer_short=True,
-        )
-    # Default for all other intents — full narrative budget, no artificial cap.
+    The engram's own behavior_prompt (BLOCK 1, highest attention zone) decides
+    register and length; this only sets the generation ceiling and a hardware
+    safety deadline, identical for every message.
+    """
     return ConversationTurnPolicy(
-        intent=intent,
         max_tokens=3072,
         temperature=0.75,
         top_p=0.95,
         deadline_ms=90000,
-        prefer_short=False,
     )
-
-
-def classify_intent(text: str, *, embedding_runtime: SemanticEmbeddingRuntime | None = None) -> str:
-    if embedding_runtime is not None:
-        semantic_intent = embedding_runtime.classify_by_prototypes(text, _INTENT_PROTOTYPES)
-        if semantic_intent in {"greeting", "identity", "conversational", "technical", "mixed"}:
-            return semantic_intent
-
-    if is_simple_greeting(text):
-        return "greeting"
-    if is_identity_question(text):
-        return "identity"
-    if is_conversational_query(text):
-        return "conversational"
-
-    lowered = text.lower()
-    technical_markers = (
-        "error",
-        "trace",
-        "stack",
-        "api",
-        "endpoint",
-        "sql",
-        "db",
-        "websocket",
-        "ws",
-        "bug",
-        "fix",
-        "pytest",
-        "modelo",
-        "runtime",
-    )
-    if any(marker in lowered for marker in technical_markers):
-        return "technical"
-    return "conversational"
-
-
-def is_conversational_query(text: str) -> bool:
-    lowered = re.sub(r"\s+", " ", text.lower()).strip()
-    lowered_compact = re.sub(r"[^a-z0-9áéíóúñ\s]", " ", lowered)
-    lowered_compact = re.sub(r"\s+", " ", lowered_compact).strip()
-    markers = (
-        "que piensas",
-        "que opinas",
-        "como sigues",
-        "como estas",
-        "como va",
-        "como asi",
-        "que pasa",
-        "que onda",
-        "opinion",
-        "opinión",
-        "sobre ti",
-        "cuentame sobre ti",
-        "cuéntame sobre ti",
-        "eres hostil",
-        "eres agresivo",
-        "eres amable",
-        "eres serio",
-        "eres robot",
-        "eres un robot",
-        "eres tonto",
-        "eres retrasado",
-        "eres mental",
-        "contenido para adultos",
-        "adultos",
-        "como te sientes",
-        "cómo te sientes",
-        "charlar",
-        "conversar",
-        "hablas",
-        "hablame",
-        "háblame",
-        "respondes",
-        "tono",
-        "normal",
-        "hostil",
-        "agresivo",
-        "amable",
-        "serio",
-        "robot",
-    )
-    if any(marker in lowered for marker in markers):
-        return True
-
-    # Handle common typo variants in casual conversational prompts.
-    conversational_patterns = (
-        r"\bcomo\s+ha\s+est",
-        r"\bcomo\s+est(?:a|as|an|do|toy)\b",
-        r"\bque\s+tal\b",
-        r"\best(?:a|as)\s+(?:agitad[oa]|cansad[oa]|nervios[oa]|ansios[oa]|trist[ea]|feliz|seri[oa]|hostil|amable|bien|mal)\b",
-    )
-    return any(re.search(pattern, lowered_compact) for pattern in conversational_patterns)
 
 
 def dedupe_rule_lines(raw: str, *, max_lines: int = 10) -> str:
@@ -248,51 +103,6 @@ def compact_context_for_prompt(raw: str, *, max_lines: int = 8) -> str:
         if len(kept) >= max_lines:
             break
     return "\n".join(kept).strip()
-
-
-def is_simple_greeting(text: str) -> bool:
-    normalized = re.sub(r"[^a-z0-9\s]", " ", text.lower())
-    tokens = [token for token in normalized.split() if token]
-    if not tokens:
-        return False
-
-    greeting_tokens = {
-        "hola",
-        "holi",
-        "hello",
-        "hi",
-        "hey",
-        "buenas",
-        "buenos",
-        "dias",
-        "tardes",
-        "noches",
-        "que",
-        "tal",
-    }
-    if len(tokens) > 4:
-        greeting_openers = {"hola", "holi", "hello", "hi", "hey", "buenas", "buenos"}
-        technical_tokens = {"error", "bug", "api", "sql", "db", "websocket", "endpoint"}
-        if tokens[0] not in greeting_openers:
-            return False
-        if any(token in technical_tokens for token in tokens):
-            return False
-        if len(tokens) <= 9 and any(token in {"como", "que", "tal", "estas", "estdo", "sigues"} for token in tokens):
-            return True
-        return False
-    non_greeting = [token for token in tokens if token not in greeting_tokens]
-    return len(non_greeting) <= 1 and any(token in greeting_tokens for token in tokens)
-
-
-def is_identity_question(text: str) -> bool:
-    normalized = re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]", " ", text.lower())).strip()
-    patterns = (
-        r"\bquien\s+eres\b",
-        r"\bsabes\s+quien\s+eres\b",
-        r"\bcual\s+es\s+tu\s+nombre\b",
-        r"\bcomo\s+te\s+llamas\b",
-    )
-    return any(re.search(pattern, normalized) for pattern in patterns)
 
 
 def looks_like_internal_reasoning(text: str) -> bool:
@@ -396,6 +206,20 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
     return result
 
 
+def _trim_dangling_asterisk(candidate: str) -> str:
+    """Drop a trailing incomplete *action* fragment left by a mid-marker cut.
+
+    A character-count truncation can land between the opening and closing `*`
+    of a roleplay-action marker, leaving an orphaned asterisk that survives
+    into the user-facing reply. `has_roleplay_actions` only matches paired
+    asterisks, so that lone `*` never gets caught by the downstream guard.
+    """
+    if candidate.count("*") % 2 == 0:
+        return candidate
+    last_star = candidate.rfind("*")
+    return candidate[:last_star].rstrip()
+
+
 def _truncate_complete_sentence(text: str, max_chars: int) -> str:
     content = str(text or "").strip()
     if len(content) <= max_chars:
@@ -407,7 +231,7 @@ def _truncate_complete_sentence(text: str, max_chars: int) -> str:
 
     sentence_matches = list(re.finditer(r"[.!?](?:[\"')\]]+)?(?=\s|$)", window))
     if sentence_matches:
-        candidate = window[: sentence_matches[-1].end()].rstrip()
+        candidate = _trim_dangling_asterisk(window[: sentence_matches[-1].end()].rstrip())
         if len(candidate) >= max(80, int(max_chars * 0.45)):
             return candidate
 
@@ -416,6 +240,7 @@ def _truncate_complete_sentence(text: str, max_chars: int) -> str:
     candidate = candidate.rstrip(" ,:;-.")
     if not candidate:
         candidate = window.rstrip(" ,:;-")
+    candidate = _trim_dangling_asterisk(candidate)
 
     if not candidate:
         return ""

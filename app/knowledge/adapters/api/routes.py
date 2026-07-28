@@ -15,7 +15,10 @@ from app.core.app_context import get_app_context_from_request
 from app.knowledge.application.document_ingestion import _clean_ingested_text, _read_pdf_pages
 from app.knowledge.application.ingest_jobs import IngestJobRegistry
 from app.knowledge.events import (
+    AffectiveStateGetRequest,
     ContextBuildRequest,
+    DocumentDeleteRequest,
+    DocumentTagsUpdateRequest,
     ContextGraphRequest,
     ContextRouteRequest,
     CurrentIdentityRequest,
@@ -33,13 +36,16 @@ from app.knowledge.events import (
     KnowledgeItemCreateRequest,
     KnowledgeItemsRequest,
     KnowledgeOverviewRequest,
+    REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET,
     REQUEST_KNOWLEDGE_CURRENT_IDENTITY,
     REQUEST_KNOWLEDGE_CONTEXT_PACK,
     REQUEST_KNOWLEDGE_CONTEXT_GRAPH,
     REQUEST_KNOWLEDGE_CONTEXT_PROMPT,
     REQUEST_KNOWLEDGE_CONTEXT_ROUTE,
+    REQUEST_KNOWLEDGE_DOCUMENT_DELETE,
     REQUEST_KNOWLEDGE_DOCUMENT_INGEST,
     REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW,
+    REQUEST_KNOWLEDGE_DOCUMENT_TAGS_UPDATE,
     REQUEST_KNOWLEDGE_DOCUMENTS,
     REQUEST_KNOWLEDGE_ENGRAM_CREATE,
     REQUEST_KNOWLEDGE_ENGRAM_DELETE,
@@ -70,6 +76,7 @@ class KnowledgeEngramInput(BaseModel):
     meta_rule: str = "Stay consistent with the selected identity."
     dialogue_examples: list[str] = Field(default_factory=list)
     backstory: str = ""
+    raw_mode: bool = False
 
 
 class KnowledgeEngramUpdateInput(BaseModel):
@@ -81,6 +88,7 @@ class KnowledgeEngramUpdateInput(BaseModel):
     meta_rule: str | None = None
     dialogue_examples: list[str] | None = None
     backstory: str | None = None
+    raw_mode: bool | None = None
 
 
 class KnowledgeIdentityResolveInput(BaseModel):
@@ -158,6 +166,16 @@ async def engram_memory_stats(request: Request, engram_id: str) -> dict[str, obj
     return context.event_bus.request(
         REQUEST_KNOWLEDGE_ENGRAM_MEMORY_STATS,
         EngramMemoryStatsRequest(engram_id=engram_id),
+        source_module="knowledge.adapters.api.routes",
+    )
+
+
+@router.get("/engrams/{engram_id}/affective-state")
+async def engram_affective_state(request: Request, engram_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    return context.event_bus.request(
+        REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET,
+        AffectiveStateGetRequest(engram_id=engram_id),
         source_module="knowledge.adapters.api.routes",
     )
 
@@ -267,6 +285,36 @@ async def document_overview(request: Request, limit: int = 5) -> dict[str, objec
     )
 
 
+@router.delete("/documents/{document_id}")
+async def delete_document(request: Request, document_id: str) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    result = context.event_bus.request(
+        REQUEST_KNOWLEDGE_DOCUMENT_DELETE,
+        DocumentDeleteRequest(document_id=document_id),
+        source_module="knowledge.adapters.api.routes",
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return result
+
+
+class DocumentTagsInput(BaseModel):
+    tags: list[str] = Field(default_factory=list)
+
+
+@router.patch("/documents/{document_id}/tags")
+async def update_document_tags(request: Request, document_id: str, payload: DocumentTagsInput) -> dict[str, object]:
+    context = get_app_context_from_request(request)
+    result = context.event_bus.request(
+        REQUEST_KNOWLEDGE_DOCUMENT_TAGS_UPDATE,
+        DocumentTagsUpdateRequest(document_id=document_id, tags=tuple(payload.tags)),
+        source_module="knowledge.adapters.api.routes",
+    )
+    if not result.get("ok"):
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Document not found")
+    return result
+
+
 @router.post("/documents/ingest")
 async def ingest_document(request: Request, payload: KnowledgeDocumentInput) -> dict[str, object]:
     context = get_app_context_from_request(request)
@@ -299,6 +347,7 @@ async def create_engram(request: Request, payload: KnowledgeEngramInput) -> dict
             meta_rule=payload.meta_rule,
             dialogue_examples=tuple(payload.dialogue_examples),
             backstory=payload.backstory,
+            raw_mode=payload.raw_mode,
         ),
         source_module="knowledge.adapters.api.routes",
     )
@@ -319,6 +368,7 @@ async def update_engram(request: Request, engram_id: str, payload: KnowledgeEngr
             meta_rule=payload.meta_rule,
             dialogue_examples=tuple(payload.dialogue_examples) if payload.dialogue_examples is not None else None,
             backstory=payload.backstory,
+            raw_mode=payload.raw_mode,
         ),
         source_module="knowledge.adapters.api.routes",
     )

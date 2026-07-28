@@ -15,6 +15,7 @@ class Identity(BaseEntity):
     meta_rule: str = "Stay consistent with the selected identity."
     dialogue_examples: list[str] = field(default_factory=list)
     backstory: str = ""
+    raw_mode: bool = False
 
     def hint_handle(self) -> str:
         return f"@{self.name}" if self.name else "@System"
@@ -30,6 +31,7 @@ class Identity(BaseEntity):
             "meta_rule": self.meta_rule,
             "dialogue_examples": list(self.dialogue_examples),
             "backstory": self.backstory,
+            "raw_mode": self.raw_mode,
             "hint_handle": self.hint_handle(),
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,

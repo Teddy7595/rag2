@@ -177,6 +177,7 @@ def load_settings(project_root: Path) -> AppSettings:
             "/admin/engrams",
             "/admin/context-graph",
             "/admin/sagas",
+            "/admin/workshop",
         ),
         rate_limit_window_seconds=max(1, _read_int_env("APP_RATE_LIMIT_WINDOW_SECONDS", 60)),
         rate_limit_max_requests=max(1, _read_int_env("APP_RATE_LIMIT_MAX_REQUESTS", 120)),

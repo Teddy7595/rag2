@@ -105,3 +105,31 @@ def test_context_router_uses_semantic_embeddings_for_route_selection() -> None:
     assert runtime.calls
     assert route.intent == "identity"
     assert route.include_source_types == ("engrams",)
+
+
+def test_context_router_mention_with_topic_still_searches_knowledge() -> None:
+    """Regression: @mención (elegir engrama) no debe apagar la búsqueda de
+    conocimiento cuando el mensaje también trae una pregunta de contenido real —
+    causa raíz confirmada de un bug reportado en producción (sesión real donde
+    "Hola @Mistress Keynes, ... cultura Kemet ..." devolvía knowledge_count=0)."""
+    router = ContextQueryRouter()
+
+    route = router.resolve(
+        "Hola @Mistress Keynes, me contaron que eres experta en la cultura Kemet "
+        "y sus historias de su cultura social enfocadas a la fornicación y el sexo "
+        "desenfrenado como religión y como vida de hogar",
+        limit=5,
+    )
+
+    assert route.intent != "identity"
+    assert route.include_source_types is None or "knowledge_entries" in route.include_source_types
+    assert route.identity_mentions == ("Mistress",)
+
+
+def test_context_router_pure_identity_question_still_routes_to_identity() -> None:
+    router = ContextQueryRouter()
+
+    route = router.resolve("Cual es tu rol?", limit=5)
+
+    assert route.intent == "identity"
+    assert route.include_source_types == ("engrams",)

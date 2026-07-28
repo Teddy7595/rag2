@@ -55,6 +55,8 @@ class DatabaseManager:
                 for col in _ENGRAM_DEAD_COLUMNS:
                     if col in engram_columns:
                         statements.append(f"ALTER TABLE knowledge_engrams DROP COLUMN {col}")
+                if "raw_mode" not in engram_columns:
+                    statements.append("ALTER TABLE knowledge_engrams ADD COLUMN raw_mode BOOLEAN NOT NULL DEFAULT FALSE")
 
             if not statements:
                 return

@@ -42,6 +42,9 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
     return dot / (left_norm * right_norm)
 
 
+_PARENT_CONTEXT_CHAR_BUDGET = 6000
+
+
 def _excerpt(text: str, keywords: tuple[str, ...], *, limit: int = 480) -> str:
     cleaned = " ".join(text.split()).strip()
     if not cleaned:
@@ -249,7 +252,12 @@ class ContextQueryRouter:
         r"\bpersona\b",
         r"\bperfil\b",
         r"\brol\b",
-        r"@",
+        # No incluye "@" a propósito: una @mención solo indica a qué engrama
+        # dirigirse (ver identity_mentions más abajo, extraído por separado) —
+        # no implica que la pregunta sea SOBRE la identidad del engrama. Si "@"
+        # estuviera acá, cualquier mensaje con @mención (el mecanismo normal
+        # para elegir engrama) apagaría la búsqueda de conocimiento en ese
+        # turno, aunque el mensaje trajera una pregunta de contenido real.
     )
     _knowledge_patterns = (
         r"\bknowledge\b",
@@ -368,7 +376,53 @@ class ContextRetrieverRuntime:
                 for entry in recent_entries
             )
 
-        return tuple(ranked[: route.limit])
+        top_matches = ranked[: route.limit]
+        parent_match = self._build_parent_document_match(top_matches[0]) if top_matches else None
+        if parent_match is not None:
+            return tuple(top_matches) + (parent_match,)
+        return tuple(top_matches)
+
+    def _build_parent_document_match(self, top_match: ContextMatch) -> ContextMatch | None:
+        """Parent Document Retrieval: expand the #1 match's containing page to
+        give the model the full page context, not just the matched chunk."""
+        if top_match.metadata.get("source_type") != "document_chunk":
+            return None
+        document_id = str(top_match.metadata.get("document_id") or "")
+        page_number = top_match.metadata.get("page_number")
+        if not document_id or page_number is None:
+            return None
+
+        siblings = self.knowledge_repository.list_by_document_id(document_id)
+        page_chunks = sorted(
+            (entry for entry in siblings if entry.source_type == "document_chunk" and entry.page_number == page_number),
+            key=lambda entry: entry.chunk_index if entry.chunk_index is not None else 0,
+        )
+        if not page_chunks:
+            return None
+
+        full_page_text = " ".join(chunk.content for chunk in page_chunks).strip()
+        if not full_page_text:
+            return None
+        if len(full_page_text) > _PARENT_CONTEXT_CHAR_BUDGET:
+            full_page_text = full_page_text[:_PARENT_CONTEXT_CHAR_BUDGET].rstrip() + "..."
+
+        document_title = str(top_match.metadata.get("document_title") or top_match.label)
+        chunk_count = sum(1 for entry in siblings if entry.source_type == "document_chunk")
+
+        return ContextMatch(
+            source_type="document_parent",
+            source_id=f"{document_id}:p{page_number}",
+            label=f"{document_title} [pagina {page_number} completa]",
+            score=top_match.score,
+            excerpt=full_page_text,
+            metadata={
+                "source_type": "document_parent",
+                "document_id": document_id,
+                "document_title": document_title,
+                "page_number": page_number,
+                "chunk_count": chunk_count,
+            },
+        )
 
     def _rerank_knowledge_diversity(self, ranked: list[ContextMatch], limit: int) -> tuple[ContextMatch, ...]:
         selected: list[ContextMatch] = []
@@ -587,13 +641,23 @@ class ContextAssembler:
         if retrieval.route.identity_mentions:
             lines.append(f"identity_mentions: {', '.join(retrieval.route.identity_mentions)}")
 
-        if retrieval.knowledge_matches:
+        knowledge_matches = [match for match in retrieval.knowledge_matches if match.source_type != "document_parent"]
+        parent_matches = [match for match in retrieval.knowledge_matches if match.source_type == "document_parent"]
+
+        if knowledge_matches:
             lines.append("")
             lines.append("[RELEVANT KNOWLEDGE]")
-            for match in retrieval.knowledge_matches:
+            for match in knowledge_matches:
                 lines.append(f"- {match.label} (score={match.score:.2f})")
                 if match.excerpt:
                     lines.append(f"  {match.excerpt}")
+
+        if parent_matches:
+            lines.append("")
+            lines.append("[DOCUMENTO COMPLETO]")
+            for match in parent_matches:
+                lines.append(f"Documento completo: {match.label}")
+                lines.append(match.excerpt)
 
         return "\n".join(lines).strip()
 
@@ -680,7 +744,12 @@ class KnowledgeContextPipeline:
     ) -> ContextPreview:
         route = self.route_query(raw_text, limit=limit)
         identity, cleaned_text = self.directory.resolve(raw_text, identity_id)
-        retrieval = self.retriever.retrieve(cleaned_text, route, source_filter=source_filter)
+        if identity.raw_mode:
+            # Technical/tuning engrams skip knowledge retrieval entirely — identity
+            # resolution above still runs so behavior_prompt/meta_rule render normally.
+            retrieval = RetrievalOutcome(route=route, knowledge_matches=(), engram_matches=())
+        else:
+            retrieval = self.retriever.retrieve(cleaned_text, route, source_filter=source_filter)
         context_pack = self.assembler.assemble(retrieval, identity, cleaned_text, history=history)
         prompt = self.composer.build_prompt(
             identity=identity,

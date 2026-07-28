@@ -38,6 +38,7 @@ class EngramCreateRequest:
     meta_rule: str = "Stay consistent with the selected identity."
     dialogue_examples: tuple[str, ...] = ()
     backstory: str = ""
+    raw_mode: bool = False
 
 
 @dataclass(frozen=True)
@@ -51,6 +52,7 @@ class EngramUpdateRequest:
     meta_rule: str | None = None
     dialogue_examples: tuple[str, ...] | None = None
     backstory: str | None = None
+    raw_mode: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -127,6 +129,30 @@ class DocumentListRequest:
 @dataclass(frozen=True)
 class DocumentOverviewRequest:
     limit: int = 5
+
+
+@dataclass(frozen=True)
+class DocumentDeleteRequest:
+    document_id: str
+
+
+@dataclass(frozen=True)
+class DocumentTagsUpdateRequest:
+    document_id: str
+    tags: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class AffectiveStateGetRequest:
+    engram_id: str
+
+
+@dataclass(frozen=True)
+class AffectiveStateUpdateRequest:
+    engram_id: str
+    user_text: str
+    reply_text: str
+    max_tokens: int = 0
 
 
 REQUEST_KNOWLEDGE_OVERVIEW = EventSpec[KnowledgeOverviewRequest, dict](
@@ -281,6 +307,22 @@ REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW = EventSpec[DocumentOverviewRequest, dict](
     output_type=dict,
 )
 
+REQUEST_KNOWLEDGE_DOCUMENT_DELETE = EventSpec[DocumentDeleteRequest, dict](
+    name="knowledge.document.delete.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=DocumentDeleteRequest,
+    output_type=dict,
+)
+
+REQUEST_KNOWLEDGE_DOCUMENT_TAGS_UPDATE = EventSpec[DocumentTagsUpdateRequest, dict](
+    name="knowledge.document.tags.update.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=DocumentTagsUpdateRequest,
+    output_type=dict,
+)
+
 PUBLISH_KNOWLEDGE_ITEM_CREATED = EventSpec[dict, dict](
     name="knowledge.item.created",
     kind=EventKind.PUBLISH,
@@ -345,8 +387,28 @@ PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED = EventSpec[dict, dict](
     output_type=dict,
 )
 
+REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET = EventSpec[AffectiveStateGetRequest, dict](
+    name="knowledge.affective_state.get.request",
+    kind=EventKind.REQUEST,
+    channel=EventChannel.DOMAIN,
+    input_type=AffectiveStateGetRequest,
+    output_type=dict,
+)
+
+# Fire-and-forget: a failed/slow mood update must never block or delay the
+# user-visible reply, so this is published, not requested synchronously.
+PUBLISH_KNOWLEDGE_AFFECTIVE_STATE_UPDATE = EventSpec[AffectiveStateUpdateRequest, dict](
+    name="knowledge.affective_state.update",
+    kind=EventKind.PUBLISH,
+    channel=EventChannel.DOMAIN,
+    input_type=AffectiveStateUpdateRequest,
+    output_type=dict,
+)
+
 
 __all__ = [
+    "AffectiveStateGetRequest",
+    "AffectiveStateUpdateRequest",
     "KnowledgeItemCreateRequest",
     "KnowledgeItemsRequest",
     "KnowledgeOverviewRequest",
@@ -357,6 +419,8 @@ __all__ = [
     "DocumentIngestRequest",
     "DocumentListRequest",
     "DocumentOverviewRequest",
+    "DocumentDeleteRequest",
+    "DocumentTagsUpdateRequest",
     "EngramCreateRequest",
     "EngramDeleteRequest",
     "EngramHintsRequest",
@@ -372,6 +436,8 @@ __all__ = [
     "PUBLISH_KNOWLEDGE_CONTEXT_ROUTED",
     "PUBLISH_KNOWLEDGE_IDENTITY_RESOLVED",
     "PUBLISH_KNOWLEDGE_DOCUMENT_INGESTED",
+    "PUBLISH_KNOWLEDGE_AFFECTIVE_STATE_UPDATE",
+    "REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET",
     "REQUEST_KNOWLEDGE_CURRENT_IDENTITY",
     "REQUEST_KNOWLEDGE_CONTEXT_GRAPH",
     "REQUEST_KNOWLEDGE_CONTEXT_PACK",
@@ -379,6 +445,8 @@ __all__ = [
     "REQUEST_KNOWLEDGE_CONTEXT_ROUTE",
     "REQUEST_KNOWLEDGE_DOCUMENT_INGEST",
     "REQUEST_KNOWLEDGE_DOCUMENT_OVERVIEW",
+    "REQUEST_KNOWLEDGE_DOCUMENT_DELETE",
+    "REQUEST_KNOWLEDGE_DOCUMENT_TAGS_UPDATE",
     "REQUEST_KNOWLEDGE_DOCUMENTS",
     "REQUEST_KNOWLEDGE_ENGRAM_CREATE",
     "REQUEST_KNOWLEDGE_ENGRAM_DELETE",
