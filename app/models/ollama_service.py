@@ -1,11 +1,19 @@
 from __future__ import annotations
 
+import re
 from typing import Any, cast
 
 import httpx
 
 from app.models.events import ModelTextGenerationRequest
 from app.models.service import ModelCatalogService
+
+# Modelos "thinking" (ej. lfm2.5-thinking, GLM con razonamiento) devuelven su
+# cadena de pensamiento dentro del propio `message.content`, envuelta en estas
+# etiquetas, incluso con `think: false` en la petición. Se descarta ese bloque
+# porque el pipeline de chat espera una respuesta directa en personaje, no el
+# razonamiento crudo del modelo.
+_THINK_BLOCK_RE = re.compile(r"<think>.*?</think>", re.DOTALL | re.IGNORECASE)
 
 
 class OllamaInferenceService:
@@ -32,6 +40,11 @@ class OllamaInferenceService:
             return response.status_code == 200
         except httpx.HTTPError:
             return False
+
+    def smoke_text(self, prompt: str) -> dict[str, object]:
+        return self.generate_text(
+            ModelTextGenerationRequest(prompt=prompt, temperature=0.25, max_tokens=256)
+        )
 
     def generate_text(self, request: ModelTextGenerationRequest) -> dict[str, object]:
         config = self._runtime_config()
@@ -79,6 +92,7 @@ class OllamaInferenceService:
                 {"role": "user", "content": request.prompt},
             ],
             "stream": False,
+            "think": False,
             "options": options,
         }
 
@@ -97,6 +111,7 @@ class OllamaInferenceService:
 
         message = cast(dict[str, Any], body.get("message") or {})
         content = str(message.get("content") or "").strip()
+        content = _THINK_BLOCK_RE.sub("", content).strip()
         return {
             "ok": bool(content),
             "provider": "ollama",

@@ -10,6 +10,7 @@ from fastapi.responses import StreamingResponse
 
 from app.core.app_context import get_app_context_from_request
 from app.knowledge.events import IdentityResolveRequest, REQUEST_KNOWLEDGE_IDENTITY_RESOLVE
+from app.models.ollama_service import OllamaInferenceService
 from app.models.runtime_service import LocalInferenceService
 from app.models.service import ModelCatalogService
 
@@ -110,6 +111,14 @@ def _get_runtime_service(request: Request) -> LocalInferenceService:
     return service
 
 
+def _get_ollama_runtime_service(request: Request) -> OllamaInferenceService:
+    context = get_app_context_from_request(request)
+    service = context.services.get("model_runtime_ollama")
+    if not isinstance(service, OllamaInferenceService):
+        raise RuntimeError("Ollama inference runtime not available")
+    return service
+
+
 def _runtime_upload_dir(request: Request) -> Path:
     context = get_app_context_from_request(request)
     upload_dir = context.settings.vault_dir / "runtime-vision"
@@ -139,6 +148,9 @@ async def models_runtime_status(request: Request) -> dict[str, object]:
 
 @router.post("/api/models/runtime/text")
 async def models_runtime_text(request: Request, payload: ModelTextSmokeRequest) -> dict[str, object]:
+    text_provider = _get_model_service(request).current_selection().get("text_provider")
+    if text_provider == "ollama":
+        return _get_ollama_runtime_service(request).smoke_text(payload.prompt)
     return _get_runtime_service(request).smoke_text(payload.prompt)
 
 
