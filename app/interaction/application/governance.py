@@ -154,6 +154,16 @@ def sanitize_generated_reply(text: str, *, prefer_short: bool = False, max_chars
     if not cleaned:
         return ""
 
+    # Drop CoT scratchpad blocks first -- the prompt invites the model to think
+    # inside <think>...</think> and promises that block stays hidden from the
+    # user, so later heuristics (echo-prefix, transcript-line checks) must run
+    # on the actual reply, not on leaked reasoning.
+    cleaned = _COT_BLOCK_RE.sub("", cleaned)
+    cleaned = _INTERNAL_BLOCK_RE.sub("", cleaned)
+    cleaned = re.sub(r"\n{3,}", "\n\n", cleaned).strip()
+    if not cleaned:
+        return ""
+
     # First strip leading prompt-echo directives so we can preserve any valid remainder.
     cleaned = _strip_instruction_echo_prefix(cleaned)
     if not cleaned:
