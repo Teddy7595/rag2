@@ -19,7 +19,7 @@ _PROVIDER_ALIASES = {
     "lm-studio": "lmstudio",
 }
 
-_TEXT_PROVIDER_OPTIONS = ("local", "lmstudio")
+_TEXT_PROVIDER_OPTIONS = ("local", "lmstudio", "ollama")
 _VISION_PROVIDER_OPTIONS = ("local", "ollama", "lmstudio")
 
 _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
@@ -29,6 +29,9 @@ _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "lmstudio_base_url": "http://localhost:8000",
     "lmstudio_model": "",
     "lmstudio_n_ctx": 32768,
+    "ollama_base_url": "http://localhost:11434",
+    "ollama_model": "",
+    "ollama_timeout_seconds": 120,
     "vision_provider": "local",
     "vision_model_path": "",
     "vision_mm_projector_path": "",
@@ -244,6 +247,13 @@ class ModelCatalogService:
         config["lmstudio_base_url"] = _read_env("LMSTUDIO_BASE_URL", str(config["lmstudio_base_url"]))
         config["lmstudio_model"] = _read_env("LMSTUDIO_MODEL", str(config["lmstudio_model"]))
         config["lmstudio_n_ctx"] = _coerce_runtime_int(_read_env("LMSTUDIO_N_CTX", str(config["lmstudio_n_ctx"])), int(config["lmstudio_n_ctx"]) if isinstance(config["lmstudio_n_ctx"], int) else 32768, minimum=512)
+        config["ollama_base_url"] = _read_env("OLLAMA_BASE_URL", str(config["ollama_base_url"]))
+        config["ollama_model"] = _read_env("OLLAMA_MODEL", str(config["ollama_model"]))
+        config["ollama_timeout_seconds"] = _coerce_runtime_int(
+            _read_env("OLLAMA_TIMEOUT_SECONDS", str(config["ollama_timeout_seconds"])),
+            int(config["ollama_timeout_seconds"]) if isinstance(config["ollama_timeout_seconds"], int) else 120,
+            minimum=5,
+        )
         config["vision_provider"] = _normalize_provider(_read_env("VISION_PROVIDER", str(config["vision_provider"])), "local")
         config["vision_model_path"] = _read_env("VISION_MODEL_PATH", str(config["vision_model_path"]))
         config["vision_mm_projector_path"] = _read_env("VISION_MM_PROJECTOR_PATH", str(config["vision_mm_projector_path"]))
@@ -447,6 +457,9 @@ class ModelCatalogService:
                 "lmstudio_base_url": _coerce_text(runtime_config.get("lmstudio_base_url")) or "http://localhost:8000",
                 "lmstudio_model": _coerce_text(runtime_config.get("lmstudio_model")),
                 "lmstudio_n_ctx": _coerce_runtime_int(runtime_config.get("lmstudio_n_ctx"), 32768, minimum=512),
+                "ollama_base_url": _coerce_text(runtime_config.get("ollama_base_url")) or "http://localhost:11434",
+                "ollama_model": _coerce_text(runtime_config.get("ollama_model")),
+                "ollama_timeout_seconds": _coerce_runtime_int(runtime_config.get("ollama_timeout_seconds"), 120, minimum=5),
             },
             "vision": {
                 "configured_provider": _normalize_provider(_coerce_text(runtime_config.get("vision_provider")) or "local", "local"),
@@ -489,6 +502,8 @@ class ModelCatalogService:
             selection["text_bundle_id"] = self._first_bundle_id(bundles, require_vision=False)
         elif text_provider == "lmstudio":
             selection["text_model_name"] = _coerce_text(runtime_config.get("lmstudio_model"))
+        elif text_provider == "ollama":
+            selection["text_model_name"] = _coerce_text(runtime_config.get("ollama_model"))
 
         if vision_provider == "local":
             selection["vision_bundle_id"] = self._first_bundle_id(bundles, require_vision=True)
@@ -550,6 +565,10 @@ class ModelCatalogService:
             text_bundle_id = None
             if not text_model_name:
                 text_model_name = _coerce_text(runtime_config.get("lmstudio_model"))
+        elif text_provider == "ollama":
+            text_bundle_id = None
+            if not text_model_name:
+                text_model_name = _coerce_text(runtime_config.get("ollama_model"))
         else:
             text_provider = "local" if self._first_bundle_id(bundles, require_vision=False) else "lmstudio"
             if text_provider == "local":
@@ -786,6 +805,9 @@ class ModelCatalogService:
         normalized["lmstudio_model"] = _coerce_text(normalized.get("lmstudio_model")) or ""
         normalized["llama_cpp_n_ctx"] = _coerce_runtime_int(normalized.get("llama_cpp_n_ctx"), 32768, minimum=512)
         normalized["lmstudio_n_ctx"] = _coerce_runtime_int(normalized.get("lmstudio_n_ctx"), 32768, minimum=512)
+        normalized["ollama_base_url"] = _coerce_text(normalized.get("ollama_base_url")) or "http://localhost:11434"
+        normalized["ollama_model"] = _coerce_text(normalized.get("ollama_model")) or ""
+        normalized["ollama_timeout_seconds"] = _coerce_runtime_int(normalized.get("ollama_timeout_seconds"), 120, minimum=5)
         normalized["vision_ollama_base_url"] = _coerce_text(normalized.get("vision_ollama_base_url")) or "http://localhost:11434"
         normalized["vision_ollama_model"] = _coerce_text(normalized.get("vision_ollama_model")) or "llava"
         normalized["vision_lmstudio_base_url"] = _coerce_text(normalized.get("vision_lmstudio_base_url")) or "http://localhost:8000"
