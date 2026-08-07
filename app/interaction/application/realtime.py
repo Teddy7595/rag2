@@ -828,6 +828,7 @@ class RealtimeChatService:
                 content=input_data.content,
                 channel=input_data.channel,
                 session_id=session_id,
+                reply_to_message_id=input_data.reply_to_message_id,
             )
         )
         report_progress("user_message_recorded", extra={"user_message": user_message})
@@ -1244,6 +1245,18 @@ class RealtimeChatService:
             history_text_block = _format_history(history_window)
             if history_text_block:
                 prompt_sections.append(f"<historial_conversacion>\n{history_text_block}\n</historial_conversacion>")
+
+        # BLOCK 3.6: Quoted message — the user explicitly replied to a prior message,
+        # so it must be treated as the anchor of this turn's request, not just more
+        # history. Fails soft: an unresolved id (deleted/hidden/wrong session) is
+        # silently skipped rather than blocking the turn.
+        if input_data.reply_to_message_id:
+            quoted_message = self.interaction_service.repository.get_by_id(input_data.reply_to_message_id)
+            if quoted_message:
+                prompt_sections.append(
+                    f'<mensaje_citado autor="{quoted_message.author}">\n{quoted_message.content}\n</mensaje_citado>\n'
+                    "El usuario responde específicamente al mensaje citado arriba; interpreta y responde en base a él."
+                )
 
         # BLOCK 4: The actual request.
         # For continuation turns: inject the tail of the last assistant reply as an

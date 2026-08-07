@@ -11,6 +11,7 @@ class ConversationMessage(BaseEntity):
     content: str
     channel: str = "chat"
     session_id: str | None = None
+    reply_to_message_id: str | None = None
 
     def as_dict(self) -> dict[str, object]:
         return {
@@ -19,6 +20,7 @@ class ConversationMessage(BaseEntity):
             "content": self.content,
             "channel": self.channel,
             "session_id": self.session_id,
+            "reply_to_message_id": self.reply_to_message_id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
             "updated_at": self.updated_at.isoformat() if self.updated_at else None,
         }

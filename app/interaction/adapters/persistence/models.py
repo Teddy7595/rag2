@@ -22,6 +22,7 @@ class ConversationMessageRecord(DatabaseBase):
     content: Mapped[str] = mapped_column(Text, nullable=False)
     channel: Mapped[str] = mapped_column(String(64), nullable=False, default="chat", index=True)
     session_id: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    reply_to_message_id: Mapped[str | None] = mapped_column(String(36), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow, index=True)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False, default=utcnow)
 
@@ -33,6 +34,7 @@ class ConversationMessageRecord(DatabaseBase):
             content=message.content,
             channel=message.channel,
             session_id=message.session_id,
+            reply_to_message_id=message.reply_to_message_id,
             created_at=message.created_at,
             updated_at=message.updated_at,
         )
@@ -44,6 +46,7 @@ class ConversationMessageRecord(DatabaseBase):
             content=self.content,
             channel=self.channel,
             session_id=self.session_id,
+            reply_to_message_id=self.reply_to_message_id,
             created_at=self.created_at,
             updated_at=self.updated_at,
         )

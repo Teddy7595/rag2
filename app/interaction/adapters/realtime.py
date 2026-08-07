@@ -49,6 +49,7 @@ def _build_input(payload: dict[str, Any], *, default_saga_id: str | None = None)
         history_limit=int(payload.get("history_limit") or 20),
         world_rules=str(payload.get("world_rules") or ""),
         document_context=str(payload.get("document_context") or ""),
+        reply_to_message_id=str(payload.get("reply_to_message_id") or "").strip() or None,
     )
 
 

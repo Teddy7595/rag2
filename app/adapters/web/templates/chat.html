@@ -482,6 +482,55 @@
     opacity: 0.7;
   }
 
+  #reply-preview-bar {
+    display: none;
+    margin: 0 5px 8px;
+    font-family: var(--chat-font-mono);
+    font-size: 0.75rem;
+    color: #c4b5fd;
+    border: 1px dashed #a78bfa;
+    border-radius: 10px;
+    padding: 6px 8px;
+    background: rgba(167, 139, 250, 0.06);
+  }
+
+  #reply-preview-bar.is-visible {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  #reply-preview-label {
+    flex: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  #reply-preview-cancel-btn {
+    background: transparent;
+    border: 1px solid #a78bfa;
+    color: #c4b5fd;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.68rem;
+    padding: 2px 6px;
+    font-family: var(--chat-font-mono);
+    flex-shrink: 0;
+  }
+
+  .bubble .quoted-message {
+    border-left: 2px solid #a78bfa;
+    padding: 2px 8px;
+    margin-bottom: 6px;
+    font-size: 0.82em;
+    color: #c4b5fd;
+    opacity: 0.85;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .input-wrapper {
     display: flex;
     gap: 10px;
@@ -2024,6 +2073,10 @@
     <span id="attached-file-label"></span>
     <button id="clear-file-btn" type="button">limpiar</button>
   </div>
+  <div id="reply-preview-bar">
+    <span id="reply-preview-label"></span>
+    <button id="reply-preview-cancel-btn" type="button">cancelar</button>
+  </div>
   <div id="mobile-quick-actions" aria-label="Acciones rápidas">
     <button type="button" class="quick-btn" data-quick-action="help">Ayuda</button>
     <button type="button" class="quick-btn" data-quick-action="attach">Adjuntar</button>
@@ -2139,6 +2192,9 @@
   const docContextClearBtn = document.getElementById('doc-context-clear-btn');
   const inputBox = document.getElementById('input-box');
   const cancelEditBtn = document.getElementById('cancel-edit-btn');
+  const replyPreviewBar = document.getElementById('reply-preview-bar');
+  const replyPreviewLabel = document.getElementById('reply-preview-label');
+  const replyPreviewCancelBtn = document.getElementById('reply-preview-cancel-btn');
   const sessionIdLabel = document.getElementById('chat-session-id');
   const limitsChip = document.getElementById('chat-limits-chip');
   const modelChip = document.getElementById('chat-model-chip');
@@ -2206,6 +2262,10 @@
   let historyLimit = 20;
   let isEditingMode = false;
   let editMessageId = null;
+  let isReplyingMode = false;
+  let replyToMessageId = null;
+  let replyToAuthor = '';
+  let replyToPreview = '';
   let longPressTimer = null;
   let catalogState = null;
   let runtimeState = null;
@@ -2329,7 +2389,7 @@
         case 'history_message': {
           const message = packet.message || {};
           const isUser = String(message.author || '').toLowerCase() === 'user' || message.channel === 'chat';
-          appendMessage(message.content || '', isUser, isUser ? 'https://ui-avatars.com/api/?name=User&background=555&color=fff' : currentEngramAvatar, false, message.id || null, message.author || (isUser ? 'user' : 'assistant'), message.channel || (isUser ? 'chat' : 'assistant'));
+          appendMessage(message.content || '', isUser, isUser ? 'https://ui-avatars.com/api/?name=User&background=555&color=fff' : currentEngramAvatar, false, message.id || null, message.author || (isUser ? 'user' : 'assistant'), message.channel || (isUser ? 'chat' : 'assistant'), resolveReplyPreview(message.reply_to_message_id));
           return;
         }
         case 'turn_started':
@@ -2968,9 +3028,25 @@
     renderDocumentContext();
   }
 
-  function appendMessage(text, isUser, avatarUrl, forceScroll, msgId = null, author = null, channel = null) {
+  // Los mensajes de historial llegan en orden cronológico, así que el mensaje
+  // citado normalmente ya está pintado cuando llega el que lo cita. Si quedó
+  // fuera de la ventana de history_limit, se omite el chip sin error.
+  function resolveReplyPreview(quotedMessageId) {
+    if (!quotedMessageId) {
+      return null;
+    }
+    const quotedRow = chatBox.querySelector(`.message-row[data-id="${quotedMessageId}"]`);
+    if (!quotedRow) {
+      return null;
+    }
+    const text = quotedRow.querySelector('.bubble-text')?.textContent || '';
+    return { author: quotedRow.dataset.author || 'mensaje', text };
+  }
+
+  function appendMessage(text, isUser, avatarUrl, forceScroll, msgId = null, author = null, channel = null, replyPreview = null) {
     const row = document.createElement('div');
     row.className = `message-row ${isUser ? 'user' : (channel === 'system' ? 'system' : 'ai')}`;
+    row.dataset.author = author || (isUser ? 'user' : 'assistant');
     if (msgId) {
       row.dataset.id = msgId;
       lastMessageId = msgId;
@@ -2999,7 +3075,16 @@
     const body = document.createElement('div');
     const bubble = document.createElement('div');
     bubble.className = 'bubble';
-    bubble.innerHTML = String(text || '').replace(/\n/g, '<br>');
+    if (replyPreview && replyPreview.text) {
+      const quoted = document.createElement('div');
+      quoted.className = 'quoted-message';
+      quoted.textContent = `↩ ${replyPreview.author || 'mensaje'}: ${String(replyPreview.text).slice(0, 120)}`;
+      bubble.appendChild(quoted);
+    }
+    const bubbleText = document.createElement('div');
+    bubbleText.className = 'bubble-text';
+    bubbleText.innerHTML = String(text || '').replace(/\n/g, '<br>');
+    bubble.appendChild(bubbleText);
 
     const meta = document.createElement('div');
     meta.className = 'meta';
@@ -3086,6 +3171,9 @@
   }
 
   function startEditing(messageId, originalText) {
+    if (isReplyingMode) {
+      cancelReply();
+    }
     isEditingMode = true;
     editMessageId = messageId;
     inputField.value = originalText;
@@ -3102,6 +3190,28 @@
     inputBox.classList.remove('editing');
     cancelEditBtn.style.display = 'none';
     setStatus('Edición cancelada.', false);
+  }
+
+  function startReplying(messageId, originalText, author) {
+    if (isEditingMode) {
+      cancelEdit();
+    }
+    isReplyingMode = true;
+    replyToMessageId = messageId;
+    replyToAuthor = author || 'mensaje';
+    replyToPreview = String(originalText || '').slice(0, 120);
+    replyPreviewLabel.textContent = `Respondiendo a ${replyToAuthor}: ${replyToPreview}`;
+    replyPreviewBar.classList.add('is-visible');
+    inputField.focus();
+  }
+
+  function cancelReply() {
+    isReplyingMode = false;
+    replyToMessageId = null;
+    replyToAuthor = '';
+    replyToPreview = '';
+    replyPreviewBar.classList.remove('is-visible');
+    replyPreviewLabel.textContent = '';
   }
 
   function injectControls(row, messageId, isUser) {
@@ -3130,7 +3240,7 @@
     clipButton.title = 'Guardar en librito de ideas';
     clipButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"></path></svg>';
     clipButton.addEventListener('click', async () => {
-      const text = row.querySelector('.bubble')?.textContent || '';
+      const text = row.querySelector('.bubble-text')?.textContent || '';
       const label = window.prompt('Etiqueta para esta idea (opcional):', '') ?? '';
       const response = await fetch('/api/ideas', {
         method: 'POST',
@@ -3150,12 +3260,23 @@
     });
     controls.appendChild(clipButton);
 
+    const replyButton = document.createElement('button');
+    replyButton.className = 'ctrl-btn reply';
+    replyButton.type = 'button';
+    replyButton.title = 'Responder a este mensaje';
+    replyButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 17 4 12 9 7"></polyline><path d="M20 18v-2a4 4 0 0 0-4-4H4"></path></svg>';
+    replyButton.addEventListener('click', () => {
+      const text = row.querySelector('.bubble-text')?.textContent || '';
+      startReplying(messageId, text, row.dataset.author || (isUser ? 'user' : 'assistant'));
+    });
+    controls.appendChild(replyButton);
+
     const copyButton = document.createElement('button');
     copyButton.className = 'ctrl-btn copy';
     copyButton.type = 'button';
     copyButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>';
     copyButton.addEventListener('click', async () => {
-      const text = row.querySelector('.bubble')?.textContent || '';
+      const text = row.querySelector('.bubble-text')?.textContent || '';
       await navigator.clipboard.writeText(text);
       copyButton.classList.add('copied');
       window.setTimeout(() => copyButton.classList.remove('copied'), 800);
@@ -3193,7 +3314,7 @@
       editButton.type = 'button';
       editButton.innerHTML = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
       editButton.addEventListener('click', () => {
-        const original = row.querySelector('.bubble')?.textContent || '';
+        const original = row.querySelector('.bubble-text')?.textContent || '';
         startEditing(messageId, original);
       });
       controls.appendChild(editButton);
@@ -4546,7 +4667,11 @@
       }
     }
 
-    currentUserBubble = appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat');
+    const outgoingReplyToId = isReplyingMode ? replyToMessageId : null;
+    const outgoingReplyPreview = isReplyingMode ? { author: replyToAuthor, text: replyToPreview } : null;
+    cancelReply();
+
+    currentUserBubble = appendMessage(text, true, 'https://ui-avatars.com/api/?name=User&background=555&color=fff', true, null, 'user', 'chat', outgoingReplyPreview);
     inputField.value = '';
     adjustHeight(inputField);
     updateSendButtonState();
@@ -4561,6 +4686,7 @@
       world_rules: worldRules,
       identity_id: activeIdentityId || null,
       document_context: documentContext || '',
+      reply_to_message_id: outgoingReplyToId,
     }));
   }
 
@@ -4652,6 +4778,10 @@
 
   cancelEditBtn.addEventListener('click', () => {
     cancelEdit();
+  });
+
+  replyPreviewCancelBtn.addEventListener('click', () => {
+    cancelReply();
   });
 
   chatHudToggle.addEventListener('click', () => {

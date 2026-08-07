@@ -70,6 +70,7 @@ class InteractionService:
             content=request.content,
             channel=request.channel,
             session_id=request.session_id,
+            reply_to_message_id=request.reply_to_message_id,
         )
         persisted = self.repository.save(message)
         payload = persisted.as_dict()
@@ -96,6 +97,7 @@ class InteractionService:
             content=request.content,
             channel=request.channel,
             session_id=request.session_id,
+            reply_to_message_id=request.reply_to_message_id,
         )
         payload = message.as_dict()
 

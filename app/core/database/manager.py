@@ -39,6 +39,8 @@ class DatabaseManager:
                 columns = {str(c.get("name") or "") for c in inspector.get_columns("interaction_messages")}
                 if "session_id" not in columns:
                     statements.append("ALTER TABLE interaction_messages ADD COLUMN session_id VARCHAR(64)")
+                if "reply_to_message_id" not in columns:
+                    statements.append("ALTER TABLE interaction_messages ADD COLUMN reply_to_message_id VARCHAR(36)")
 
             # ── knowledge_engrams: drop removed identity fields ───────────────
             # These columns were removed from the domain model and ORM. Dropping

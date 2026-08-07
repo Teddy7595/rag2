@@ -50,6 +50,7 @@ class InteractionMessageInput(BaseModel):
     content: str
     channel: str = "chat"
     session_id: str | None = None
+    reply_to_message_id: str | None = None
 
 
 class InteractionRealtimeInputModel(BaseModel):
@@ -61,6 +62,7 @@ class InteractionRealtimeInputModel(BaseModel):
     context_limit: int = 5
     history_limit: int = 20
     world_rules: str = ""
+    reply_to_message_id: str | None = None
 
 
 class InteractionSessionConditionsInput(BaseModel):
