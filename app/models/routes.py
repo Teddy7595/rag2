@@ -146,6 +146,11 @@ async def models_runtime_status(request: Request) -> dict[str, object]:
     return _get_runtime_service(request).runtime_status()
 
 
+@router.get("/api/models/runtime/ollama/models")
+async def models_runtime_ollama_models(request: Request) -> dict[str, object]:
+    return _get_ollama_runtime_service(request).list_models()
+
+
 @router.post("/api/models/runtime/text")
 async def models_runtime_text(request: Request, payload: ModelTextSmokeRequest) -> dict[str, object]:
     text_provider = _get_model_service(request).current_selection().get("text_provider")

@@ -485,6 +485,15 @@
 </section>
 
 <section class="panel" style="margin-top: 18px;">
+  <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <h2 class="panel-title">Modelos en Ollama</h2>
+    <button type="button" id="ollama-models-refresh" class="save-button">Refrescar</button>
+  </div>
+  <div id="ollama-models-grid" class="bundle-grid"></div>
+  <p id="ollama-models-status" class="empty-state">Consultando Ollama...</p>
+</section>
+
+<section class="panel" style="margin-top: 18px;">
   <h2 class="panel-title">Gestión de contexto</h2>
   <div class="panel-body">
     <p>En chat realtime puedes ajustar contexto por turno con <code>/ctx &lt;1-50&gt;</code> y <code>/history &lt;1-100&gt;</code>, y consultar con <code>/limits</code>.</p>
@@ -511,6 +520,9 @@
   const visionResult = document.getElementById('runtime-vision-result');
   const validationResult = document.getElementById('runtime-validation-result');
   const validationRefresh = document.getElementById('runtime-validation-refresh');
+  const ollamaModelsGrid = document.getElementById('ollama-models-grid');
+  const ollamaModelsStatus = document.getElementById('ollama-models-status');
+  const ollamaModelsRefresh = document.getElementById('ollama-models-refresh');
 
   const setBundle = (fieldId, bundleId) => {
     const field = document.getElementById(fieldId);
@@ -597,6 +609,86 @@
       renderValidation(payload);
     } catch (error) {
       validationResult.textContent = `Fallo validación: ${String(error)}`;
+    }
+  };
+
+  const formatBytes = (bytes) => {
+    if (!bytes) {
+      return '0 B';
+    }
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let value = bytes;
+    let unitIndex = 0;
+    while (value >= 1024 && unitIndex < units.length - 1) {
+      value /= 1024;
+      unitIndex += 1;
+    }
+    return `${value.toFixed(1)} ${units[unitIndex]}`;
+  };
+
+  const renderOllamaModels = (models) => {
+    ollamaModelsGrid.innerHTML = '';
+    if (!models.length) {
+      ollamaModelsStatus.textContent = 'No hay modelos en Ollama.';
+      ollamaModelsStatus.style.display = '';
+      return;
+    }
+    ollamaModelsStatus.style.display = 'none';
+    for (const model of models) {
+      const card = document.createElement('article');
+      card.className = 'bundle-card';
+      const caps = Array.isArray(model.capabilities) && model.capabilities.length ? model.capabilities.join(', ') : 'sin capabilities';
+      card.innerHTML = `
+        <div class="bundle-title-row">
+          <h3 class="bundle-title">${model.name}</h3>
+          <span class="pill" style="--pill-accent: #93c5fd;">${model.parameter_size || '?'}</span>
+        </div>
+        <p class="bundle-description">${model.family || ''} · ${model.quantization_level || ''}</p>
+        <div class="bundle-meta">
+          <span>${formatBytes(model.size)}</span>
+          <span>·</span>
+          <span>${caps}</span>
+        </div>
+        <div class="action-row">
+          <button type="button" class="bundle-button" data-select-ollama-text="${model.name}">Usar para texto</button>
+          <button type="button" class="bundle-button" data-select-ollama-vision="${model.name}">Usar para visión</button>
+        </div>
+      `;
+      ollamaModelsGrid.appendChild(card);
+    }
+
+    ollamaModelsGrid.querySelectorAll('[data-select-ollama-text]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.getElementById('text-provider').value = 'ollama';
+        document.getElementById('text-model-name').value = button.dataset.selectOllamaText;
+      });
+    });
+    ollamaModelsGrid.querySelectorAll('[data-select-ollama-vision]').forEach((button) => {
+      button.addEventListener('click', () => {
+        document.getElementById('vision-provider').value = 'ollama';
+        document.getElementById('vision-model-name').value = button.dataset.selectOllamaVision;
+      });
+    });
+  };
+
+  const refreshOllamaModels = async () => {
+    ollamaModelsStatus.textContent = 'Consultando Ollama...';
+    ollamaModelsStatus.style.display = '';
+    try {
+      const response = await fetch('/api/models/runtime/ollama/models');
+      const payload = await response.json();
+      if (!payload.ok) {
+        ollamaModelsGrid.innerHTML = '';
+        const detail = payload.detail ? ` - ${payload.detail}` : '';
+        ollamaModelsStatus.textContent = `No se pudo listar: ${payload.reason || 'error'}${detail}`;
+        ollamaModelsStatus.style.display = '';
+        return;
+      }
+      renderOllamaModels(Array.isArray(payload.models) ? payload.models : []);
+    } catch (error) {
+      ollamaModelsGrid.innerHTML = '';
+      ollamaModelsStatus.textContent = `Fallo consultando Ollama: ${String(error)}`;
+      ollamaModelsStatus.style.display = '';
     }
   };
 
@@ -737,7 +829,12 @@
     await refreshValidation();
   });
 
+  if (ollamaModelsRefresh) {
+    ollamaModelsRefresh.addEventListener('click', refreshOllamaModels);
+  }
+
   refreshValidation();
+  refreshOllamaModels();
 })();
 </script>
 <script>

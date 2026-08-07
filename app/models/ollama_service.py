@@ -39,6 +39,51 @@ class OllamaInferenceService:
         except httpx.HTTPError:
             return False
 
+    def list_models(self) -> dict[str, object]:
+        config = self._runtime_config()
+        base_url = str(config.get("ollama_base_url") or "").strip()
+        if not base_url:
+            return {
+                "ok": False,
+                "provider": "ollama",
+                "reason": "config_missing",
+                "detail": "No hay ollama_base_url configurada.",
+                "models": [],
+            }
+
+        try:
+            response = httpx.get(f"{base_url}/api/tags", timeout=5.0)
+            response.raise_for_status()
+            body = cast(dict[str, Any], response.json())
+        except (httpx.HTTPError, ValueError) as exc:
+            return {
+                "ok": False,
+                "provider": "ollama",
+                "reason": "execution_failed",
+                "detail": str(exc),
+                "models": [],
+            }
+
+        entries = cast(list[dict[str, Any]], body.get("models") or [])
+        models = [
+            {
+                "name": entry.get("name") or entry.get("model"),
+                "size": entry.get("size"),
+                "modified_at": entry.get("modified_at"),
+                "parameter_size": (entry.get("details") or {}).get("parameter_size"),
+                "quantization_level": (entry.get("details") or {}).get("quantization_level"),
+                "family": (entry.get("details") or {}).get("family"),
+                "capabilities": entry.get("capabilities") or [],
+            }
+            for entry in entries
+        ]
+        return {
+            "ok": True,
+            "provider": "ollama",
+            "reason": None,
+            "models": models,
+        }
+
     def smoke_text(self, prompt: str) -> dict[str, object]:
         return self.generate_text(
             ModelTextGenerationRequest(prompt=prompt, temperature=0.25, max_tokens=256)
