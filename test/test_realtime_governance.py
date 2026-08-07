@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.interaction.application.realtime import RealtimeChatService
+from app.interaction.domain import ConversationMessage
 from app.interaction.events import InteractionRealtimeInput
 from app.knowledge.events import REQUEST_KNOWLEDGE_AFFECTIVE_STATE_GET
 from app.models.events import REQUEST_MODEL_GENERATION_DEFAULTS
@@ -10,11 +11,19 @@ from app.models.events import REQUEST_MODEL_TEXT_GENERATION
 
 
 class FakeRepository:
-    def __init__(self, metrics: list[dict[str, object]] | None = None) -> None:
+    def __init__(
+        self,
+        metrics: list[dict[str, object]] | None = None,
+        messages_by_id: dict[str, ConversationMessage] | None = None,
+    ) -> None:
         self._metrics = metrics or []
+        self._messages_by_id = messages_by_id or {}
 
     def list_turn_metrics(self, session_id: str, limit: int = 12) -> list[dict[str, object]]:
         return self._metrics[:limit]
+
+    def get_by_id(self, message_id: str) -> ConversationMessage | None:
+        return self._messages_by_id.get(message_id)
 
 
 @dataclass
@@ -130,6 +139,52 @@ def test_compose_reply_conversational_bypasses_rag_heavy_prompt() -> None:
     assert "Contexto recuperado:" not in event_bus.last_prompt
     assert "Coincidencias relevantes:" not in event_bus.last_prompt
     assert "smoke-doc" not in event_bus.last_prompt
+
+
+def test_compose_reply_injects_quoted_message_when_reply_to_message_id_resolves() -> None:
+    quoted = ConversationMessage(
+        id="msg-quoted",
+        author="user",
+        content="Como puedo mejorar el rendimiento de mi API?",
+    )
+    event_bus = FakeEventBus({"ok": True, "content": "Respuesta conversacional"})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(
+            repository=FakeRepository(messages_by_id={"msg-quoted": quoted})
+        ),
+        settings=FakeSettings(),
+    )
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Dame mas detalles", reply_to_message_id="msg-quoted"),
+        _base_context_preview(),
+        session_id="session-reply",
+    )
+
+    assert reply == "Respuesta conversacional"
+    assert quality["fallback_used"] is False
+    assert "<mensaje_citado" in event_bus.last_prompt
+    assert "Como puedo mejorar el rendimiento de mi API?" in event_bus.last_prompt
+
+
+def test_compose_reply_skips_quoted_message_block_when_id_unresolved() -> None:
+    event_bus = FakeEventBus({"ok": True, "content": "Respuesta conversacional"})
+    service = RealtimeChatService(
+        event_bus=event_bus,
+        interaction_service=FakeInteractionService(repository=FakeRepository()),
+        settings=FakeSettings(),
+    )
+
+    reply, quality = service._compose_reply(
+        InteractionRealtimeInput(content="Dame mas detalles", reply_to_message_id="msg-inexistente"),
+        _base_context_preview(),
+        session_id="session-reply",
+    )
+
+    assert reply == "Respuesta conversacional"
+    assert quality["fallback_used"] is False
+    assert "<mensaje_citado" not in event_bus.last_prompt
 
 
 def test_compose_reply_uses_same_token_budget_for_greeting_and_conversational_turns() -> None:

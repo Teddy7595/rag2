@@ -31,6 +31,7 @@ class InteractionMessageRecordRequest:
     content: str
     channel: str = "chat"
     session_id: str | None = None
+    reply_to_message_id: str | None = None
 
 
 @dataclass(frozen=True)
@@ -44,6 +45,7 @@ class InteractionRealtimeInput:
     history_limit: int = 20
     world_rules: str = ""
     document_context: str = ""
+    reply_to_message_id: str | None = None
 
 
 @dataclass(frozen=True)
