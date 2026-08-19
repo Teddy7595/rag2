@@ -1,156 +1,152 @@
-# RAG2 Modular Monolith
+# RAG2 — Monolito Modular Event-Driven para Inferencia Local
 
-Seed for a modular monolith based on explicit wiring and internal events.
+Sistema de chat conversacional con recuperación de contexto (RAG) que corre 100% self-hosted sobre GPU de consumo, accesible en LAN desde cualquier dispositivo, sin depender de ningún proveedor de inferencia en la nube.
 
-## Structure
+---
 
-```text
-main.py
-.env
-.env.example
-.vault/
-ai_model/
-app/
-	core/
-		database/
-	platform/
-	interaction/
-	knowledge/
-	operations/
+## 1. El problema
+
+Los pipelines de RAG estándar recuperan fragmentos de texto por similitud de embeddings y los inyectan tal cual en el prompt. Esto tiene dos fallas conocidas, agravadas cuando el modelo de generación corre localmente y está limitado por VRAM (no hay margen para "meterle más contexto" sin degradar latencia o directamente quedarse sin memoria):
+
+- **Fragmentación de contexto**: el chunk mejor rankeado por similitud casi nunca contiene la respuesta completa — el resto de la información relevante queda en el chunk anterior o siguiente, que la similitud de coseno pura no necesariamente recupera.
+- **Presupuesto de contexto rígido**: con un modelo local de 12-24B en 16GB de VRAM, cada token de contexto inyectado compite directamente con el espacio para generación. Inyectar más fragmentos "por si acaso" no es gratis.
+
+RAG2 ataca el primero de estos dos problemas con expansión de documento (ver sección 5) y separa explícitamente la lógica de recuperación, generación e identidad conversacional en módulos independientes para poder iterar cada pieza sin arrastrar al resto.
+
+---
+
+## 2. Arquitectura
+
+Monolito modular: un solo proceso desplegable, pero con límites de módulo tan estrictos como en un sistema de microservicios — cada módulo expone su propia capa `domain / application / adapters` y **nunca importa código interno de otro módulo directamente**. Toda comunicación entre módulos pasa por un event bus interno (`event_bus`, `event_router`, `event_registry`) con contratos de evento tipados y estáticos, resueltos en tiempo de arranque — no hay descubrimiento mágico ni inyección de dependencias implícita: cada módulo se registra explícitamente en el composition root (`app/bootstrap.py`).
+
+```mermaid
+flowchart TB
+    subgraph Client["Cliente (LAN / móvil)"]
+        Browser["Navegador — /chat, /admin"]
+    end
+
+    subgraph API["FastAPI — proceso único"]
+        Web["adapters/web\nvistas + panel admin"]
+
+        subgraph Bus["Event Bus — contratos tipados estáticos"]
+            direction LR
+            EB["event_bus / event_router / event_registry"]
+        end
+
+        subgraph Interaction["módulo interaction"]
+            direction TB
+            I_D["domain"] --- I_A["application\ngovernance, realtime turn"] --- I_AD["adapters\nws + rest + orm"]
+        end
+
+        subgraph Knowledge["módulo knowledge"]
+            direction TB
+            K_D["domain\nengrams, entries"] --- K_A["application\ncontext pipeline"] --- K_AD["adapters\nws + rest + orm"]
+        end
+
+        subgraph Operations["módulo operations"]
+            O["sagas, auditoría"]
+        end
+
+        subgraph Models["módulo models"]
+            M["catálogo GGUF\nruntime de inferencia"]
+        end
+
+        Platform["módulo platform\nhealth, settings"]
+    end
+
+    subgraph Infra["Infraestructura local"]
+        DB[("SQLite / PostgreSQL")]
+        LLM["llama-cpp-python\nbuild GPU nativa"]
+    end
+
+    Browser <--> Web
+    Web <--> Bus
+    Interaction <--> Bus
+    Knowledge <--> Bus
+    Operations <--> Bus
+    Models <--> Bus
+    Platform <--> Bus
+    Interaction --> DB
+    Knowledge --> DB
+    Models --> LLM
 ```
 
-## Quick Start
+**Por qué event bus en vez de llamadas directas entre módulos**: cada módulo declara sus eventos de entrada/salida como `EventSpec` tipados (`REQUEST_*`, `PUBLISH_*`) en su propio `events.py`. Un módulo nunca conoce la implementación de otro, solo el contrato del evento — esto permite testear cada módulo con dobles de prueba sin levantar el resto del sistema (ver `test/test_realtime_governance.py`, que ejercita la orquestación de turno con un event bus falso) y hace explícita, en el código, cualquier dependencia cruzada entre dominios.
 
-```bash
-cp .env.example .env
-uv sync
-uvicorn main:app --reload
-```
+---
 
-The app also runs with:
+## 3. Stack técnico
 
-```bash
-python main.py
-```
+> Guía de instalación, variables de entorno y referencia de rutas: [`docs/SETUP.md`](docs/SETUP.md).
 
-## AMD GPU: use ./run.sh instead of `uv sync` / `uv run`
+| Pieza | Elección | Por qué |
+|---|---|---|
+| Backend | FastAPI + Uvicorn | Async nativo para WebSocket de chat en tiempo real; tipado explícito de rutas y modelos de request/response. |
+| Persistencia | SQLAlchemy 2.x, SQLite por defecto / PostgreSQL opcional vía `DATABASE_URL` | Capa de base de datos agnóstica en `app/core/database`; migraciones aditivas propias (sin Alembic) que verifican el esquema existente con `inspect()` antes de alterar tablas, para no romper instalaciones ya desplegadas. |
+| Inferencia local | `llama-cpp-python` compilado con backend GPU nativo por distro | Ver sección dedicada abajo — es la pieza con más ingeniería de infraestructura del proyecto. |
+| Frontend | Vanilla JS servido desde el mismo proceso FastAPI (Jinja + `/ui-assets`) | Sin build step, sin bundler, sin dependencia de Node en producción — coherente con el objetivo de despliegue LAN de un solo comando. Ver roadmap para la migración a React. |
+| Panel de administración | Vistas propias en `/admin` | Visualizador de rutas estilo árbol de módulos (inspirado en la vista de rutas de NestJS), catálogo de modelos GGUF detectados en disco, diagnóstico de runtime de IA (smoke test de texto y visión) sin salir de la LAN. |
+| Backends de inferencia intercambiables | Local (`llama-cpp-python`), LM Studio, Ollama | Configurables por variable de entorno sin tocar código de aplicación — el módulo `models` abstrae el proveedor detrás de un puerto común. |
 
-If you set up the local AMD GPU runtime (below), **do not run `uv sync` or `uv run` directly** once the initial install is done. `llama-cpp-python` is a plain dependency in `pyproject.toml` with no build flags, so any `uv sync` (including the implicit one `uv run` does by default) silently reinstalls a CPU-only build and discards the GPU backend (Vulkan on openSUSE, HIP on Arch) compiled by the installer — with no error.
+### Runtime de inferencia local: por qué no basta con `pip install llama-cpp-python`
 
-Instead, start the app with:
+`llama-cpp-python` no trae backend GPU por defecto — el wheel genérico de PyPI es CPU-only. Para GPU AMD, cada distro empaqueta el stack ROCm de forma distinta, así que un solo script de instalación no sirve para ambas:
 
-```bash
-./run.sh
-```
+- **`installer-arch.sh`**: compila con backend HIP nativo (`-DGGML_HIP=ON`), porque `rocm-hip-sdk` en Arch trae hipBLAS/rocBLAS empaquetados.
+- **`installer-opensuse.sh`**: compila con backend Vulkan (`-DGGML_VULKAN=ON`), porque openSUSE Tumbleweed no empaqueta hipBLAS/rocBLAS — Vulkan rinde de forma comparable en RDNA3 sin depender de las librerías matemáticas de ROCm.
 
-It launches `main.py` directly through the venv's own Python (never through `uv run`), and if it detects the GPU backend `.so` is missing (e.g. because something ran `uv sync` since the last start), it recompiles `llama-cpp-python` with the right flags for your distro before booting.
+Ambos scripts detectan el target de GPU vía `rocminfo` (o respetan `AMD_GPU_TARGET` si se exporta manualmente), instalan el toolchain de compilación y ROCm, y compilan la dependencia con las flags correctas dentro del `.venv` del proyecto — nunca en el Python del sistema.
 
-## AMD ROCm Setup
+El problema de infraestructura real que resuelven: `llama-cpp-python` es una dependencia declarada sin flags de build en `pyproject.toml`, así que cualquier `uv sync` (incluido el implícito que corre `uv run`) reinstala silenciosamente el wheel CPU-only y descarta el backend GPU compilado — sin ningún error visible, solo inferencia mucho más lenta. El proyecto resuelve esto con un `run.sh` que arranca siempre a través del Python del propio `.venv` (nunca vía `uv run`) y recompila automáticamente si detecta que el `.so` del backend GPU falta.
 
-For an AMD-only machine, use the installer matching your distro:
+---
 
-```bash
-./installer-arch.sh       # Arch Linux and derivatives (pacman)
-./installer-opensuse.sh   # openSUSE Tumbleweed (zypper)
-```
+## 4. Sistema de recuperación de contexto
 
-Both scripts:
+Retrieval semántico por similitud de coseno sobre los embeddings de cada fragmento indexado, con una optimización dirigida al problema de fragmentación descrito en la sección 1:
 
-- Install the build toolchain, ROCm runtime, and `uv`.
-- Detect `AMD_GPU_TARGET` using `rocminfo` (or respect your exported value).
-- Persist ROCm environment variables (`ROCM_PATH`, `HIP_PATH`, `HSA_OVERRIDE_GFX_VERSION`, `LD_LIBRARY_PATH`) for `bash` and `fish`.
-- Install `torch`/`torchvision`/`sentence-transformers` from the prebuilt ROCm wheel index, scoped to the project's `.venv` (nothing is installed into the system Python).
-- Compile `llama-cpp-python` from source, scoped to the same `.venv`, and verify it reports GPU offload support before finishing.
+**Parent Document Retrieval (small-to-big)**: cuando el fragmento mejor rankeado proviene de un documento ingerido, el sistema no lo entrega aislado — recupera todos los chunks hermanos de la misma página del documento origen y los reconstruye como un único bloque de contexto completo antes de inyectarlo en el prompt. La búsqueda semántica sigue siendo precisa (compara contra fragmentos pequeños), pero lo que llega al modelo es la página completa, no el fragmento suelto — evita la respuesta genérica que se obtiene cuando el chunk ganador corta la idea a la mitad.
 
-They differ only in the `llama-cpp-python` GPU backend, because of how each distro packages ROCm:
+**Grafo de trazabilidad por turno**: cada consulta construye además un grafo (`POST /api/knowledge/context/graph`) de nodos y aristas — consulta, identidad resuelta, fragmentos de conocimiento recuperados y engrams referenciados, cada arista con su peso de relevancia. No es el mecanismo de retrieval en sí, sino una capa de auditoría: permite inspeccionar exactamente qué influyó en cada respuesta, expuesta también en el panel de administración.
 
-- **Arch** (`installer-arch.sh`): compiles with the native HIP backend (`-DGGML_HIP=ON`), since `rocm-hip-sdk` bundles hipBLAS/rocBLAS.
-- **openSUSE** (`installer-opensuse.sh`): compiles with the Vulkan backend (`-DGGML_VULKAN=ON`), since Tumbleweed does not package hipBLAS/rocBLAS. Vulkan performs comparably on RDNA3 and needs no ROCm math libraries — `vulkan-devel` and `shaderc` (for `glslc`) are enough.
+**Estado afectivo y memoria de sesión**: cada identidad conversacional (engram) mantiene un vector de estado afectivo tipo PAD (*Pleasure–Arousal–Dominance*) que se actualiza con cada interacción y se inyecta como contexto explícito de tono en cada llamada de generación, y una memoria de sesión de ventana deslizante que se resume incrementalmente sin depender de una nueva llamada al modelo por turno.
 
-Only the `llama-cpp-python` build differs; `torch`/`sentence-transformers` still run on ROCm on both distros, since PyPI ships self-contained ROCm wheels that don't depend on system hipBLAS.
+---
 
-If you need to override defaults on either script:
+## 5. Sistema de identidades configurables (engrams)
 
-```bash
-AMD_GPU_TARGET=gfx1100 HSA_OVERRIDE_GFX_VERSION=11.0.0 ./installer-opensuse.sh
-```
+Cada "engram" es un perfil de comportamiento conversacional configurable en tres capas conceptuales:
 
-## First Endpoint
+1. **Capa de generación**: el modelo local (o remoto, si se configura LM Studio/Ollama) que produce el texto final.
+2. **Capa de gestión y razonamiento**: lógica determinista propia del sistema —no otro modelo— que decide presupuesto de tokens según la complejidad del turno, enruta la consulta de contexto, aplica metarreglas de comportamiento (`meta_rule`, `behavior_prompt`) y corre una capa de gobernanza que valida *fallas técnicas de la generación* (tokens de razonamiento interno filtrados, eco de instrucciones, repetición/loops de salida, artefactos de streaming mal cerrados) — deliberadamente sin heurísticas de moderación de contenido.
+3. **Capa de memoria vectorial**: el estado afectivo PAD y los fragmentos de conocimiento recuperados semánticamente, ambos versionados por identidad.
 
-The initial module exposes a health check at:
+Esta separación evita que "personalidad" sea solo un string de system prompt: el tono se resuelve mezclando reglas explícitas configuradas por identidad con el estado afectivo acumulado, y la validación de calidad de la salida ocurre en una capa separada de la generación misma.
 
-```text
-/api/platform/health
-```
+---
 
-The interaction module also exposes message routes at:
+## 6. Metodología de desarrollo
 
-```text
-/api/interaction/messages
-/api/interaction/summary
-```
+El sistema se construyó mediante un flujo de desarrollo asistido por agentes de IA con supervisión activa del autor, no generación autónoma sin control. En la práctica:
 
-The HTML views are centralized in `app/adapters/web`, while storage and models keep the API surface. The web module exposes the landing page, the local admin panel, the route visualizer, and the model catalog at:
+- Se definieron **restricciones arquitectónicas explícitas** como reglas de entrada para el agente antes de cualquier generación de código: límites estrictos de módulo (domain/application/adapters), comunicación exclusivamente por eventos estáticos tipados, prohibición de imports cruzados entre módulos de dominio.
+- El ciclo de trabajo fue iterativo: **construcción autónoma de un fragmento acotado → revisión y corrección manual → reasimilación de contexto → repetir.** Ningún fragmento se integró sin pasar por revisión humana del diseño resultante contra las restricciones declaradas.
+- Las decisiones estructurales — qué es un módulo, dónde va el límite entre `interaction` y `knowledge`, qué se comunica por evento y qué se resuelve localmente, cuándo una abstracción vale la pena y cuándo es sobre-ingeniería — fueron responsabilidad directa del autor en cada iteración, no del agente. El agente ejecutó dentro de restricciones fijadas por decisión humana previa, no las definió.
 
-```text
-/
-/admin
-/admin/routes
-/admin/models
-/admin/runtime-ai
-/ui
-/ui-assets
-```
+---
 
-The minimal vanilla reference bundle lives in `frontend/dist` and is served directly from `/ui-assets/`.
-Compiled frontend builds can be mounted under `WEB_FRONTEND_MOUNT_PATH` and served from `WEB_FRONTEND_DIR`.
-The shell page at `/ui` can be used as the landing point for Angular, Vite, or vanilla frontend bundles and can inject extra assets through `WEB_FRONTEND_STYLES` and `WEB_FRONTEND_SCRIPTS`.
+## 7. Limitaciones conocidas
 
-The admin portal now includes an AI runtime diagnostics page at `/admin/runtime-ai` with local text and vision smoke tests, and the `/chat` page can upload an image to exercise the local vision runtime.
+- **Retrieval sin índice ANN**: la similitud de coseno se calcula en Python puro sobre embeddings guardados como columna JSON, sin índice de vecinos aproximados (ni `pgvector` ni FAISS conectados a la capa de ORM). Funciona bien en el rango de fragmentos actual, pero el costo de retrieval crece linealmente con el tamaño de la base de conocimiento — no escala sin cambiar la estrategia de indexado.
+- **Expansión a documento padre limitada al primer match**: el Parent Document Retrieval solo se aplica al fragmento mejor rankeado de la consulta. Si la información relevante está repartida entre el segundo y tercer match, esos siguen inyectándose como fragmentos aislados sin expansión.
+- **Chunking por palabras, no por tokens**: el tamaño de fragmento se define por conteo de palabras con empaquetado por oración completa, no por conteo exacto de tokens del tokenizer del modelo — el presupuesto real de contexto varía según el idioma y la densidad léxica del texto ingerido.
+- **PostgreSQL con `pgvector` está provisto a nivel de infraestructura (imagen Docker) pero no conectado**: el motor de similitud actual no usa la extensión nativa de Postgres para búsqueda vectorial indexada; correr con `DATABASE_URL` apuntando a Postgres da persistencia relacional, no aceleración de retrieval todavía.
 
-Local inference uses `llama-cpp-python` when available in the runtime environment. The models module keeps the local runtime optional and reports its binding/version state through `/api/models/runtime/status`.
+---
 
-The storage slice keeps the storage endpoints at:
+## 8. Roadmap
 
-```text
-/api/storage/overview
-/public
-/uploads
-```
-
-The admin area also includes a route visualizer with a NestJS-style module tree for the registered HTTP, websocket, and static mount routes.
-
-The local AI model catalog scans `ai_models/` recursively, groups GGUF files into bundles, and exposes a selector for local text/vision bundles plus Ollama and LM Studio configuration.
-You can point `APP_CONVERSATION_INTENT_BUNDLE_ID` to a smaller local GGUF bundle to classify user intent on CPU with a short prompt, while keeping the main chat model unchanged.
-
-Security policy is configured with local-only admin access, a simple in-memory rate limit, and an optional ban list via `APP_ADMIN_LOCAL_ONLY`, `APP_RATE_LIMIT_WINDOW_SECONDS`, `APP_RATE_LIMIT_MAX_REQUESTS`, and `APP_BAN_LIST`.
-
-The knowledge and operations modules expose their own module routes under:
-
-```text
-/api/knowledge/*
-/api/operations/*
-/api/models/*
-```
-
-Additional coherence endpoints now available:
-
-- `POST /api/knowledge/context/graph`: builds a context graph (query, identity, engram and knowledge nodes/edges) with primary and secondary topics.
-- `GET /api/operations/sagas?statuses=completed,active`: filters sagas by status.
-- `POST /api/operations/sagas/{saga_id}/debate`: records debate iterations and can persist inspirational memory items tagged by saga and engram.
-
-This allows closed or active sagas to remain editable and extensible while feeding retrieval memory for future prompts under the same engram persona.
-
-## Database
-
-The default local database is SQLite under `.vault/rag2.sqlite3` when `DATABASE_URL` is empty.
-Set `DATABASE_URL` to a PostgreSQL URL when you want server-backed persistence.
-
-Core database wiring lives in `app/core/database/` and stays database-agnostic.
-
-## Local Directories
-
-- `.vault/` stores private runtime artifacts and should stay local.
-- `.vault/public/` is mounted at `/public` for public static assets.
-- `.vault/uploads/` is mounted at `/uploads` for local runtime uploads.
-- `ai_model/` stores local model assets and caches.
+- **Retrieval por grafo con compresión jerárquica** (diseño ya especificado, pendiente de implementación): detección de comunidades sobre el grafo de entidades ya extraído, generación de resúmenes de comunidad como nodos-ancla de mayor peso, y retrieval en dos pasos (resumen primero, detalle puntual solo si se necesita) para resolver el límite de escalado de contexto descrito en la sección 7.
+- **Conectar `pgvector` a la capa de ORM** para búsqueda vectorial indexada en PostgreSQL, reemplazando el cálculo de coseno en Python.
+- **Umbral de compresión dinámico por presupuesto de tokens** en vez de un criterio estático, una vez implementada la compresión jerárquica.
+- **Migración del frontend a React**, manteniendo el mismo backend FastAPI y el mecanismo de montaje de bundles ya soportado (`WEB_FRONTEND_MOUNT_PATH` / `WEB_FRONTEND_DIR`), sin necesidad de reescribir la capa de API.
