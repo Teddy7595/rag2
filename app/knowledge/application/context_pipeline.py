@@ -43,6 +43,8 @@ def _cosine_similarity(left: list[float], right: list[float]) -> float:
 
 
 _PARENT_CONTEXT_CHAR_BUDGET = 6000
+_PARENT_CONTEXT_MIN_CHAR_BUDGET = 1500
+_MAX_PARENT_EXPANSIONS = 2
 
 
 def _excerpt(text: str, keywords: tuple[str, ...], *, limit: int = 480) -> str:
@@ -377,22 +379,53 @@ class ContextRetrieverRuntime:
             )
 
         top_matches = ranked[: route.limit]
-        parent_match = self._build_parent_document_match(top_matches[0]) if top_matches else None
-        if parent_match is not None:
-            return tuple(top_matches) + (parent_match,)
-        return tuple(top_matches)
+        parent_matches = self._build_parent_document_matches(top_matches)
+        return tuple(top_matches) + parent_matches
 
-    def _build_parent_document_match(self, top_match: ContextMatch) -> ContextMatch | None:
-        """Parent Document Retrieval: expand the #1 match's containing page to
-        give the model the full page context, not just the matched chunk."""
-        if top_match.metadata.get("source_type") != "document_chunk":
-            return None
+    def _build_parent_document_matches(self, top_matches: tuple[ContextMatch, ...]) -> tuple[ContextMatch, ...]:
+        """Parent Document Retrieval: expand each of the top matches' containing
+        page to give the model full page context, not just the matched chunk.
+
+        Deduplicated by page so that two chunks from the same document/page
+        (allowed by `_rerank_knowledge_diversity`) don't produce duplicate
+        parent blocks — scanning continues past a duplicate to look for a
+        distinct page further down the ranking, up to `_MAX_PARENT_EXPANSIONS`
+        genuinely new expansions. The char budget is shared across expansions
+        instead of applied in full to each one, so it doesn't crowd out the
+        local model's generation budget.
+        """
+        char_budget = max(_PARENT_CONTEXT_MIN_CHAR_BUDGET, _PARENT_CONTEXT_CHAR_BUDGET // _MAX_PARENT_EXPANSIONS)
+
+        siblings_cache: dict[str, list[KnowledgeEntry]] = {}
+        seen_source_ids: set[str] = set()
+        expansions: list[ContextMatch] = []
+        for match in top_matches:
+            if len(expansions) >= _MAX_PARENT_EXPANSIONS:
+                break
+            if match.metadata.get("source_type") != "document_chunk":
+                continue
+            parent_match = self._build_parent_document_match(match, char_budget, siblings_cache)
+            if parent_match is None or parent_match.source_id in seen_source_ids:
+                continue
+            seen_source_ids.add(parent_match.source_id)
+            expansions.append(parent_match)
+        return tuple(expansions)
+
+    def _build_parent_document_match(
+        self,
+        top_match: ContextMatch,
+        char_budget: int,
+        siblings_cache: dict[str, list[KnowledgeEntry]],
+    ) -> ContextMatch | None:
         document_id = str(top_match.metadata.get("document_id") or "")
         page_number = top_match.metadata.get("page_number")
         if not document_id or page_number is None:
             return None
 
-        siblings = self.knowledge_repository.list_by_document_id(document_id)
+        siblings = siblings_cache.get(document_id)
+        if siblings is None:
+            siblings = self.knowledge_repository.list_by_document_id(document_id)
+            siblings_cache[document_id] = siblings
         page_chunks = sorted(
             (entry for entry in siblings if entry.source_type == "document_chunk" and entry.page_number == page_number),
             key=lambda entry: entry.chunk_index if entry.chunk_index is not None else 0,
@@ -403,8 +436,8 @@ class ContextRetrieverRuntime:
         full_page_text = " ".join(chunk.content for chunk in page_chunks).strip()
         if not full_page_text:
             return None
-        if len(full_page_text) > _PARENT_CONTEXT_CHAR_BUDGET:
-            full_page_text = full_page_text[:_PARENT_CONTEXT_CHAR_BUDGET].rstrip() + "..."
+        if len(full_page_text) > char_budget:
+            full_page_text = full_page_text[:char_budget].rstrip() + "..."
 
         document_title = str(top_match.metadata.get("document_title") or top_match.label)
         chunk_count = sum(1 for entry in siblings if entry.source_type == "document_chunk")

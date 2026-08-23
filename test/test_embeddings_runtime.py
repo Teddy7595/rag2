@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from app.knowledge.application.context_pipeline import ContextQueryRouter, ContextRetrieverRuntime, QueryRoutingPlan
 from app.knowledge.application.document_ingestion import DocumentIngestionService
-from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
+from app.knowledge.application.embedding_runtime import OllamaEmbeddingRuntime, SemanticEmbeddingRuntime
 from app.knowledge.domain import KnowledgeEntry
 
 
@@ -124,6 +124,49 @@ def test_context_router_mention_with_topic_still_searches_knowledge() -> None:
     assert route.intent != "identity"
     assert route.include_source_types is None or "knowledge_entries" in route.include_source_types
     assert route.identity_mentions == ("Mistress",)
+
+
+def test_ollama_embedding_runtime_calls_api_embed_and_parses_response(monkeypatch) -> None:
+    calls: list[dict] = []
+
+    class FakeResponse:
+        def __init__(self, payload: dict) -> None:
+            self._payload = payload
+
+        def raise_for_status(self) -> None:
+            return None
+
+        def json(self) -> dict:
+            return self._payload
+
+    def fake_post(url: str, json: dict, timeout: float) -> FakeResponse:
+        calls.append({"url": url, "json": json, "timeout": timeout})
+        return FakeResponse({"embeddings": [[0.1, 0.2, 0.3]]})
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    runtime = OllamaEmbeddingRuntime("http://localhost:11434", "nomic-embed-text")
+    result = runtime.embed_text("hola mundo")
+
+    assert result == [0.1, 0.2, 0.3]
+    assert calls == [
+        {
+            "url": "http://localhost:11434/api/embed",
+            "json": {"model": "nomic-embed-text", "input": "hola mundo"},
+            "timeout": 30.0,
+        }
+    ]
+
+
+def test_ollama_embedding_runtime_falls_back_to_hash_on_http_error(monkeypatch) -> None:
+    def fake_post(*args: object, **kwargs: object) -> None:
+        raise RuntimeError("connection refused")
+
+    monkeypatch.setattr("httpx.post", fake_post)
+
+    runtime = OllamaEmbeddingRuntime("http://localhost:11434", "nomic-embed-text")
+
+    assert runtime.embed_text("hola mundo") == runtime.legacy_embed_text("hola mundo")
 
 
 def test_context_router_pure_identity_question_still_routes_to_identity() -> None:

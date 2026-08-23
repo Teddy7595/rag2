@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 import base64
+from collections.abc import Callable
 from hashlib import sha1
 from pathlib import Path
 import re
@@ -11,6 +12,7 @@ from pypdf import PdfReader
 from app.core.base_entity import BaseEntity
 from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
 from app.knowledge.application.ports import KnowledgeRepositoryPort
+from app.knowledge.application.tokenizer_runtime import LocalTokenizerRuntime
 from app.knowledge.domain import KnowledgeEntry
 from app.knowledge.events import DocumentIngestRequest, DocumentListRequest, DocumentOverviewRequest
 
@@ -36,8 +38,23 @@ def _split_sentences(text: str) -> list[str]:
     return [sentence.strip() for sentence in _SENTENCE_SPLIT_RE.split(stripped) if sentence.strip()]
 
 
-def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
-    """Pack whole sentences into chunks up to `chunk_size` words, never splitting mid-sentence.
+def _default_count_tokens(text: str) -> int:
+    return len(text.split())
+
+
+def _chunk_words(
+    text: str,
+    *,
+    chunk_size: int,
+    overlap: int,
+    count_tokens: Callable[[str], int] = _default_count_tokens,
+) -> list[str]:
+    """Pack whole sentences into chunks up to `chunk_size` tokens (as counted by
+    `count_tokens`), never splitting mid-sentence.
+
+    `count_tokens` defaults to a plain word count; callers pass a real
+    tokenizer (e.g. `LocalTokenizerRuntime.count_tokens`) to size chunks
+    against actual model tokens instead of words.
 
     Falls back to a hard word-window split only for a single sentence that alone
     exceeds `chunk_size` (rare, but avoids an unbounded chunk for run-on text).
@@ -51,7 +68,7 @@ def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
 
     chunks: list[str] = []
     current_sentences: list[str] = []
-    current_word_count = 0
+    current_token_count = 0
 
     def flush() -> None:
         if current_sentences:
@@ -61,11 +78,12 @@ def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
         sentence_words = sentence.split()
         if not sentence_words:
             continue
+        sentence_token_count = count_tokens(sentence)
 
-        if len(sentence_words) > safe_chunk_size:
+        if sentence_token_count > safe_chunk_size:
             flush()
             current_sentences = []
-            current_word_count = 0
+            current_token_count = 0
             start = 0
             while start < len(sentence_words):
                 end = min(len(sentence_words), start + safe_chunk_size)
@@ -77,18 +95,18 @@ def _chunk_words(text: str, *, chunk_size: int, overlap: int) -> list[str]:
                 start = end - safe_overlap
             continue
 
-        if current_word_count + len(sentence_words) > safe_chunk_size and current_sentences:
+        if current_token_count + sentence_token_count > safe_chunk_size and current_sentences:
             flush()
             if safe_overlap > 0:
                 overlap_words = " ".join(current_sentences).split()[-safe_overlap:]
                 current_sentences = [" ".join(overlap_words)] if overlap_words else []
-                current_word_count = len(overlap_words)
+                current_token_count = count_tokens(current_sentences[0]) if current_sentences else 0
             else:
                 current_sentences = []
-                current_word_count = 0
+                current_token_count = 0
 
         current_sentences.append(sentence)
-        current_word_count += len(sentence_words)
+        current_token_count += sentence_token_count
 
     flush()
     return [chunk for chunk in chunks if chunk]
@@ -141,6 +159,7 @@ def _stable_document_id(title: str, source_uri: str, content: str) -> str:
 class DocumentIngestionService:
     repository: KnowledgeRepositoryPort
     embedding_runtime: SemanticEmbeddingRuntime
+    tokenizer_runtime: LocalTokenizerRuntime | None = None
 
     def ingest(self, request: DocumentIngestRequest) -> dict[str, object]:
         source_uri = request.source_uri or request.pdf_path or "memory://document"
@@ -173,10 +192,17 @@ class DocumentIngestionService:
         )
         saved_document = self.repository.save(header_entry)
 
+        count_tokens = self.tokenizer_runtime.count_tokens if self.tokenizer_runtime else _default_count_tokens
+
         chunk_records: list[KnowledgeEntry] = []
         chunk_counter = 0
         for page_number, page_text in enumerate(pages, start=1):
-            for chunk_text in _chunk_words(page_text, chunk_size=request.chunk_size, overlap=request.chunk_overlap):
+            for chunk_text in _chunk_words(
+                page_text,
+                chunk_size=request.chunk_size,
+                overlap=request.chunk_overlap,
+                count_tokens=count_tokens,
+            ):
                 chunk_entry = KnowledgeEntry(
                     id=BaseEntity.build_stable_id("document_chunk", f"{document_id}:{chunk_counter}"),
                     title=f"{request.title} :: p{page_number} #{chunk_counter + 1}",

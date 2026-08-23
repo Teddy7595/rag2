@@ -136,6 +136,9 @@ class AppSettings:
     conversation_rag_match_limit: int
     chat_trash_retention_hours: int
     embedding_model_dir: Path
+    ollama_embedding_base_url: str
+    ollama_embedding_model: str
+    tokenizer_model_path: Path | None
     ai_model_dir: Path
     web_frontend_dir: Path
     web_frontend_mount_path: str
@@ -157,6 +160,10 @@ def load_settings(project_root: Path) -> AppSettings:
     embedding_model_dir = _resolve_path(
         os.getenv("APP_EMBEDDING_MODEL_DIR"),
         project_root / "ai_models" / "embeddings" / "BAAI__bge-m3",
+    )
+    tokenizer_model_path_raw = os.getenv("APP_TOKENIZER_MODEL_PATH")
+    tokenizer_model_path = (
+        Path(tokenizer_model_path_raw).expanduser().resolve() if tokenizer_model_path_raw else None
     )
 
     return AppSettings(
@@ -211,6 +218,11 @@ def load_settings(project_root: Path) -> AppSettings:
         conversation_rag_match_limit=max(1, min(80, _read_int_env("APP_CONVERSATION_RAG_MATCH_LIMIT", 8))),
         chat_trash_retention_hours=max(1, min(168, _read_int_env("APP_CHAT_TRASH_RETENTION_HOURS", 24))),
         embedding_model_dir=embedding_model_dir,
+        ollama_embedding_base_url=(
+            os.getenv("OLLAMA_EMBEDDING_BASE_URL", "").strip() or "http://localhost:11434"
+        ),
+        ollama_embedding_model=os.getenv("OLLAMA_EMBEDDING_MODEL", "").strip(),
+        tokenizer_model_path=tokenizer_model_path,
         ai_model_dir=ai_model_dir,
         web_frontend_dir=web_frontend_dir,
         web_frontend_mount_path=_resolve_mount_path(os.getenv("WEB_FRONTEND_MOUNT_PATH"), "/ui-assets"),

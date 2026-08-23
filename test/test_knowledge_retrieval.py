@@ -29,6 +29,27 @@ def test_chunk_words_handles_oversized_single_sentence() -> None:
     assert all(chunk.strip() for chunk in chunks)
 
 
+def test_chunk_words_uses_injected_token_counter_instead_of_word_count() -> None:
+    # "Xx" always counts as 3 tokens, every other word as 1 — a unit
+    # deliberately different from a plain word count, to prove `_chunk_words`
+    # sizes/packs sentences against whatever `count_tokens` reports instead of
+    # `len(sentence.split())`.
+    def count_tokens(text: str) -> int:
+        return sum(3 if word.lower() == "xx" else 1 for word in text.split())
+
+    text = "Uno dos tres. Xx dos tres cuatro."
+
+    # By word count both sentences (3 + 4 = 7 words) fit in one chunk_size=8 chunk.
+    chunks_by_words = _chunk_words(text, chunk_size=8, overlap=0)
+    assert chunks_by_words == ["Uno dos tres. Xx dos tres cuatro."]
+
+    # By token count the second sentence alone is 3+1+1+1=6 tokens; combined
+    # with the first sentence's 3 tokens that's 9 > chunk_size=8, forcing a
+    # split the word-count version never makes.
+    chunks_by_tokens = _chunk_words(text, chunk_size=8, overlap=0, count_tokens=count_tokens)
+    assert chunks_by_tokens == ["Uno dos tres.", "Xx dos tres cuatro."]
+
+
 def test_list_by_document_id_returns_all_chunks_ordered(tmp_path: Path, monkeypatch) -> None:
     app = build_test_app(tmp_path, monkeypatch)
     knowledge_service = app.state.context.services["knowledge"]
@@ -77,6 +98,39 @@ def test_retrieve_includes_parent_document_match_for_top_chunk(tmp_path: Path, m
     top_chunk_matches = [match for match in matches if match.source_type == "document_chunk"]
     assert top_chunk_matches, "deberia haber al menos un match de chunk ademas del parent"
     assert len(parent.excerpt) > len(top_chunk_matches[0].excerpt)
+
+
+def test_retrieve_expands_parent_matches_for_multiple_top_documents(tmp_path: Path, monkeypatch) -> None:
+    app = build_test_app(tmp_path, monkeypatch)
+    knowledge_service = app.state.context.services["knowledge"]
+
+    doc_a_text = (
+        "El manual hidraulico describe la valvula principal del sistema hidraulico industrial. "
+        "El operador debe verificar la presion de la valvula principal antes de cada turno. "
+        "Un cierre incorrecto de la valvula principal puede danar el sistema hidraulico completo. "
+        "Se recomienda inspeccionar la valvula principal del sistema hidraulico semanalmente."
+    )
+    doc_b_text = (
+        "El protocolo electrico cubre el tablero principal del sistema hidraulico secundario. "
+        "El tecnico debe desenergizar el tablero principal antes de intervenir el sistema hidraulico. "
+        "Cada intervencion sobre el sistema hidraulico secundario se registra en la bitacora electrica. "
+        "El tablero principal del sistema hidraulico secundario requiere revision mensual obligatoria."
+    )
+    knowledge_service.ingest_document(
+        DocumentIngestRequest(title="Manual hidraulico A", raw_text=doc_a_text, chunk_size=15, chunk_overlap=3)
+    )
+    knowledge_service.ingest_document(
+        DocumentIngestRequest(title="Manual hidraulico B", raw_text=doc_b_text, chunk_size=15, chunk_overlap=3)
+    )
+
+    preview = knowledge_service.context_pipeline.build_preview("valvula principal del sistema hidraulico", limit=6)
+    matches = preview.context_pack.knowledge_matches
+
+    parent_matches = [match for match in matches if match.source_type == "document_parent"]
+    assert len(parent_matches) == 2
+
+    document_ids = {match.metadata["document_id"] for match in parent_matches}
+    assert len(document_ids) == 2, "cada expansion debe corresponder a un documento distinto, sin duplicados"
 
 
 def test_build_preview_skips_retrieval_for_raw_mode_engram(tmp_path: Path, monkeypatch) -> None:

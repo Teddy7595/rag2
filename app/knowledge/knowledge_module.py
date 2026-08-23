@@ -22,6 +22,10 @@ def register_knowledge_module(app: FastAPI) -> None:
         event_bus=context.event_bus,
         engram_repository=engram_repository,
         embedding_model_dir=context.settings.embedding_model_dir,
+        ollama_embedding_base_url=context.settings.ollama_embedding_base_url,
+        ollama_embedding_model=context.settings.ollama_embedding_model,
+        ai_model_dir=context.settings.ai_model_dir,
+        tokenizer_model_path=context.settings.tokenizer_model_path,
         affective_state_repository=affective_state_repository,
     )
     register_service(app, "knowledge", service)

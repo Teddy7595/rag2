@@ -8,7 +8,7 @@ import re
 from tempfile import TemporaryDirectory
 
 from app.core.events import EventBus
-from app.knowledge.application.embedding_runtime import SemanticEmbeddingRuntime
+from app.knowledge.application.embedding_runtime import build_embedding_runtime
 from app.knowledge.application.context_pipeline import KnowledgeContextPipeline
 from app.knowledge.application.document_ingestion import (
     DocumentIngestionService,
@@ -16,6 +16,7 @@ from app.knowledge.application.document_ingestion import (
     _read_pdf_image_metadata,
 )
 from app.knowledge.application.engram_directory import EngramDirectory
+from app.knowledge.application.tokenizer_runtime import LocalTokenizerRuntime
 from app.knowledge.application.ports import AffectiveStateRepositoryPort, EngramRepositoryPort, KnowledgeRepositoryPort
 from app.knowledge.domain import AffectiveState, Identity, KnowledgeEntry
 from app.knowledge.events import (
@@ -55,8 +56,9 @@ from app.models.events import ModelVisionAnalysisRequest, REQUEST_MODEL_VISION_A
 
 # --- PAD affective state: deterministic, lexicon-based update rule ---------
 # No extra LLM call per turn (hardware constraint) — reuses only what's
-# already available at turn-completion time. See docs/engramas_tecnicas_humanidad.md
-# section 1.3; formula constants are a first cut, tune via manual smoke testing.
+# already available at turn-completion time. See docs/FEATURES.md ("Engrams &
+# Affective State") and docs/archive/engramas_tecnicas_humanidad.md section 1.3;
+# formula constants are a first cut, tune via manual smoke testing.
 _AFFECTIVE_RETENTION = 0.9
 _AFFECTIVE_DELTA_BOUND = 0.15
 
@@ -140,6 +142,10 @@ class KnowledgeService:
         engram_repository: EngramRepositoryPort | None = None,
         directory: EngramDirectory | None = None,
         embedding_model_dir: Path | None = None,
+        ollama_embedding_base_url: str = "",
+        ollama_embedding_model: str = "",
+        ai_model_dir: Path | None = None,
+        tokenizer_model_path: Path | None = None,
         affective_state_repository: AffectiveStateRepositoryPort | None = None,
     ) -> None:
         self.repository = repository
@@ -147,8 +153,17 @@ class KnowledgeService:
         self.engram_repository = engram_repository
         self.affective_state_repository = affective_state_repository
         self.directory = directory or EngramDirectory()
-        self.embedding_runtime = SemanticEmbeddingRuntime(embedding_model_dir)
-        self.document_ingestion = DocumentIngestionService(repository=self.repository, embedding_runtime=self.embedding_runtime)
+        self.embedding_runtime = build_embedding_runtime(
+            embedding_model_dir=embedding_model_dir,
+            ollama_base_url=ollama_embedding_base_url,
+            ollama_model=ollama_embedding_model,
+        )
+        self.tokenizer_runtime = LocalTokenizerRuntime(ai_model_dir, model_path=tokenizer_model_path) if ai_model_dir else None
+        self.document_ingestion = DocumentIngestionService(
+            repository=self.repository,
+            embedding_runtime=self.embedding_runtime,
+            tokenizer_runtime=self.tokenizer_runtime,
+        )
         self.context_pipeline = KnowledgeContextPipeline(
             knowledge_repository=self.repository,
             engram_repository=self.engram_repository,

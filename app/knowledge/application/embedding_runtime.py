@@ -142,5 +142,70 @@ class SemanticEmbeddingRuntime:
         return SentenceTransformer
 
 
+class OllamaEmbeddingRuntime(SemanticEmbeddingRuntime):
+    """Embedding runtime backed by a model already pulled in a local Ollama daemon.
+
+    Reuses `cosine_similarity`/`classify_by_prototypes`/`legacy_embed_text` from
+    the base class unchanged; only the actual embedding call differs. Falls
+    back to the hash embedding (same as the base class) if Ollama is
+    unreachable, so a stopped/unpulled Ollama never breaks ingestion.
+    """
+
+    def __init__(self, base_url: str, model: str, *, timeout_seconds: float = 30.0) -> None:
+        super().__init__(model_dir=None)
+        self._ollama_base_url = base_url.rstrip("/")
+        self._ollama_model = model
+        self._timeout_seconds = timeout_seconds
+        self._available_cache: bool | None = None
+
+    def available(self) -> bool:
+        if self._available_cache is not None:
+            return self._available_cache
+        if not self._ollama_base_url or not self._ollama_model:
+            self._available_cache = False
+            return False
+        try:
+            import httpx
+
+            response = httpx.get(f"{self._ollama_base_url}/api/tags", timeout=self._timeout_seconds)
+            response.raise_for_status()
+            self._available_cache = True
+        except Exception:
+            self._available_cache = False
+        return self._available_cache
+
+    def embed_text(self, text: str) -> list[float]:
+        try:
+            import httpx
+
+            response = httpx.post(
+                f"{self._ollama_base_url}/api/embed",
+                json={"model": self._ollama_model, "input": text},
+                timeout=self._timeout_seconds,
+            )
+            response.raise_for_status()
+            embeddings = response.json().get("embeddings")
+            if embeddings and isinstance(embeddings, list):
+                return [float(value) for value in embeddings[0]]
+        except Exception:
+            pass
+        return self.legacy_embed_text(text)
+
+
 def build_default_embedding_runtime(project_root: Path) -> SemanticEmbeddingRuntime:
     return SemanticEmbeddingRuntime(project_root / "ai_models" / "embeddings" / "BAAI__bge-m3")
+
+
+def build_embedding_runtime(
+    *,
+    embedding_model_dir: Path | None = None,
+    ollama_base_url: str = "",
+    ollama_model: str = "",
+) -> SemanticEmbeddingRuntime:
+    """Picks the embedding runtime: Ollama when a model is configured, the
+    local sentence-transformers runtime otherwise (which itself falls back to
+    the hash embedding when sentence-transformers/the model dir aren't available).
+    """
+    if ollama_model.strip():
+        return OllamaEmbeddingRuntime(ollama_base_url, ollama_model.strip())
+    return SemanticEmbeddingRuntime(embedding_model_dir)
