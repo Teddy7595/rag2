@@ -127,23 +127,51 @@ sync_firewall_port() {
         return 0
     fi
 
-    local last_port=""
-    [ -f "$state_file" ] && last_port="$(cat "$state_file")"
+    # If set, the port is only accepted from this source range instead of
+    # opened for the whole firewalld zone — a VPN tunnel interface can share
+    # that zone with your real LAN NIC, and a zone-wide port is reachable
+    # through it too.
+    local current_subnet
+    current_subnet="$(grep -E '^APP_LAN_SUBNET=' "${PROJECT_DIR}/.env" | tail -1 | cut -d= -f2- | tr -d '"'"'"' \r')"
 
-    if [ "$current_port" = "$last_port" ]; then
+    local current_state="${current_port}|${current_subnet}"
+    local last_state=""
+    [ -f "$state_file" ] && last_state="$(cat "$state_file")"
+
+    if [ "$current_state" = "$last_state" ]; then
         return 0
     fi
 
-    log_warn "[run] Puerto cambio (${last_port:-ninguno} -> ${current_port}). Sincronizando firewall (zona: ${zone})..."
+    # Old state files only ever held a bare port number (no "|"); treat that
+    # as "no subnet was tracked" instead of misreading it as one.
+    local last_port="${last_state%%|*}"
+    local last_subnet="${last_state#*|}"
+    [ "$last_state" = "$last_port" ] && last_subnet=""
+
+    log_warn "[run] Config de red/firewall cambio. Sincronizando (zona: ${zone})..."
 
     if [ -n "$last_port" ]; then
-        sudo firewall-cmd --zone="$zone" --remove-port="${last_port}/tcp" --permanent >/dev/null 2>&1 || true
+        if [ -n "$last_subnet" ]; then
+            sudo firewall-cmd --zone="$zone" \
+                --remove-rich-rule="rule family=\"ipv4\" source address=\"${last_subnet}\" port protocol=\"tcp\" port=\"${last_port}\" accept" \
+                --permanent >/dev/null 2>&1 || true
+        else
+            sudo firewall-cmd --zone="$zone" --remove-port="${last_port}/tcp" --permanent >/dev/null 2>&1 || true
+        fi
     fi
-    sudo firewall-cmd --zone="$zone" --add-port="${current_port}/tcp" --permanent
-    sudo firewall-cmd --reload
 
-    printf '%s' "$current_port" > "$state_file"
-    log_step "[run] Firewall sincronizado: ${current_port}/tcp abierto en zona '${zone}'."
+    if [ -n "$current_subnet" ]; then
+        sudo firewall-cmd --zone="$zone" \
+            --add-rich-rule="rule family=\"ipv4\" source address=\"${current_subnet}\" port protocol=\"tcp\" port=\"${current_port}\" accept" \
+            --permanent
+        log_step "[run] Firewall sincronizado: ${current_port}/tcp aceptado solo desde ${current_subnet} (zona '${zone}')."
+    else
+        sudo firewall-cmd --zone="$zone" --add-port="${current_port}/tcp" --permanent
+        log_warn "[run] APP_LAN_SUBNET vacio: ${current_port}/tcp quedo abierto para toda la zona '${zone}' (incluye cualquier VPN u otra interfaz asignada ahi). Configuralo en .env para restringir por origen."
+    fi
+
+    sudo firewall-cmd --reload
+    printf '%s' "$current_state" > "$state_file"
 }
 
 sync_firewall_port
