@@ -135,7 +135,7 @@ All admin pages are server-rendered Jinja2 templates under `app/adapters/web/tem
 5. **Embedding runtime** — `OLLAMA_EMBEDDING_BASE_URL` / `OLLAMA_EMBEDDING_MODEL` (real embeddings via a local Ollama daemon), `APP_EMBEDDING_MODEL_DIR` (local `sentence-transformers` fallback), `APP_TOKENIZER_MODEL_PATH` (GGUF used vocab-only for real-token chunking).
 6. **Vision inference runtime** — same provider options as text, scoped to vision models.
 7. **Generation tuning** — `min_p`, repeat/presence/frequency penalty, seed (overridable at runtime via `model-runtime-config.json`, no restart needed).
-8. **Database/persistence** — `DATABASE_URL`, echo, auto-schema-on-start, pool sizing.
+8. **Database/persistence** — `DATABASE_URL`, echo, auto-schema-on-start, pool sizing, plus `VECTOR_DB_USER`/`VECTOR_DB_PASSWORD`/`VECTOR_DB_NAME` (read automatically by `docker-compose.yml` if you run the optional PostgreSQL/`pgvector` container).
 
 ## Deployment
 

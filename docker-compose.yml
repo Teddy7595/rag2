@@ -6,9 +6,11 @@ services:
     container_name: rag2_vector_db
     restart: always
     environment:
-      POSTGRES_USER: rag2
-      POSTGRES_PASSWORD: changeme_local_dev_only
-      POSTGRES_DB: rag2_vectors
+      # Read from the project's .env (docker-compose loads it automatically);
+      # falls back to a generic local-dev default if unset.
+      POSTGRES_USER: ${VECTOR_DB_USER:-rag2}
+      POSTGRES_PASSWORD: ${VECTOR_DB_PASSWORD:-changeme_local_dev_only}
+      POSTGRES_DB: ${VECTOR_DB_NAME:-rag2_vectors}
     ports:
       # Localhost only, non-standard port to avoid colliding with another
       # local Postgres instance or being exposed to the network.
