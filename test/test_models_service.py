@@ -119,6 +119,47 @@ def test_update_selection_applies_assigned_profile_on_bundle_switch(tmp_path: Pa
     assert catalog_service.load_runtime_config()["text_generation_max_tokens"] == 999
 
 
+def test_update_selection_syncs_ollama_model_name_to_runtime_config(tmp_path: Path, monkeypatch) -> None:
+    catalog_service = build_catalog_service(tmp_path, monkeypatch)
+
+    catalog_service.update_selection(
+        {"text_provider": "ollama", "text_model_name": "some-org/some-model:latest"}
+    )
+
+    assert catalog_service.load_runtime_config()["ollama_model"] == "some-org/some-model:latest"
+
+
+def test_update_selection_syncs_lmstudio_model_name_to_runtime_config(tmp_path: Path, monkeypatch) -> None:
+    catalog_service = build_catalog_service(tmp_path, monkeypatch)
+
+    catalog_service.update_selection(
+        {"text_provider": "lmstudio", "text_model_name": "some-lmstudio-model"}
+    )
+
+    assert catalog_service.load_runtime_config()["lmstudio_model"] == "some-lmstudio-model"
+
+
+def test_update_selection_syncs_vision_ollama_model_name_to_runtime_config(tmp_path: Path, monkeypatch) -> None:
+    catalog_service = build_catalog_service(tmp_path, monkeypatch)
+
+    catalog_service.update_selection(
+        {"vision_provider": "ollama", "vision_model_name": "some-vision-model"}
+    )
+
+    assert catalog_service.load_runtime_config()["vision_ollama_model"] == "some-vision-model"
+
+
+def test_update_selection_does_not_sync_local_provider_model_name(tmp_path: Path, monkeypatch) -> None:
+    catalog_service = build_catalog_service(tmp_path, monkeypatch)
+    (catalog_service.models_dir / "model-a.gguf").write_bytes(b"fake-gguf")
+    bundle_id = next(bundle.bundle_id for bundle in catalog_service.discover_bundles())
+    baseline_ollama_model = catalog_service.load_runtime_config()["ollama_model"]
+
+    catalog_service.update_selection({"text_provider": "local", "text_bundle_id": bundle_id})
+
+    assert catalog_service.load_runtime_config()["ollama_model"] == baseline_ollama_model
+
+
 def test_set_bundle_profile_applies_config_immediately_when_bundle_is_active(tmp_path: Path, monkeypatch) -> None:
     catalog_service = build_catalog_service(tmp_path, monkeypatch)
     (catalog_service.models_dir / "active-model.gguf").write_bytes(b"fake-gguf")

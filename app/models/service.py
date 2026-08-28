@@ -52,6 +52,11 @@ _RUNTIME_CONFIG_DEFAULTS: dict[str, str | int | float] = {
     "rag_query_expansion_enabled": 0,
 }
 
+_REMOTE_MODEL_RUNTIME_KEYS: dict[str, dict[str, str]] = {
+    "text": {"ollama": "ollama_model", "lmstudio": "lmstudio_model"},
+    "vision": {"ollama": "vision_ollama_model", "lmstudio": "vision_lmstudio_model"},
+}
+
 _PROFILE_PARAM_KEYS_BY_KIND: dict[str, tuple[str, ...]] = {
     "text": (
         "text_generation_temperature",
@@ -340,7 +345,24 @@ class ModelCatalogService:
         self._write_selection(normalized)
         self._apply_bundle_profile_if_changed("text", previous_text_bundle_id, normalized)
         self._apply_bundle_profile_if_changed("vision", previous_vision_bundle_id, normalized)
+        self._sync_remote_model_name_to_runtime_config("text", normalized)
+        self._sync_remote_model_name_to_runtime_config("vision", normalized)
         return self.catalog()
+
+    def _sync_remote_model_name_to_runtime_config(self, kind: str, selection: dict[str, object]) -> None:
+        """Local bundle selection already propagates to the runtime config via
+        assigned profiles (`_apply_bundle_profile_if_changed`); ollama/lmstudio
+        selection did not, so `generate_text` kept using whatever model name
+        was last set directly on the runtime config instead of the one picked
+        here, silently failing generation when they drifted apart."""
+        provider = str(selection.get(f"{kind}_provider") or "")
+        runtime_key = _REMOTE_MODEL_RUNTIME_KEYS.get(kind, {}).get(provider)
+        if not runtime_key:
+            return
+        model_name = _coerce_text(selection.get(f"{kind}_model_name"))
+        if not model_name:
+            return
+        self.update_runtime_config({runtime_key: model_name})
 
     def is_bundle_active(self, kind: str, bundle_id: str) -> bool:
         bundles = self.discover_bundles()
